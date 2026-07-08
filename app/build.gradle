@@ -1,0 +1,32 @@
+// AYB Saha - uygulama modulu (Bayram YARAS - 0530 630 05 40)
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.bayramyaras.aybsaha'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.bayramyaras.aybsaha"
+        minSdk 23
+        targetSdk 34
+        versionCode 1630
+        versionName "16.30"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Sade WebView uygulamasi - ek kutuphane gerekmez
+}

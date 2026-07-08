@@ -1,0 +1,10 @@
+// AYB Saha - kok build dosyasi (Bayram YARAS)
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.4'
+    }
+}
+allprojects {
+    repositories { google(); mavenCentral() }
+}

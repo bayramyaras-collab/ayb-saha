@@ -1,0 +1,18 @@
+{
+  "name": "AYB Saha Harita Metraj",
+  "short_name": "AYB Saha",
+  "description": "Saha harita ve metraj uygulaması - Hazırlayan Bayram YARAŞ (0530 630 05 40)",
+  "lang": "tr",
+  "start_url": "./AYB_Saha_Harita.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1b34",
+  "theme_color": "#0d1b34",
+  "icons": [
+    { "src": "icons/icon-96.png",  "sizes": "96x96",   "type": "image/png" },
+    { "src": "icons/icon-144.png", "sizes": "144x144", "type": "image/png" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
