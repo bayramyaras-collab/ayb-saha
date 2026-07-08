@@ -1,0 +1,36 @@
+name: APK Olustur (AYB Saha)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master, ana ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
+
+      - name: APK olustur
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: APK yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: AYB-Saha-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
