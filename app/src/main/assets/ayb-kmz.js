@@ -74,9 +74,9 @@
   }
   function ptsCoords(points){ return (points||[]).filter(function(p){return p&&isFinite(p.lat)&&isFinite(p.lng);}).map(function(p){return p.lng+','+p.lat+',0';}).join(' '); }
 
-  function toast(msg){ try{ var t=document.createElement('div'); t.textContent=msg;
-    t.style.cssText='position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:100001;background:#0d1b34;color:#e7eeff;padding:10px 16px;border-radius:10px;border:1px solid #388cff;font:700 14px system-ui';
-    document.body.appendChild(t); setTimeout(function(){t.remove();},3500); }catch(e){} }
+  function toast(msg,ms){ try{ var t=document.createElement('div'); t.textContent=msg;
+    t.style.cssText='position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:100001;background:#0d1b34;color:#e7eeff;padding:12px 16px;border-radius:10px;border:1px solid #388cff;font:700 14px system-ui;max-width:90vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+    document.body.appendChild(t); setTimeout(function(){t.remove();},ms||3500); }catch(e){} }
 
   /* ---- ANA: Sembollu KMZ uret ---- */
   async function exportKmzSym(){

@@ -26,9 +26,16 @@
       'html,body{max-width:100%!important;overflow-x:hidden!important;}',
       '.app{max-width:100vw!important;}',
       '.titlebar{flex-wrap:wrap!important;}',
-      '.ayb-native-clean-workbar{flex-wrap:wrap!important;max-width:100%!important;row-gap:4px;}',
-      '.ayb-pro-row{flex-wrap:wrap!important;row-gap:4px;}',
-      '[class*="ayb-pro-group"]{max-width:100%!important;}',
+      /* UST MENULER: kucultme YOK -> parmakla yana kaydir (swipe) */
+      '.workbar,.ayb-native-clean-workbar{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;max-width:100vw!important;scroll-snap-type:none;}',
+      '.workbar::-webkit-scrollbar,.ayb-native-clean-workbar::-webkit-scrollbar{height:8px;}',
+      '.workbar::-webkit-scrollbar-thumb,.ayb-native-clean-workbar::-webkit-scrollbar-thumb{background:#8aa0c8;border-radius:4px;}',
+      '.ayb-native-clean-workbar>*{flex:0 0 auto!important;}',
+      '.ayb-pro-group{flex:0 0 auto!important;}',
+      '.ayb-pro-row{flex-wrap:nowrap!important;}',
+      /* sekme cubugu (Proje/Cizim/Duzenle...) da kaysin */
+      '.tabs{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;}',
+      '.tabs::-webkit-scrollbar{height:6px;}',
       /* Temiz Ekran: bilgi katmanlarini gizle */
       'body.ayb-temiz .coord-overlay,body.ayb-temiz .hint,body.ayb-temiz #kfMeasureInfo,body.ayb-temiz #aybSahaImza{display:none!important;}'
     ].join('');
@@ -122,7 +129,7 @@
     var bar=document.createElement('div');
     bar.style.cssText='display:flex;align-items:center;justify-content:space-between;background:#ffe082;padding:3px 6px;cursor:move;touch-action:none';
     bar.innerHTML='<span>📌 Not</span>';
-    var del=document.createElement('span'); del.textContent='✕'; del.style.cssText='cursor:pointer;font-weight:800;padding:0 4px';
+    var del=document.createElement('span'); del.textContent='✕'; del.title='Notu sil'; del.style.cssText='cursor:pointer;font-weight:900;font-size:18px;line-height:1;padding:2px 8px;color:#b30000';
     del.onclick=function(){ el.remove(); var a=loadNotes().filter(function(x){return x.id!==n.id;}); saveNotes(a); };
     bar.appendChild(del);
     var ta=document.createElement('textarea'); ta.value=n.text||''; ta.placeholder='Bilgi yaz...';
@@ -142,9 +149,23 @@
     window.addEventListener('mousemove',move); window.addEventListener('touchmove',move,{passive:false});
     window.addEventListener('mouseup',up); window.addEventListener('touchend',up);
   }
+  function aybToast(msg){
+    try{
+      var t=document.createElement('div'); t.textContent=msg;
+      t.style.cssText='position:fixed;left:50%;top:13%;transform:translateX(-50%);z-index:100050;'
+        +'background:#0d1b34;color:#e7eeff;border:1px solid #3a6ad4;border-radius:10px;padding:12px 16px;'
+        +'font:600 14px system-ui;max-width:88vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+      document.body.appendChild(t);
+      setTimeout(function(){ try{ t.style.transition='opacity .5s'; t.style.opacity='0'; setTimeout(function(){t.remove();},500);}catch(e){} },3600);
+    }catch(e){}
+  }
   function addNote(){
-    var a=loadNotes(); var n={id:'n'+Date.now(), text:'', x:40, y:30};
-    a.push(n); saveNotes(a); renderNote(n);
+    /* Haritaya SABIT not: uygulamanin kendi 'not' araci (koordinata baglanir, zoom/kaydirmada yerinde kalir, disa aktarima girer) */
+    var ok=false;
+    try{ if(typeof window.setTool==='function'){ window.setTool('not'); ok=true; } }catch(e){}
+    try{ var p=document.getElementById('aybToolboxPanel'); if(p) p.style.display='none'; }catch(e){}
+    if(ok){ aybToast('📝 Notu koymak istediğiniz yere haritada DOKUNUN. Not oraya sabitlenir; yakınlaştırıp kaydırınca yerinde kalır. Silmek için nota dokunup açılan formdan silin.'); }
+    else { var a=loadNotes(); var n={id:'n'+Date.now(), text:'', x:40, y:30}; a.push(n); saveNotes(a); renderNote(n); }
   }
   ready(function(){ loadNotes().forEach(renderNote); });
 
@@ -168,13 +189,29 @@
     fin.style.cssText='font:700 13px system-ui;padding:8px 12px;border:0;border-radius:20px;background:#c62828;color:#fff;box-shadow:0 3px 10px rgba(0,0,0,.35)';
     fin.onclick=finishAll;
     // Panel
-    var panel=document.createElement('div');
-    panel.style.cssText='display:none;flex-direction:column;gap:6px;background:#0d1b34;border:1px solid #24406e;border-radius:12px;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+    var panel=document.createElement('div'); panel.id='aybToolboxPanel';
+    panel.style.cssText='display:none;flex-direction:column;gap:6px;background:#0d1b34;border:1px solid #24406e;border-radius:12px;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);max-height:70vh;overflow-y:auto';
     function item(txt,fn,col){ var x=document.createElement('button'); x.textContent=txt; x.onclick=fn;
       x.style.cssText='font:600 13px system-ui;padding:9px 12px;border-radius:9px;border:1px solid #24406e;background:'+(col||'#12213f')+';color:#e7eeff;text-align:left;white-space:nowrap'; return x; }
     var temizBtn=item('👁️ Temiz Ekran', function(){ var on=toggleTemiz(); temizBtn.textContent=on?'👁️ Ekrani Goster':'👁️ Temiz Ekran'; });
     panel.appendChild(temizBtn);
-    panel.appendChild(item('📝 Not Ekle', addNote, '#3a3300'));
+    panel.appendChild(item('🆕 Yeni Proje', function(){
+      try{
+        var name = (typeof prompt==='function') ? prompt('Yeni projenin adı:', 'Saha Metraj ' + new Date().toLocaleDateString('tr-TR')) : null;
+        if(name===null){ return; }
+        name = String(name).trim() || 'Saha Metraj Projesi';
+        if(typeof window.newProject==='function' && typeof window.openProject==='function'){ window.openProject(window.newProject(name)); }
+        else if(typeof window.showProjectScreen==='function'){ window.showProjectScreen(); }
+      }catch(e){ try{ if(window.showProjectScreen) window.showProjectScreen(); }catch(_){} }
+      try{ var p=document.getElementById('aybToolboxPanel'); if(p) p.style.display='none'; }catch(e){}
+    }, '#123a2a'));
+    panel.appendChild(item('📂 Proje Aç (kayıtlılar)', function(){
+      try{ if(typeof window.showProjectScreen==='function') window.showProjectScreen(); var p=document.getElementById('aybToolboxPanel'); if(p) p.style.display='none'; }catch(e){}
+    }, '#123049'));
+    panel.appendChild(item('📄 Dosyadan Aç (.json)', function(){
+      try{ if(typeof window.aybMobileOpenFile==='function') window.aybMobileOpenFile(); else alert('Dosyadan açma bu sürümde yok.'); var p=document.getElementById('aybToolboxPanel'); if(p) p.style.display='none'; }catch(e){}
+    }, '#123049'));
+    panel.appendChild(item('📝 Not Ekle (haritaya)', addNote, '#3a3300'));
     panel.appendChild(item('🌍 Sembollü KMZ (Kurum)', function(){ try{ if(window.aybExportKmzSym) window.aybExportKmzSym(); else alert('KMZ modülü yükleniyor, birkaç saniye sonra tekrar deneyin.'); }catch(e){} }, '#1a3a1a'));
     panel.appendChild(item('🗑️ Şekil Sil (ok/çizgi/bina)', function(){ try{ shapeDeleteUI(); }catch(e){} }, '#3a1414'));
     panel.appendChild(item('📛 Ekip Adı (merkez için)', function(){ var cur=localStorage.getItem('ayb_ekip_adi')||''; var v=prompt('Bu tabletin EKİP ADI (merkez raporlarında görünür):', cur); if(v!=null){ localStorage.setItem('ayb_ekip_adi', String(v).trim()); alert('Ekip adı: '+(String(v).trim()||'(boş)')); } }, '#26324a'));
@@ -312,6 +349,94 @@
       return true;
     }
     ready(function(){ if(!setLogo()){ var t=setInterval(function(){ if(setLogo()) clearInterval(t); },400); setTimeout(function(){clearInterval(t);},6000); } });
+  })();
+
+  /* ---------- 11) DISA AKTARIM: klasor seticiyi KAPAT, DUZ INDIR (sadece APK) ---------- */
+  (function(){
+    if(!window.AYBNative) return; /* sadece tablet APK icinde */
+    /* File System Access API'yi devre disi birak -> uygulama klasor seCTIRMEZ, blob indirir; interceptor Indirilenler'e kaydeder + paylas ekrani acar */
+    try{ Object.defineProperty(window,'showDirectoryPicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showDirectoryPicker=undefined; }catch(_){} }
+    try{ Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showSaveFilePicker=undefined; }catch(_){} }
+    try{ Object.defineProperty(window,'FileSystemDirectoryHandle',{value:undefined,configurable:true}); }catch(e){ try{ window.FileSystemDirectoryHandle=undefined; }catch(_){} }
+    function proj(){ return window.project||{}; }
+    function objs(){ var p=proj(); return Array.isArray(p.objects)?p.objects:[]; }
+    function sname(){ return String(proj().name||'saha_projesi').replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü _-]+/g,'_').replace(/\s+/g,'_').slice(0,60)||'saha_projesi'; }
+    function dl(name,text,mime){ try{ var b=new Blob([text],{type:mime||'text/plain'}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(function(){ try{URL.revokeObjectURL(a.href);a.remove();}catch(_){} },1200); }catch(e){} }
+    function toGeoJson(){
+      var fs=[];
+      objs().forEach(function(o){ if(isFinite(+o.lng)&&isFinite(+o.lat)) fs.push({type:'Feature',geometry:{type:'Point',coordinates:[+o.lng,+o.lat]},properties:Object.assign({type:o.type},o.props||{})}); });
+      (proj().lines||[]).forEach(function(l){ var pts=[]; (l.points||[]).forEach(function(p){ if(p&&isFinite(+p.lng)&&isFinite(+p.lat)) pts.push([+p.lng,+p.lat]); }); if(l.start&&l.end&&pts.length<2){ if(isFinite(+l.start.lng)&&isFinite(+l.end.lng)) pts=[[+l.start.lng,+l.start.lat],[+l.end.lng,+l.end.lat]]; } if(pts.length>1) fs.push({type:'Feature',geometry:{type:'LineString',coordinates:pts},properties:Object.assign({kind:l.kind||'hat'},l.props||{})}); });
+      return JSON.stringify({type:'FeatureCollection',features:fs},null,2);
+    }
+    function toCsv(){
+      var rows=[['Tip','No/Ad','Enlem','Boylam']];
+      objs().forEach(function(o){ var pr=o.props||{}; var no=pr.direk_no||pr.trafo_no||pr.kofre_no||pr.box_no||pr.abone_no||pr.ad||''; rows.push([o.type||'',no,o.lat,o.lng]); });
+      return '\ufeff'+rows.map(function(r){ return r.map(function(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(';'); }).join('\r\n');
+    }
+    function hook(sel,fn){ var b=document.querySelector(sel); if(b&&!b.__aybDl){ b.__aybDl=1; b.addEventListener('click',function(e){ try{e.preventDefault();e.stopImmediatePropagation();}catch(_){} fn(); }, true); } }
+    function wire(){
+      hook('#btnKML', function(){ try{ if(window.aybExportKmzSym){ window.aybExportKmzSym(); return; } }catch(e){} dl(sname()+'.geojson',toGeoJson(),'application/geo+json'); });
+      hook('#btnGeo', function(){ dl(sname()+'.geojson',toGeoJson(),'application/geo+json'); });
+      hook('#btnExcel', function(){ dl(sname()+'_metraj.csv',toCsv(),'text/csv;charset=utf-8'); });
+      hook('#btnAYB', function(){ dl(sname()+'_proje.json',JSON.stringify({app:'AYB Saha Harita',preparedBy:'Bayram YARAS',phone:'0530 630 05 40',savedAt:new Date().toISOString(),project:proj()},null,2),'application/json'); });
+    }
+    ready(wire); setTimeout(wire,1500); setTimeout(wire,4000); setTimeout(wire,8000);
+  })();
+
+  /* ---------- 12) ACILIS: son projeyle OTOMATIK DEVAM ---------- */
+  (function(){
+    function contLast(){
+      try{
+        if(window.project && window.project.id) return true;  /* zaten bir proje acik */
+        var last = localStorage.getItem('ayb_saha_metraj_v16_last');
+        if(!last) return false;
+        var all = {};
+        try{ all = JSON.parse(localStorage.getItem('ayb_saha_metraj_v16_projects')||'{}')||{}; }catch(e){ all={}; }
+        if(all[last] && typeof window.openProject==='function'){
+          window.openProject(all[last]);
+          try{ var ps=document.getElementById('projectScreen'); if(ps) ps.classList.remove('show'); }catch(e){}
+          return true;
+        }
+      }catch(e){}
+      return false;
+    }
+    ready(function(){
+      var tries=0;
+      var iv=setInterval(function(){
+        tries++;
+        if(contLast() || tries>12){ clearInterval(iv); }
+      }, 500);
+    });
+  })();
+
+  /* ---------- 13) KLASOR BAGLAMA ozelligini TAMAMEN KALDIR ---------- */
+  (function(){
+    /* File System Access API'yi HER YERDE kapat (freeze/klasor secici olmasin) */
+    try{ Object.defineProperty(window,'showDirectoryPicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showDirectoryPicker=undefined; }catch(_){} }
+    try{ Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showSaveFilePicker=undefined; }catch(_){} }
+    try{ Object.defineProperty(window,'FileSystemDirectoryHandle',{value:undefined,configurable:true}); }catch(e){ try{ window.FileSystemDirectoryHandle=undefined; }catch(_){} }
+    /* Klasor-baglama arayuz ogelerini gizle */
+    try{
+      var css=document.createElement('style');
+      css.textContent='#btnProjectFolder,#aybFolderStatus,#aybBindFolderPanelBtn,#aybPanelFolder,#aybOpenFromFolder,.ayb-ico-folderlink{display:none!important;}';
+      (document.head||document.documentElement).appendChild(css);
+    }catch(e){}
+    /* Kalan klasor dugmelerini etkisizlestir (statik + dinamik) */
+    function killFolder(){
+      try{
+        ['#btnProjectFolder','#aybBindFolderPanelBtn','#aybOpenFromFolder','#aybPanelFolder','#aybFolderStatus'].forEach(function(sel){
+          var el=document.querySelector(sel);
+          if(el){ el.style.display='none'; try{ el.onclick=function(ev){ try{ev.preventDefault();ev.stopImmediatePropagation();}catch(_){} return false; }; }catch(_){ } }
+        });
+        var btns=document.querySelectorAll('button,.ayb-pro-btn,.toolbtn,.palette-btn');
+        for(var i=0;i<btns.length;i++){
+          var t=(btns[i].textContent||'').trim();
+          if(/Klas[oö]r bağla|Klas[oö]r seç|Klas[oö]re kaydet|Klasöre Yaz/i.test(t)){ btns[i].style.display='none'; }
+        }
+      }catch(e){}
+    }
+    ready(killFolder);
+    setTimeout(killFolder,600); setTimeout(killFolder,1800); setTimeout(killFolder,4000); setTimeout(killFolder,8000);
   })();
 
 })();

@@ -31,6 +31,7 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private ValueCallback<Uri[]> filePathCallback;
+    private Uri cameraOutputUri;
     private static final int REQ_PERM = 1001;
     private static final int REQ_FILE = 1002;
 
@@ -89,8 +90,42 @@ public class MainActivity extends Activity {
             @Override
             public boolean onShowFileChooser(WebView w, ValueCallback<Uri[]> cb,
                     FileChooserParams params) {
+                if (filePathCallback != null) { try { filePathCallback.onReceiveValue(null); } catch (Exception ex) {} }
                 filePathCallback = cb;
-                try { startActivityForResult(Intent.createChooser(params.createIntent(), "Dosya Seç"), REQ_FILE); }
+                cameraOutputUri = null;
+                Intent cameraIntent = null;
+                try {
+                    Intent ci = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                    if (ci.resolveActivity(getPackageManager()) != null) {
+                        android.content.ContentValues cv = new android.content.ContentValues();
+                        cv.put(MediaStore.Images.Media.DISPLAY_NAME, "AYB_" + System.currentTimeMillis() + ".jpg");
+                        cv.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                        if (android.os.Build.VERSION.SDK_INT >= 29)
+                            cv.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AYB_Saha");
+                        cameraOutputUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+                        if (cameraOutputUri != null) {
+                            ci.putExtra(MediaStore.EXTRA_OUTPUT, cameraOutputUri);
+                            ci.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                            cameraIntent = ci;
+                        }
+                    }
+                } catch (Exception ex) { cameraIntent = null; cameraOutputUri = null; }
+
+                Intent contentIntent;
+                try { contentIntent = params.createIntent(); }
+                catch (Exception ex) {
+                    contentIntent = new Intent(Intent.ACTION_GET_CONTENT);
+                    contentIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                    contentIntent.setType("image/*");
+                }
+
+                Intent chooser = new Intent(Intent.ACTION_CHOOSER);
+                chooser.putExtra(Intent.EXTRA_INTENT, contentIntent);
+                chooser.putExtra(Intent.EXTRA_TITLE, "Fotoğraf çek veya seç");
+                if (cameraIntent != null)
+                    chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{ cameraIntent });
+
+                try { startActivityForResult(chooser, REQ_FILE); }
                 catch (Exception e) { filePathCallback = null; return false; }
                 return true;
             }
@@ -188,10 +223,16 @@ public class MainActivity extends Activity {
         if (requestCode == REQ_FILE) {
             if (filePathCallback != null) {
                 Uri[] r = null;
-                if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null)
-                    r = new Uri[]{ data.getData() };
+                if (resultCode == Activity.RESULT_OK) {
+                    if (data != null && data.getData() != null) {
+                        r = new Uri[]{ data.getData() };           // galeriden secildi
+                    } else if (cameraOutputUri != null) {
+                        r = new Uri[]{ cameraOutputUri };          // kameradan cekildi
+                    }
+                }
                 filePathCallback.onReceiveValue(r); filePathCallback = null;
             }
+            cameraOutputUri = null;
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
