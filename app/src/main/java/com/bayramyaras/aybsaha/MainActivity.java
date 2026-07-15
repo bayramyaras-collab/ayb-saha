@@ -73,7 +73,15 @@ public class MainActivity extends Activity {
         // Veri yedekleme koprusu: JS -> cihaz dosyasi
         web.addJavascriptInterface(new BackupBridge(), "AYBNative");
 
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView v, String url) {
+                // Tablet arayuz eklentisini (ekrana sigdir + Programi Kapat) yukle
+                v.evaluateJavascript(
+                  "(function(){if(document.getElementById('ayb-tablet-loader'))return;" +
+                  "var s=document.createElement('script');s.id='ayb-tablet-loader';" +
+                  "s.src='file:///android_asset/ayb-tablet.js';document.body.appendChild(s);})();", null);
+            }
+        });
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin,
@@ -121,6 +129,57 @@ public class MainActivity extends Activity {
                 }
             } catch (Exception e) {}
             return ok ? "ok" : "err";
+        }
+
+        // Programi tamamen kapat (once JS yedek alir, sonra bunu cagirir)
+        @JavascriptInterface
+        public void closeApp() {
+            runOnUiThread(new Runnable() { public void run() {
+                try { finishAndRemoveTask(); } catch (Exception e) { finish(); }
+            }});
+        }
+
+        // Disa aktarma: dosyayi Belgeler'e KAYDEDER + "nereye gonderilsin?" paylas ekrani (WhatsApp/Dosyalar...)
+        @JavascriptInterface
+        public void exportFile(final String filename, final String base64, final String mime) {
+            runOnUiThread(new Runnable() { public void run() {
+                try {
+                    byte[] bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+                    String safe = (filename == null ? "AYB_dosya" : filename).replaceAll("[^A-Za-z0-9._-]", "_");
+                    String m = (mime == null || mime.isEmpty()) ? "application/octet-stream" : mime;
+                    android.net.Uri shareUri = null;
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        ContentValues cv = new ContentValues();
+                        cv.put(MediaStore.Downloads.DISPLAY_NAME, safe);
+                        cv.put(MediaStore.Downloads.MIME_TYPE, m);
+                        cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/AYB_Saha_Disa");
+                        shareUri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                        if (shareUri != null) {
+                            OutputStream os = getContentResolver().openOutputStream(shareUri, "wt");
+                            if (os != null) { os.write(bytes); os.close(); }
+                        }
+                    } else {
+                        File dir = new File(getExternalFilesDir(null), "AYB_Saha_Disa");
+                        if (!dir.exists()) dir.mkdirs();
+                        FileOutputStream fo = new FileOutputStream(new File(dir, safe));
+                        fo.write(bytes); fo.close();
+                    }
+                    if (shareUri != null) {
+                        Intent sh = new Intent(Intent.ACTION_SEND);
+                        sh.setType(m);
+                        sh.putExtra(Intent.EXTRA_STREAM, shareUri);
+                        sh.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        Intent chooser = Intent.createChooser(sh, "Nereye gönderilsin? (WhatsApp / Dosyalar)");
+                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(chooser);
+                        Toast.makeText(MainActivity.this, "Ayrıca Belgeler/AYB_Saha_Disa klasörüne kaydedildi.", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "Kaydedildi: Belgeler/AYB_Saha_Disa", Toast.LENGTH_LONG).show();
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Dışa aktarma hatası: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            }});
         }
     }
 

@@ -172,9 +172,16 @@
     });
   }
 
+  // ---------- disa acilan API (arayuz kutusu bunlari cagirir) ----------
+  window.aybBackup = {
+    now: function(){ autoBackup(true); },
+    download: function(){ var p = pkg(); autoBackup(true); download(p); },
+    restore: restoreFromFile,
+    snaps: showSnaps,
+    lastTime: function(){ return new Date().toLocaleTimeString('tr-TR'); }
+  };
   // ---------- baslat ----------
   window.addEventListener('load', function () {
-    ui();
     autoBackup(true);
     setInterval(function () { autoBackup(false); }, AUTO_MS);
   });
