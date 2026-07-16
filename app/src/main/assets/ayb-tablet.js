@@ -868,8 +868,24 @@
           var png=await _svgPng(sym.svg,96); if(!png) continue;
           var fn="files/sym_"+_safe(sid)+".png"; files.push({name:fn,bytes:_u8(png)});
           var stid="s_"+_safe(sid); styleMap[sid]=stid;
-          styleXml+='<Style id="'+stid+'"><IconStyle><scale>1.2</scale><Icon><href>'+fn+'</href></Icon></IconStyle><LabelStyle><scale>0.8</scale></LabelStyle></Style>\n';
+          var _sc=(sym.objectType==="trafo")?0.8:0.6;
+          styleXml+='<Style id="'+stid+'"><IconStyle><scale>'+_sc+'</scale><Icon><href>'+fn+'</href></Icon></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle></Style>\n';
         }
+        /* PROGRAM LAMBA sembolleri (yeni=sarı dolu+nokta, mevcut=turuncu halka, sökülen=kırmızı çarpı) */
+        var _lampSvg={
+          yeni:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#facc15" stroke="#000" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="#000"/></svg>',
+          mevcut:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#fff" fill-opacity="0.15" stroke="#f59e0b" stroke-width="2.5"/></svg>',
+          sokulen:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#fff" fill-opacity="0.15" stroke="#ef4444" stroke-width="2.5"/><line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="#ef4444" stroke-width="2.2"/><line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="#ef4444" stroke-width="2.2"/></svg>'
+        };
+        var _lampStyle={};
+        for(var lk in _lampSvg){ if(!_lampSvg.hasOwnProperty(lk)) continue;
+          var lpng=await _svgPng(_lampSvg[lk],64);
+          if(lpng){ var lfn="files/lamp_"+lk+".png"; files.push({name:lfn,bytes:_u8(lpng)});
+            styleXml+='<Style id="lamp_'+lk+'"><IconStyle><scale>0.55</scale><Icon><href>'+lfn+'</href></Icon></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle></Style>\n';
+            _lampStyle[lk]=true;
+          }
+        }
+        function _lampTip(o){ try{ var dd=(o.props&&o.props.durum)?String(o.props.durum).toUpperCase():""; if(dd==="MEVCUT") return "mevcut"; if(dd.indexOf("DM")>=0||dd.indexOf("SÖK")>=0||dd.indexOf("SOK")>=0) return "sokulen"; return "yeni"; }catch(e){ return "yeni"; } }
         styleXml+=
           '<Style id="ln_ag"><LineStyle><color>'+aybKmlColor('#1aa260')+'</color><width>3</width></LineStyle></Style>'
          +'<Style id="ln_abone"><LineStyle><color>'+aybKmlColor('#f59e0b')+'</color><width>3</width></LineStyle></Style>'
@@ -907,7 +923,8 @@
         }).join("\n");
         var lampPm=(project.objects||[]).filter(window.aybKmlPoleHasLamp).map(function(o){
           var label=window.aybKmlLampLabel(o)||"Lamba"; var dLat=0.000032;
-          return '<Placemark><name>'+aybXml(label)+'</name><styleUrl>#st_lamba</styleUrl><description><![CDATA[Direk '+aybHtml(getObjectNo(o))+' lambasi: '+aybHtml(label)+']]></description><Point><coordinates>'+Number(o.lng).toFixed(8)+','+(Number(o.lat)+dLat).toFixed(8)+',0</coordinates></Point></Placemark>';
+          var _t=_lampTip(o); var _su=_lampStyle[_t]?("#lamp_"+_t):"#st_lamba";
+          return '<Placemark><name>'+aybXml(label)+'</name><styleUrl>'+_su+'</styleUrl><description><![CDATA[Direk '+aybHtml(getObjectNo(o))+' lambasi: '+aybHtml(label)+']]></description><Point><coordinates>'+Number(o.lng).toFixed(8)+','+(Number(o.lat)+dLat).toFixed(8)+',0</coordinates></Point></Placemark>';
         }).join("\n");
         var chanPm=(project.channels||[]).map(function(c){ var pts=(c.points||[]).map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); if(pts.length<2) return ""; return '<Placemark><name>'+aybXml("Kanal "+aybKanalFullNameFromProps(c.props))+'</name><styleUrl>#ln_kanal</styleUrl><description>'+aybChannelDescription(c,pts)+'</description><LineString><tessellate>1</tessellate><coordinates>'+aybKmlCoords(pts)+'</coordinates></LineString></Placemark>'; }).join("\n");
         var freePm=(project.freeLines||[]).map(function(f){ var pts=(f.points||[]).map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); if(pts.length<2) return ""; return '<Placemark><name>'+aybXml(f.kind||"Çizgi")+'</name><styleUrl>#ln_free</styleUrl><LineString><tessellate>1</tessellate><coordinates>'+aybKmlCoords(pts)+'</coordinates></LineString></Placemark>'; }).join("\n");
@@ -1827,7 +1844,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v19";
+  var SURUM="v20";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -2274,4 +2291,31 @@
       t=t.parentNode;
     }
   }, true);
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — GPS kartı tek dokunuşla sağa gizlen / tekrar dokun aç       */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  var d=document;
+  function css(){
+    if(d.getElementById("aybGpsTogCss")) return;
+    var st=d.createElement("style"); st.id="aybGpsTogCss";
+    st.textContent=
+      "#gpsCard.gps-live{transition:transform .22s ease,opacity .22s ease;cursor:pointer;}"+
+      "#gpsCard.gps-live.ayb-gps-min{transform:translateX(calc(100% - 20px))!important;opacity:.9;}"+
+      "#gpsCard.gps-live.ayb-gps-min::before{content:'\\2039';position:absolute;left:5px;top:50%;transform:translateY(-50%);font-weight:900;font-size:15px;color:#0f766e;}";
+    (d.head||d.documentElement).appendChild(st);
+  }
+  function bind(){
+    css();
+    var c=d.getElementById("gpsCard");
+    if(!c || c.__aybGpsTog) return;
+    c.__aybGpsTog=true;
+    c.addEventListener("click", function(){ c.classList.toggle("ayb-gps-min"); }, false);
+  }
+  var n=0, iv=setInterval(function(){ bind(); if(++n>40) clearInterval(iv); }, 500);
+  if(d.readyState!=="loading") bind(); else d.addEventListener("DOMContentLoaded",bind);
 })();
