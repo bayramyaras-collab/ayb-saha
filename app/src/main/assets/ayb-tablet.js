@@ -609,31 +609,66 @@
   setTimeout(setTitle,600); setTimeout(setTitle,2000);
 })();
 
-/* ====== ACILISTA GPS KONUMUNA ORTALA (sabit koordinat yerine) ====== */
+/* ====== ACILISTA / PROJE ACILINCA GPS KONUMUNA ORTALA ====== */
 (function(){
-  var done=false;
-  function hasData(){ try{ return !!(window.project && window.project.objects && window.project.objects.length>0); }catch(e){ return false; } }
-  function tryCenter(){
-    if(done) return true;
-    if(!window.__aybMap) return false;               /* harita henuz olusmadi */
-    if(hasData()){ done=true; return true; }          /* proje verisi var -> GPS'e zorlamayalim */
-    if(!navigator.geolocation){ done=true; return true; }
-    done=true;
+  var moved=false;
+  function hookMove(){
+    var map=window.__aybMap;
+    if(map && !map.__aybMoveHook){ map.__aybMoveHook=true; try{ map.on('dragstart',function(){ moved=true; }); }catch(e){} }
+  }
+  function goGps(){
+    hookMove();
+    if(!navigator.geolocation) return;
+    try{ window.__aybBestAcc=Infinity; window.__aybGpsLockStart=Date.now(); }catch(e){}
     try{
       navigator.geolocation.getCurrentPosition(function(pos){
         try{
-          if(hasData() || !window.__aybMap || !pos || !pos.coords) return;
-          /* Kullanici haritayi tasidiysa (sabit merkezden uzaklastiysa) dokunma */
-          var c=window.__aybMap.getCenter();
-          var atDefault = Math.abs(c.lat-39.6)<0.06 && Math.abs(c.lng-32.85)<0.06;
-          if(!atDefault) return;
-          window.__aybMap.setView([pos.coords.latitude,pos.coords.longitude], 19, {animate:false});
-          if(typeof window.aybShowGpsPosition==='function'){ try{ window.aybShowGpsPosition(pos,true); }catch(e){} }
+          if(!moved && window.__aybMap && pos && pos.coords && typeof window.aybShowGpsPosition==='function'){
+            window.aybShowGpsPosition(pos,true);   /* haritayi GPS konumuna ortala */
+          }
         }catch(e){}
-      }, function(){}, {enableHighAccuracy:true, maximumAge:0, timeout:30000});
+      }, function(err){
+        try{ if(window.toast) toast('GPS konumu alınamadı. Konum iznini ve GPS\'i açık tut.'); }catch(e){}
+      }, {enableHighAccuracy:true, maximumAge:0, timeout:30000});
     }catch(e){}
+  }
+  function hookOpen(){
+    if(window.__aybGpsOpenHook) return true;
+    if(typeof window.openProject!=='function') return false;
+    window.__aybGpsOpenHook=true;
+    var _op=window.openProject;
+    window.openProject=function(){
+      moved=false;                         /* yeni proje acildi -> GPS'e izin */
+      var r=_op.apply(this,arguments);
+      setTimeout(goGps, 1300);             /* proje ciziminden SONRA GPS'e ortala */
+      return r;
+    };
     return true;
   }
   function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
-  ready(function(){ var n=0, iv=setInterval(function(){ n++; if(tryCenter() || n>40) clearInterval(iv); }, 500); });
+  ready(function(){
+    var n=0, iv=setInterval(function(){ n++; if(hookOpen() || n>80) clearInterval(iv); }, 400);
+    /* Proje otomatik acilmasa bile, harita gorunur olunca bir kez dene */
+    var m=0, im=setInterval(function(){ m++; if(window.__aybMap){ hookMove(); setTimeout(goGps,1600); clearInterval(im); } if(m>80) clearInterval(im); }, 500);
+  });
+})();
+
+/* ====== CIZIM ARACI ETIKETLERI: Hat->Havai Hat, Yer Altı->Yeraltı Hat + yan yana ====== */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  function relabel(){
+    try{
+      document.querySelectorAll('button[data-tool="hat"] small').forEach(function(s){ if(s.textContent.trim()!=='Havai Hat') s.textContent='Havai Hat'; });
+      document.querySelectorAll('button[data-tool="yeraltihat"] small').forEach(function(s){ if(s.textContent.trim()!=='Yeraltı Hat') s.textContent='Yeraltı Hat'; });
+    }catch(e){}
+  }
+  function css(){
+    try{
+      if(document.getElementById('aybToolLblCss')) return;
+      var st=document.createElement('style'); st.id='aybToolLblCss';
+      st.textContent='button[data-tool] small{white-space:nowrap!important;} .ayb-pro-btn.toolbtn{flex:0 0 auto!important;}';
+      (document.head||document.documentElement).appendChild(st);
+    }catch(e){}
+  }
+  ready(function(){ css(); relabel(); var n=0, iv=setInterval(function(){ relabel(); if(++n>25) clearInterval(iv); }, 400); });
 })();
