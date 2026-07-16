@@ -871,19 +871,18 @@
           var _sc=(sym.objectType==="trafo")?0.8:0.6;
           styleXml+='<Style id="'+stid+'"><IconStyle><scale>'+_sc+'</scale><Icon><href>'+fn+'</href></Icon></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle></Style>\n';
         }
-        /* PROGRAM LAMBA sembolleri (yeni=sarı dolu+nokta, mevcut=turuncu halka, sökülen=kırmızı çarpı) */
-        var _lampSvg={
-          yeni:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#facc15" stroke="#000" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="#000"/></svg>',
-          mevcut:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#fff" fill-opacity="0.15" stroke="#f59e0b" stroke-width="2.5"/></svg>',
-          sokulen:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#fff" fill-opacity="0.15" stroke="#ef4444" stroke-width="2.5"/><line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="#ef4444" stroke-width="2.2"/><line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="#ef4444" stroke-width="2.2"/></svg>'
+        /* PROGRAM LAMBA sembolleri — HAZIR PNG (cihaz canvas gerekmez, garanti) */
+        var _lampPng={
+          yeni:"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",
+          mevcut:"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",
+          sokulen:"iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAALaUlEQVR4nO1a7YtcZxX/ned57r27O3NndtNsqJBY0CI0BUMR26YWtkm7GvxixQ6xJfkfIm1DDZRhKWix1e7/kFC7TsX6QYkm2e1ibBApJaIJSJRKAi3ZJLMzd2Z278tzjh/uncns7NvsS0TN/mC+7L17zzm/57zfC+xgBzvYwQ52sIP7FfSfFCYAoVRSAICbN5fK3rNHAACVChMg/0m97imkXFYyNmZkA2QLQDI2ZqRcVvdSN+AeeoCUSrr3NOtHjowm1j5igAcU0VcjZgCAqxRY5C8JcNtofbVw9uxc5zmZ11ClYu+FnttOQPvUaGKCAWDxyJH9CfO3ReS7AjzqEBUdpaBpqWgrgpgZsUiNgL8R0a+MUr8dOHv2ykrP3S5sKwFSKun2SS1885vjLPKqAIdyxpiYGYvMSEQYIgKipXEuQiAiQ6QGlIKjFJpJkhAwo4jeGvz978/1ytgObAsBAhDKZaKJCa6Njz/hAW+QUuMaQGAtBEhIhIRI0ToyBRASYSESAoyvNSwAYT4XAq8Xz537k5TLChMTsh3JcssECKAIYAAInnvuhFbqLVcpU49jBiBEpFaSIz3Kr0KMiAgDoILjqIg5scyv+ufPT/bK3iy2lGWlXFYE8F+ffHJXc3x8Ku8474TMuhbHlogUEWlkhgkgAlgBLAA2AJnU5cmk93D7ehc5RESaiFQtjm3IrPOO805zfHzqr08+uYsA3mql2LQHtNn/19NPjzwwOPi7nON8/U4UJQTo7tPMjGEN6CGloACEIlgEGu3TE0ANAHmPCAygxQybEqV6nyWA3eW6phnHf769sPCthy5erG7FEzZFQDvmaxcuFPXg4O9yWn+9GsexInJ67oNDhCEiNICmHhq6JLt3X9J79141Bw/+E8ViAgCo1Uxy6dKX7I0bj9CtWwdtq3UwD+RaIohFlinJIvGI4zhNa/9sFxa+VXz22dpmc8LmCBgbMzQ7m8w/99z7Rdf93p0wXMl40QCM1ndkz54z7vHj7znj49cBJAAMAK/nsWH7Wnzu3L7o9Onv082bxxJrd1kszxEsEu/yPKcWRb8cPn/+hbZOG7VlwwS0y9Ctw4dPPOB571SjKKYe4wGwQ0Si9XX3zTefdw8cuA6giCBwwihSnusyXHfpaUURda75fgygFl2+vC967bUPyNp9sYigJ2eJSDzius7tMPzB7unpyc2UyA0RIOWyookJnjt06Gs5x/lTnMbqaqWNPSLEIyPvFaamfogwHAyjiDzfXzNWwyBQnusKPG+hfvToj51q9fuhCLBCws68jB2l0IzjJ0ZnZj5u69ivTZvKoEapn7pK6SSNz96E13l2KIJCrfZSvVR6G54XeL7PYRCsKjMMAuX5PsPzgnqp9HahVnup1/huGQRQIgJXKW2U+ulmbOl/QMnca+7w4UMFx5luJYlFWuY6irlEFInIElKIkhEiUy8UKoVK5QSAfMfQlYwHGvVSabJQr5eqIgmJmPVkQMQOGaPrcXx4dHp6ZiOh0L8H7N8vZUBppV5XRMvSrQYoIvrMIyJ0lSQSMVWRpFCvl+ql0iSARq8n9GM80pCiiOgz3XNwAkARQSv1ehlQ2L+/72rQlwe062zt2We/orX+W8y8pMFxiMBE9YGf/ORQ60c/enV4fv7FZae3gicgDFP5nidrGd/+3/nh4Z8PnTr11uLJkzNKpBAvDUFxlLLW2keLFy78vd/eoD8PGBtTAMDAd3Jam6yby8QKDxERRkdPuwcOXB+emnqtXihURoiMEHXK0kqeEKaZn/oxvl4oVIanpl5zDxy4jtHR00NEhLRNbh+SzWltGPhOt87bQ8Azz/DM2JgRohdi5nRyQ5aFldINoDl47Ni7AAphEAwVKpUT65HQKJUmPd+veb5fa/RhfKFSOREGwRCAwuCxY+82gKZWSneSogjFzBCiF2bGxgyeeaavSrBuCAhABMi1gwf37M7lrikiP7mbhGxeKd0cHJwpfvDBcQSBj7SErenSIEqGlTK1YvEMABRrtWPzzAn6CZkoIvh+UHv++dO5hYVDDWYLQAsghohYJLjVbD788KVLN9u6r2Xf+h6Q7fBGBwYeHlAqZ5m5O+4UAL179x8BJGEUKXieZAkuv5onQMRUreXBavXYYLV6rGotr2d8GATps6NIAUj07t1/VJ0zSkuiZeYBpXKjAwMPd+u+NQIysNYPGqVUdx2WtNYL9u69irS9FQDoyvJLSEB3OACqKcJNEaZuPdYvmwLAYO/eq6GISE+PYJRSrPWD/dq1PgHZ9paBxzQR2puczOVUCDS8p576BwDXy+c7cddLQqNQqAwrZaS7RKaZutsAHlbKNNboGTIZrvfUU/8IgYYhunsoRKLTifKxbt23RsBdZVcbNMRJp7plwjzfZ4QhIQz9fKVyIigWT+fSBclKTYrNEamgWDydr1ROIAx9hOFqrTNlMleM7zV0XYZ7vnb+b0ffBEga4yuB4lqtE//daCcueF7QKJUm/VrteDOt3Xr5Y6CbIuzXascbpdIkPC/oSqjL1Mlkrujia+i6DOsTkL2xUcAnVqTTA2SDCHtAPvzooy8DiMJGY9X2Nl+vl+aZk96Y780J88xJfq22OZURhR999GUPyCdpEk2JECErAgV80q371gho32jt58nSEgjK+nPcuPEI0rijlYxv9wJYOthwjkjl0iR2N87Xnx0IQIIbNx7xiIiWEkgJMytrP+/brnXvqFQYAOYWF68tMjf10lJIDMDeuvUNAMZzXe5KXGs2QiNaq4WRkTMLIyNnRrRWWKdtbidUz3UZgLG3bn2D7xLS7krVInNzbnHxWrfuWyKAAJFyWV133TsMXB1QCu0eXADVEgEtLDwenz37Rfh+1E9vP0xkGr5fKU5NnSxOTZ1s+H5luM/ZAb4fxWfPfpEWFh5viaDTB4jwgFJg4Op1172Tbay3KQQ+/FAdmp1NSOR9R6lOL5B1XzYP5BbOnHkJQN3z/VY/g00+7e2LYRAU833MDvV0dmgBqC+cOfNSHshZZtsJSSJxlAKJvH9odjbBhx9u4zA0O8vZzb9uWptQdxYnUi0Rwdzc8ejy5X3zR4++2c9gAyDvua546W5w1ba5m4T5o0ffjC5f3oe5ueOt9PVaR38CdNPaRAG/7tZ5Wwhov4D42YUL1yLmP+SNIRGx2TVKRAjMxebJk79xq9UX55l5PeO7SuS6swOJmHlmdqvVF5snT/4GzMVEhNqnLyI2bwxFzH/42YUL19ovbLaNAADAlSs0AbBlfoNX2NVbQFyRL4Q929t+VmKrzQ5LBqhs7nBFvmCXv1YDi8AyvzEBMK5c6XvV138rXKlYKZfV6PT0TCtJZn3H0Zx5QabE8l0dwCNKrbsPXJUEpQx6ylyvDBaxvuPoVpLMjk5Pz0i5vKFvCTbVCifML0fM1qS7wSVb2q7b2CNCvVh8t1CpvIIw9Fczvo0OCWHoFyqVV+rF4rsetWex5TKygQwRs02YX96MLRsigCYmWEolPToz83ErSV4pOI6GyEqDBztEZLW+MXDq1NsAWvC8xAMQ3r5tkBpJS35BoMLbt40HAJ6XAGgNnDr1ttX6htOzaO1AJCmkp//K6MzMx1Iq6Y1+QLHzamyj/5AZd3+/HM2M+794Pb7pfUC7N3jo4sXqp0FwpBXHv9jlOCYrSUuqAwHaAhIw2xqzDUXYiOQ1UNBAwYjkQxGuMduA2VpAeolkEUsAdjmOacXxLz4NgiMPXbxY3UjNX8WOreG+/kQGyDwBICmXlX/+/GQs8nRi7bmcMapgjAZAAiQQsb0ls/vX/rsAkt2bAKCCMTpnjEqsPReLPO2fPz8p5bLKVt5b/mRuyx7Qjfv2M7lu3NcfSnbjf+VT2XuO+/Zj6ZXQPk0A98/n8jvYwQ52sIMd7OC/Fv8GuiteuSx8PPYAAAAASUVORK5CYII="
         };
         var _lampStyle={};
-        for(var lk in _lampSvg){ if(!_lampSvg.hasOwnProperty(lk)) continue;
-          var lpng=await _svgPng(_lampSvg[lk],64);
-          if(lpng){ var lfn="files/lamp_"+lk+".png"; files.push({name:lfn,bytes:_u8(lpng)});
-            styleXml+='<Style id="lamp_'+lk+'"><IconStyle><scale>0.55</scale><Icon><href>'+lfn+'</href></Icon></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle></Style>\n';
+        for(var lk in _lampPng){ if(!_lampPng.hasOwnProperty(lk)) continue;
+          try{ var lfn="files/lamp_"+lk+".png"; files.push({name:lfn,bytes:_u8(_lampPng[lk])});
+            styleXml+='<Style id="lamp_'+lk+'"><IconStyle><scale>0.6</scale><Icon><href>'+lfn+'</href></Icon></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle></Style>\n';
             _lampStyle[lk]=true;
-          }
+          }catch(e){}
         }
         function _lampTip(o){ try{ var dd=(o.props&&o.props.durum)?String(o.props.durum).toUpperCase():""; if(dd==="MEVCUT") return "mevcut"; if(dd.indexOf("DM")>=0||dd.indexOf("SÖK")>=0||dd.indexOf("SOK")>=0) return "sokulen"; return "yeni"; }catch(e){ return "yeni"; } }
         styleXml+=
@@ -941,7 +940,7 @@
           +'</Document></kml>';
         files.unshift({name:"doc.kml", bytes:new TextEncoder().encode(kml)});
         var blob=_kmz(files);
-        var nm=(((project.name)||"Korfezim_Saha")+"_sembollu.kmz").replace(/[\\/:*?"<>|]/g,"_");
+        var nm=((window.aybFileTag?window.aybFileTag():((project.name)||"Korfezim_Saha"))+"_sembollu.kmz");
         if(window.aybShareFile){ window.aybShareFile(nm, blob, "application/vnd.google-earth.kmz"); }
         else if(typeof aybDownloadFile==="function"){ aybDownloadFile(nm, blob, "application/vnd.google-earth.kmz"); }
         try{ if(window.toast) toast("Sembollu KMZ hazir ("+files.length+" dosya): "+nm); }catch(e){}
@@ -1105,7 +1104,7 @@
       {name:"Hatlar", rows:s5},
       {name:"Koordinatlar", rows:s6}
     ];
-    var fname=(S(project.name)||"Korfezim_Saha")+"_metraj.xlsx";
+    var fname=(window.aybFileTag?window.aybFileTag():(S(project.name)||"Korfezim_Saha"))+"_metraj.xlsx";
     try{
       if(typeof window.aybBuildXlsx!=="function"){ (window.aybModal||alert)("Excel üretici hazır değil, birkaç saniye sonra tekrar deneyin."); return; }
       var blob=window.aybBuildXlsx(sheets);
@@ -1162,9 +1161,9 @@
       ".ayb-native-clean-workbar>*,.workbar>*{flex:0 0 auto!important;}"+
       ".ayb-office-native-ribbon::-webkit-scrollbar,.ayb-native-clean-workbar::-webkit-scrollbar,.workbar::-webkit-scrollbar{height:5px;}"+
       ".ayb-office-native-ribbon::-webkit-scrollbar-thumb,.ayb-native-clean-workbar::-webkit-scrollbar-thumb,.workbar::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:3px;}"+
-      /* SAHA VERİ grubu tamamen kaldırıldı */
-      ".ayb-pro-group.fielddata{display:none!important;}"+
-      "#btnFieldDataToggle{display:none!important;}";
+      /* Saha Veri grubu artık AYARLAR düğmesi (görünür) */
+      ".ayb-pro-group.fielddata{display:inline-flex!important;}"+
+      "#btnFieldDataToggle{display:inline-flex!important;}";
     document.head.appendChild(st);
   }
   /* Geriye dönük uyumluluk için gizli kapsayıcı (artık düğme yok) */
@@ -1844,7 +1843,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v21";
+  var SURUM="v24";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -1984,8 +1983,7 @@
 
   /* Lamba "yeni mi"? MEVCUT ise HAYIR; YENİ/DM/DM+MON ise EVET */
   function isNewLamp(l, pole){
-    var s=norm(l&&l.status);
-    if(!s && pole&&pole.props) s=norm(pole.props.durum);
+    var s=norm(l&&(l.durum||l.status));
     if(!s) s="YENİ";
     return s.indexOf("MEVCUT")<0;
   }
@@ -1998,6 +1996,12 @@
   function save(st){ try{ localStorage.setItem(LSK+pid(), JSON.stringify(st)); }catch(e){} }
 
   function lampWatt(l){ var w=l&&(l.guc||l.watt||l.w||l.güc); w=(w==null||w==="")?"":String(w).replace(/[^0-9.]/g,""); return w?(w+"W"):"?W"; }
+  function lampCins(l){ var c=l&&(l.cins||l.armatur_cinsi||l.armatur||l.tip); c=(c==null)?"":String(c).trim(); return c||"Armatür"; }
+  function matKey(l){ return lampCins(l)+" || "+lampWatt(l); }
+  /* bir direğin YENİ lambalarını malzeme (cins||güç) bazında say: {key: adet} */
+  function poleNewMats(o){ var m={}; if(o.type==="direk"&&o.props&&Array.isArray(o.props.lambalar)){ o.props.lambalar.forEach(function(l){ if(isNewLamp(l,o)){ var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1; var k=matKey(l); m[k]=(m[k]||0)+a; } }); } return m; }
+  function projectNewMats(){ var p=proj(), m={}; if(p&&p.objects) p.objects.forEach(function(o){ if(o.type!=="direk")return; var pm=poleNewMats(o); Object.keys(pm).forEach(function(k){ m[k]=(m[k]||0)+pm[k]; }); }); return m; }
+  function splitKey(k){ var i=String(k).indexOf(" || "); return { cins:(i>=0?k.slice(0,i):k), guc:(i>=0?k.slice(i+4):"") }; }
   function poleNewWatts(o){ var m={}; if(o.type==="direk"&&o.props&&Array.isArray(o.props.lambalar)){ o.props.lambalar.forEach(function(l){ if(isNewLamp(l,o)){ var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1; var w=lampWatt(l); m[w]=(m[w]||0)+a; } }); } return m; }
   function projectNewByWatt(){ var p=proj(), m={}; if(p&&p.objects) p.objects.forEach(function(o){ if(o.type!=="direk")return; var pm=poleNewWatts(o); Object.keys(pm).forEach(function(w){ m[w]=(m[w]||0)+pm[w]; }); }); return m; }
   function ekipAdi(){ try{ return (localStorage.getItem("ayb_ekip_adi")||"").trim()||"(ekip adı yok)"; }catch(e){ return "(ekip)"; } }
@@ -2005,19 +2009,21 @@
   /* Otomatik takip: lamba ekledikçe bugüne yazılır (adet + W kırılımı) */
   function track(){
     var p=proj(); if(!p||!p.objects) return;
-    var st=load(), cur={}, curW={};
-    p.objects.forEach(function(o){ if(o.type==="direk"){ var c=poleNewCount(o); if(c>0){ cur[o.id]=c; curW[o.id]=poleNewWatts(o); } } });
-    st.baseW=st.baseW||{}; st.daysW=st.daysW||{};
-    if(!st.init){ st.base=cur; st.baseW=curW; st.days=st.days||{}; st.init=true; save(st); return; }
+    var st=load(), cur={}, curW={}, curM={};
+    p.objects.forEach(function(o){ if(o.type==="direk"){ var c=poleNewCount(o); if(c>0){ cur[o.id]=c; curW[o.id]=poleNewWatts(o); curM[o.id]=poleNewMats(o); } } });
+    st.baseW=st.baseW||{}; st.daysW=st.daysW||{}; st.baseM=st.baseM||{}; st.daysM=st.daysM||{};
+    if(!st.init){ st.base=cur; st.baseW=curW; st.baseM=curM; st.days=st.days||{}; st.init=true; save(st); return; }
     var t=today();
     Object.keys(cur).forEach(function(id){
       var prev=st.base[id]||0;
       if(cur[id]>prev){ st.days[t]=(st.days[t]||0)+(cur[id]-prev); }
       var pW=st.baseW[id]||{}, cW=curW[id]||{};
       Object.keys(cW).forEach(function(w){ var dd=(cW[w]||0)-(pW[w]||0); if(dd>0){ st.daysW[t]=st.daysW[t]||{}; st.daysW[t][w]=(st.daysW[t][w]||0)+dd; } });
-      st.base[id]=cur[id]; st.baseW[id]=cW;
+      var pM=st.baseM[id]||{}, cM=curM[id]||{};
+      Object.keys(cM).forEach(function(k){ var dd2=(cM[k]||0)-(pM[k]||0); if(dd2>0){ st.daysM[t]=st.daysM[t]||{}; st.daysM[t][k]=(st.daysM[t][k]||0)+dd2; } });
+      st.base[id]=cur[id]; st.baseW[id]=cW; st.baseM[id]=cM;
     });
-    Object.keys(st.base).forEach(function(id){ if(!(id in cur)){ st.base[id]=0; st.baseW[id]={}; } });
+    Object.keys(st.base).forEach(function(id){ if(!(id in cur)){ st.base[id]=0; st.baseW[id]={}; st.baseM[id]={}; } });
     save(st);
   }
   function stats(){
@@ -2081,74 +2087,65 @@
       if(typeof window.aybBuildXlsx!=="function"){ (window.aybModal||alert)("Excel üretici hazır değil."); return; }
       track();
       var st=load(), s=stats();
-      var days=st.days||{}, daysW=st.daysW||{};
-      var ekip=ekipAdi();
-      /* tüm W türlerini topla (proje + geçmiş) */
-      var wattSet={};
-      var projW=projectNewByWatt(); Object.keys(projW).forEach(function(w){ wattSet[w]=true; });
-      Object.keys(daysW).forEach(function(dk){ Object.keys(daysW[dk]).forEach(function(w){ wattSet[w]=true; }); });
-      var watts=Object.keys(wattSet).sort(function(a,b){ return (parseFloat(a)||0)-(parseFloat(b)||0); });
-      var tgun=today();
-
-      /* SAYFA 1: GENEL ÖZET */
+      var days=st.days||{}, daysM=st.daysM||{};
+      var ekip=ekipAdi(), tgun=today();
+      function matRows(mObj){
+        var keys=Object.keys(mObj||{}).sort(function(a,b){ var A=splitKey(a),B=splitKey(b); if(A.cins!==B.cins) return A.cins<B.cins?-1:1; return (parseFloat(A.guc)||0)-(parseFloat(B.guc)||0); });
+        var rows=[], tot=0; keys.forEach(function(k){ var sp=splitKey(k); var c=mObj[k]||0; tot+=c; rows.push([sp.cins, sp.guc, c]); });
+        return {rows:rows, total:tot};
+      }
+      /* SAYFA 1: GENEL + MALZEME TOPLAM */
+      var projM=projectNewMats();
       var s1=[["KÖRFEZİM — GÜNÜN ÖZETİ / GENEL","",""],
         ["Proje",pname(),""],["Ekip",ekip,""],["Rapor Tarihi",tgun,""],["",""],
         ["Bugün Takılan Lamba (toplam)",s.bugun,""],
         ["Genel Takılan (tüm günler)",s.genel,""],
-        ["Projede Yeni Lamba (toplam)",s.yeni,""],
+        ["Projede Takılan/Yeni Lamba",s.yeni,""],
         ["Projede Mevcut Lamba",s.mevcut,""],
         ["Toplam Direk",s.direk,""],["",""],
-        ["GENEL TOPLAM — GÜCE GÖRE TAKILAN LAMBA","",""],
-        ["Güç (W)","Adet",""]];
-      var toplamProj=0;
-      watts.forEach(function(w){ var c=projW[w]||0; toplamProj+=c; s1.push([w,c,""]); });
-      s1.push(["TOPLAM",toplamProj,""]);
-
-      /* SAYFA 2: BUGÜN — güce göre */
-      var bW=daysW[tgun]||{};
-      var s2=[["BUGÜN TAKILAN LAMBA — GÜCE GÖRE"],["Tarih",tgun],["Ekip",ekip],["",""],["Güç (W)","Adet"]];
-      var bToplam=0, anyB=false;
-      watts.forEach(function(w){ var c=bW[w]||0; if(c>0){ anyB=true; } bToplam+=c; s2.push([w,c]); });
-      if(!anyB) s2.push(["(Bugün henüz kayıt yok)",""]);
-      s2.push(["TOPLAM",bToplam]);
-
-      /* SAYFA 3: TARİH TARİH (geçmiş günler, güce göre matris) */
-      var allDates=Object.keys(days); Object.keys(daysW).forEach(function(dk){ if(allDates.indexOf(dk)<0) allDates.push(dk); });
-      allDates.sort();
-      var head=["Tarih"].concat(watts).concat(["Gün Toplam"]);
-      var s3=[["TARİH TARİH TAKILAN LAMBA (güce göre)"],head];
-      var colTotals={}; watts.forEach(function(w){ colTotals[w]=0; }); var grand=0;
+        ["GENEL TOPLAM — TAKILAN LAMBA (MALZEME)","",""],
+        ["Malzeme Cinsi","Güç (W)","Miktar (Adet)"]];
+      var pm=matRows(projM);
+      pm.rows.forEach(function(r){ s1.push(r); });
+      if(pm.rows.length===0) s1.push(["(Takılan lamba kaydı yok)","",""]);
+      s1.push(["TOPLAM","",pm.total]);
+      /* SAYFA 2: BUGÜN (malzeme) */
+      var bM=daysM[tgun]||{};
+      var s2=[["BUGÜN TAKILAN LAMBA (MALZEME)","",""],["Tarih",tgun,""],["Ekip",ekip,""],["",""],
+        ["Malzeme Cinsi","Güç (W)","Miktar (Adet)"]];
+      var bm=matRows(bM);
+      bm.rows.forEach(function(r){ s2.push(r); });
+      if(bm.rows.length===0) s2.push(["(Bugün henüz kayıt yok)","",""]);
+      s2.push(["TOPLAM","",bm.total]);
+      /* SAYFA 3: TARİH TARİH (malzeme, uzun form) */
+      var allDates=Object.keys(days); Object.keys(daysM).forEach(function(dk){ if(allDates.indexOf(dk)<0) allDates.push(dk); }); allDates.sort();
+      var s3=[["TARİH TARİH TAKILAN LAMBA (MALZEME)","","",""],["Tarih","Malzeme Cinsi","Güç (W)","Miktar (Adet)"]];
+      var grand=0;
       allDates.forEach(function(dt){
-        var row=[dt]; var dW=daysW[dt]||{}; var rowTot=0;
-        watts.forEach(function(w){ var c=dW[w]||0; row.push(c); colTotals[w]+=c; rowTot+=c; });
-        /* eski kayıtta W kırılımı yoksa gün toplamını days'ten al */
-        var dayTot=(+days[dt]||0); if(rowTot===0 && dayTot>0) rowTot=dayTot;
-        row.push(rowTot); grand+=rowTot; s3.push(row);
+        var dm=daysM[dt]||{}; var dr=matRows(dm);
+        if(dr.rows.length){ dr.rows.forEach(function(r){ s3.push([dt, r[0], r[1], r[2]]); }); s3.push([dt+" — GÜN TOPLAM","","",dr.total]); grand+=dr.total; }
+        else { var dt2=(+days[dt]||0); s3.push([dt,"(malzeme dağılımı yok)","",dt2]); grand+=dt2; }
       });
-      if(allDates.length===0) s3.push(["(Kayıt yok)"]);
-      var totRow=["TOPLAM"]; watts.forEach(function(w){ totRow.push(colTotals[w]); }); totRow.push(grand); s3.push(totRow);
-
+      if(allDates.length===0) s3.push(["(Kayıt yok)","","",""]);
+      s3.push(["GENEL TOPLAM","","",grand]);
       /* SAYFA 4: EKİP PERFORMANS */
-      var calisan=allDates.filter(function(dt){ return (+days[dt]||0)>0 || Object.keys(daysW[dt]||{}).length; });
+      var calisan=allDates.filter(function(dt){ return (+days[dt]||0)>0 || Object.keys(daysM[dt]||{}).length; });
       var gunSay=calisan.length;
-      var ortalama = gunSay? Math.round((grand/gunSay)*10)/10 : 0;
-      var enIyi={dt:"-",n:0}; calisan.forEach(function(dt){ var dW=daysW[dt]||{}; var tot=0; Object.keys(dW).forEach(function(w){tot+=dW[w];}); if(tot===0) tot=(+days[dt]||0); if(tot>enIyi.n){ enIyi={dt:dt,n:tot}; } });
+      var ortalama=gunSay?Math.round((grand/gunSay)*10)/10:0;
+      var enIyi={dt:"-",n:0}; calisan.forEach(function(dt){ var dm=daysM[dt]||{}; var tot=0; Object.keys(dm).forEach(function(k){tot+=dm[k];}); if(tot===0) tot=(+days[dt]||0); if(tot>enIyi.n) enIyi={dt:dt,n:tot}; });
       var s4=[["EKİP PERFORMANS"],["Ekip",ekip],["Proje",pname()],["",""],
-        ["Toplam Takılan Lamba",grand],
-        ["Çalışılan Gün Sayısı",gunSay],
-        ["Günlük Ortalama (lamba/gün)",ortalama],
-        ["En Verimli Gün",enIyi.dt+" ("+enIyi.n+" adet)"],["",""],
+        ["Toplam Takılan Lamba",grand],["Çalışılan Gün Sayısı",gunSay],["Günlük Ortalama (lamba/gün)",ortalama],["En Verimli Gün",enIyi.dt+" ("+enIyi.n+" adet)"],["",""],
         ["Gün","Takılan Lamba"]];
-      calisan.forEach(function(dt){ var dW=daysW[dt]||{}; var tot=0; Object.keys(dW).forEach(function(w){tot+=dW[w];}); if(tot===0) tot=(+days[dt]||0); s4.push([dt,tot]); });
+      calisan.forEach(function(dt){ var dm=daysM[dt]||{}; var tot=0; Object.keys(dm).forEach(function(k){tot+=dm[k];}); if(tot===0) tot=(+days[dt]||0); s4.push([dt,tot]); });
       if(gunSay===0) s4.push(["(Kayıt yok)",""]);
 
       var blob=window.aybBuildXlsx([
         {name:"Genel_Ozet", rows:s1},
-        {name:"Bugun_Guc", rows:s2},
+        {name:"Bugun_Malzeme", rows:s2},
         {name:"Tarih_Tarih", rows:s3},
         {name:"Ekip_Performans", rows:s4}
       ]);
-      var nm=pname()+"_gunun_ozeti.xlsx";
+      var nm=(typeof window.aybFileTag==="function")? (window.aybFileTag()+"_gunun_ozeti.xlsx") : (pname()+"_gunun_ozeti.xlsx");
       var mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       if(window.aybShareFile) window.aybShareFile(nm, blob, mime);
       else if(typeof aybDownloadFile==="function") aybDownloadFile(nm, blob, mime);
@@ -2274,7 +2271,7 @@
       if(direks.length){ var dd=buildDirekler(direks); files.push({name:'Direkler.mif',bytes:encWin(dd.mif)}); files.push({name:'Direkler.mid',bytes:encWin(dd.mid)}); }
       if(lines.length){ var hh=buildHatlar(lines, p.objects); files.push({name:'Hatlar.mif',bytes:encWin(hh.mif)}); files.push({name:'Hatlar.mid',bytes:encWin(hh.mid)}); }
       var blob=buildZip(files);
-      var nm=(((p.name||'Korfezim')+'_MIF.zip')).replace(/[\\/:*?"<>|]/g,'_');
+      var nm=((window.aybFileTag?window.aybFileTag():(p.name||'Korfezim'))+'_MIF.zip');
       if(window.aybShareFile) window.aybShareFile(nm, blob, 'application/zip');
       else if(typeof aybDownloadFile==='function') aybDownloadFile(nm, blob, 'application/zip');
       (window.aybModal||function(){})("MİF dışa aktarıldı: "+direks.length+" direk, "+lines.length+" hat.\nDosya: "+nm,"MİF Dış");
@@ -2437,4 +2434,188 @@
   }
   var n=0, iv=setInterval(function(){ bind(); if(++n>40) clearInterval(iv); }, 500);
   if(d.readyState!=="loading") bind(); else d.addEventListener("DOMContentLoaded", bind);
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — Ortadaki "GPS konum gösterildi / Hassasiyet" yazısını gizle  */
+/* (bilgi zaten GPS konum kartında var)                                   */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  function patch(){
+    if(window.__aybHintPatched || typeof window.hint!=="function") return false;
+    var _h=window.hint;
+    window.hint=function(msg){
+      try{ if(msg!=null && /GPS konum g[öo]sterildi|Hassasiyet\s*:/i.test(String(msg))){
+        var h=document.getElementById("hint"); if(h) h.textContent="";
+        var sr=document.getElementById("statusReady"); if(sr) sr.textContent="";
+        return;
+      } }catch(e){}
+      return _h.apply(this, arguments);
+    };
+    window.__aybHintPatched=true;
+    return true;
+  }
+  if(!patch()){ var n=0, iv=setInterval(function(){ if(patch()||++n>60) clearInterval(iv); }, 300); }
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — Ekip adı (açılış ekranı) + dosya adı etiketi (proje_ekip_tarih) */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  var d=document;
+  function dstr(){ var t=new Date(); return t.getFullYear()+"-"+("0"+(t.getMonth()+1)).slice(-2)+"-"+("0"+t.getDate()).slice(-2); }
+  function getEkip(){ try{ return (localStorage.getItem("ayb_ekip_adi")||"").trim(); }catch(e){ return ""; } }
+  function setEkip(v){ try{ localStorage.setItem("ayb_ekip_adi", String(v==null?"":v).trim()); }catch(e){} }
+  window.aybFileTag=function(){
+    var p=window.project; var proj=(p&&p.name)?String(p.name):"Saha";
+    var ekip=getEkip(); var parts=[proj]; if(ekip) parts.push(ekip); parts.push(dstr());
+    return parts.join("_").replace(/[\\/:*?"<>|]+/g,"_").replace(/\s+/g,"_").replace(/_+/g,"_");
+  };
+  /* Açılış ekranına "Ekip Adı" alanı ekle */
+  function injectEkipInput(){
+    var scr=d.getElementById("projectScreen"); if(!scr) return;
+    if(d.getElementById("aybEkipInput")) return;
+    var nameRow=null;
+    var inp=d.getElementById("projectNameInput");
+    if(inp){ nameRow=inp.closest(".project-new-row")||inp.parentNode; }
+    if(!nameRow) return;
+    var row=d.createElement("div");
+    row.className="project-new-row";
+    row.innerHTML='<label>Ekip adı</label><input id="aybEkipInput" autocomplete="off" placeholder="Örn: Bayram Ekibi">';
+    nameRow.parentNode.insertBefore(row, nameRow.nextSibling);
+    var ei=d.getElementById("aybEkipInput"); if(ei){ ei.value=getEkip(); ei.addEventListener("input", function(){ setEkip(ei.value); }); ei.addEventListener("change", function(){ setEkip(ei.value); }); }
+  }
+  /* Yeni proje / aç düğmelerine basınca ekip adını kaydet */
+  d.addEventListener("click", function(ev){
+    var t=ev.target; while(t && t!==d){ if(t.id==="newProjectBtn" || (t.className&&String(t.className).indexOf("project-open")>=0)){ var ei=d.getElementById("aybEkipInput"); if(ei) setEkip(ei.value); break; } t=t.parentNode; }
+  }, true);
+  var n=0, iv=setInterval(function(){ injectEkipInput(); if(++n>60) clearInterval(iv); }, 500);
+  if(d.readyState!=="loading") injectEkipInput(); else d.addEventListener("DOMContentLoaded", injectEkipInput);
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — GİRİŞ ŞİFRESİ + AYARLAR (kullanıcı/firma bilgileri)          */
+/* Varsayılan şifre: 1234  (Ayarlar'dan değiştirilebilir)                  */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  var d=document;
+  var LS={sifre:"ayb_giris_sifre", yetkili:"ayb_yetkili_ad", firma:"ayb_firma_ad", tel:"ayb_firma_tel", adres:"ayb_firma_adres", ekip:"ayb_ekip_adi"};
+  function g(k){ try{ return (localStorage.getItem(k)||"").trim(); }catch(e){ return ""; } }
+  function s(k,v){ try{ localStorage.setItem(k, String(v==null?"":v).trim()); }catch(e){} }
+  function sifre(){ var p=g(LS.sifre); if(!p){ s(LS.sifre,"1234"); p="1234"; } return p; }
+
+  /* ---------------- GİRİŞ EKRANI ---------------- */
+  function girisAcik(){ try{ return sessionStorage.getItem("ayb_giris_ok")==="1"; }catch(e){ return window.__aybGirisOk===true; } }
+  function girisTamam(){ try{ sessionStorage.setItem("ayb_giris_ok","1"); }catch(e){} window.__aybGirisOk=true; var o=d.getElementById("aybGiris"); if(o) o.parentNode.removeChild(o); }
+  function showGiris(){
+    if(girisAcik()) return;
+    if(d.getElementById("aybGiris")) return;
+    var yet=g(LS.yetkili);
+    var ov=d.createElement("div"); ov.id="aybGiris";
+    ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#0b3b6f,#0f766e);display:flex;align-items:center;justify-content:center;padding:20px;font-family:inherit;";
+    ov.innerHTML=
+      '<div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center;">'+
+        '<div style="font-size:20px;font-weight:800;color:#0f766e;margin-bottom:4px;">Körfezim Saha Metraj</div>'+
+        '<div style="font-size:12px;color:#64748b;margin-bottom:16px;">Yetkili Personel Girişi</div>'+
+        (yet? '<div style="font-size:14px;color:#0f172a;margin-bottom:10px;">👤 <b>'+esc(yet)+'</b></div>' : '<input id="aybGirisAd" placeholder="Yetkili personel adı" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;padding:11px;font-size:15px;margin-bottom:10px;font-family:inherit;">')+
+        '<input id="aybGirisSifre" type="password" inputmode="numeric" placeholder="Şifre" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;padding:11px;font-size:15px;margin-bottom:6px;font-family:inherit;text-align:center;letter-spacing:3px;">'+
+        '<div id="aybGirisErr" style="color:#dc2626;font-size:12px;height:16px;margin-bottom:6px;"></div>'+
+        '<button id="aybGirisBtn" style="width:100%;border:none;border-radius:10px;background:#16a34a;color:#fff;padding:12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;">Giriş</button>'+
+        '<div style="font-size:11px;color:#94a3b8;margin-top:12px;">İlk şifre: 1234 — Ayarlar\'dan değiştirebilirsiniz</div>'+
+      '</div>';
+    d.body.appendChild(ov);
+    var inp=d.getElementById("aybGirisSifre");
+    function dene(){
+      var v=(inp.value||"").trim();
+      if(v===sifre()){ var ad=d.getElementById("aybGirisAd"); if(ad && ad.value.trim()) s(LS.yetkili, ad.value); girisTamam(); }
+      else { var e=d.getElementById("aybGirisErr"); if(e) e.textContent="Şifre yanlış."; inp.value=""; inp.focus(); }
+    }
+    d.getElementById("aybGirisBtn").onclick=dene;
+    inp.addEventListener("keydown", function(ev){ if(ev.key==="Enter") dene(); });
+    setTimeout(function(){ try{ inp.focus(); }catch(e){} }, 200);
+  }
+  function esc(x){ return String(x==null?"":x).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  /* ---------------- AYARLAR PANELİ ---------------- */
+  function fld(id,label,val,ph,type){ return '<div style="text-align:left;margin-bottom:10px;"><label style="display:block;font-size:12px;color:#475569;font-weight:600;margin-bottom:3px;">'+label+'</label>'+
+    '<input id="'+id+'" '+(type?('type="'+type+'"'):'')+' value="'+esc(val)+'" placeholder="'+esc(ph||"")+'" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:9px;font-size:14px;font-family:inherit;"></div>'; }
+  function openSettings(){
+    var el=d.getElementById("aybAyarlar");
+    if(el){ el.style.display="flex"; return; }
+    el=d.createElement("div"); el.id="aybAyarlar";
+    el.style.cssText="position:fixed;inset:0;z-index:2147482000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;font-family:inherit;overflow:auto;";
+    el.innerHTML=
+      '<div style="background:#fff;border-radius:16px;max-width:400px;width:100%;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.4);max-height:92vh;overflow:auto;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'+
+          '<div style="font-size:17px;font-weight:800;color:#0f766e;">⚙️ Ayarlar</div>'+
+          '<div id="aybAyarKapat" style="cursor:pointer;font-size:20px;color:#64748b;font-weight:800;">✕</div></div>'+
+        '<div style="font-size:12px;font-weight:700;color:#0f766e;margin:4px 0 8px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">Kullanıcı / Firma Bilgileri</div>'+
+        fld("aybSetYetkili","Yetkili Personel Adı",g(LS.yetkili),"Örn: Bayram YARAŞ")+
+        fld("aybSetEkip","Ekip Adı",g(LS.ekip),"Örn: Bayram Ekibi")+
+        fld("aybSetFirma","Firma Adı",g(LS.firma),"Örn: Körfezim Elektrik")+
+        fld("aybSetTel","Telefon",g(LS.tel),"Örn: 0530 630 05 40")+
+        fld("aybSetAdres","Adres",g(LS.adres),"")+
+        '<div style="font-size:12px;font-weight:700;color:#0f766e;margin:12px 0 8px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">Giriş Şifresi</div>'+
+        fld("aybSetSifre","Yeni Şifre (boş bırakılırsa değişmez)","","","password")+
+        fld("aybSetSifre2","Yeni Şifre (tekrar)","","","password")+
+        '<div id="aybSetErr" style="color:#dc2626;font-size:12px;min-height:16px;margin:2px 0;"></div>'+
+        '<div style="display:flex;gap:8px;margin-top:10px;">'+
+          '<button id="aybSetKaydet" style="flex:1;border:none;border-radius:10px;background:#16a34a;color:#fff;padding:11px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">Kaydet</button>'+
+          '<button id="aybSetKapat2" style="flex:1;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:11px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;">Kapat</button></div>'+
+      '</div>';
+    d.body.appendChild(el);
+    function kapat(){ el.style.display="none"; }
+    d.getElementById("aybAyarKapat").onclick=kapat;
+    d.getElementById("aybSetKapat2").onclick=kapat;
+    d.getElementById("aybSetKaydet").onclick=function(){
+      var err=d.getElementById("aybSetErr"); err.textContent="";
+      var sf=d.getElementById("aybSetSifre").value.trim(), sf2=d.getElementById("aybSetSifre2").value.trim();
+      if(sf || sf2){ if(sf!==sf2){ err.textContent="Şifreler aynı değil."; return; } if(sf.length<3){ err.textContent="Şifre en az 3 karakter olmalı."; return; } s(LS.sifre, sf); }
+      s(LS.yetkili, d.getElementById("aybSetYetkili").value);
+      s(LS.ekip, d.getElementById("aybSetEkip").value);
+      s(LS.firma, d.getElementById("aybSetFirma").value);
+      s(LS.tel, d.getElementById("aybSetTel").value);
+      s(LS.adres, d.getElementById("aybSetAdres").value);
+      try{ var ei=d.getElementById("aybEkipInput"); if(ei) ei.value=g(LS.ekip); }catch(e){}
+      try{ if(window.toast) toast("Ayarlar kaydedildi."); }catch(e){}
+      kapat();
+    };
+  }
+  window.aybAyarlar=openSettings;
+
+  /* ---------------- "Saha Veri" düğmesini AYARLAR yap ---------------- */
+  function relabelBtn(){
+    var b=d.getElementById("btnFieldDataToggle");
+    if(!b) return;
+    if(!b.__aybAyar){
+      b.__aybAyar=true;
+      b.title="Ayarlar — kullanıcı/firma bilgileri ve şifre";
+      var ico=b.querySelector(".ayb-pro-ico"); if(ico) ico.textContent="⚙️";
+      var sm=b.querySelector("small"); if(sm) sm.textContent="Ayarlar";
+    }
+  }
+  /* app'in kendi Saha paneli açılmasın: yakalama fazında Ayarlar aç */
+  d.addEventListener("click", function(ev){
+    var t=ev.target; while(t && t!==d){ if(t.id==="btnFieldDataToggle"){ try{ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }catch(e){} openSettings(); return; } t=t.parentNode; }
+  }, true);
+
+  function injectProjeAyar(){
+    if(d.getElementById("btnAybAyarlar")) return;
+    var row=d.querySelector(".ayb-pro-group.project .ayb-pro-row");
+    if(!row) return;
+    var b=d.createElement("button");
+    b.id="btnAybAyarlar"; b.className="ayb-pro-btn toolbtn"; b.type="button"; b.title="Ayarlar — kullanıcı/firma bilgileri ve şifre";
+    b.innerHTML='<div class="ayb-pro-ico" style="color:#0f766e;">⚙️</div><small>Ayarlar</small>';
+    b.onclick=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){} openSettings(); };
+    row.appendChild(b);
+  }
+  function boot(){ relabelBtn(); injectProjeAyar(); showGiris(); }
+  if(d.readyState!=="loading") boot(); else d.addEventListener("DOMContentLoaded", boot);
+  var n=0, iv=setInterval(function(){ relabelBtn(); injectProjeAyar(); if(!girisAcik()) showGiris(); if(++n>60) clearInterval(iv); }, 500);
 })();
