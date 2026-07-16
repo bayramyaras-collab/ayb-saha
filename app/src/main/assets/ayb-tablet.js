@@ -25,16 +25,17 @@
     css.textContent=[
       'html,body{max-width:100%!important;overflow-x:hidden!important;}',
       '.app{max-width:100vw!important;}',
+      '.app>*{min-width:0!important;}',
       '.titlebar{flex-wrap:wrap!important;}',
       /* UST MENULER: kucultme YOK -> parmakla yana kaydir (swipe) */
-      '.workbar,.ayb-native-clean-workbar{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;max-width:100vw!important;scroll-snap-type:none;}',
+      '.workbar,.ayb-native-clean-workbar{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;max-width:100vw!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;scroll-snap-type:none;}',
       '.workbar::-webkit-scrollbar,.ayb-native-clean-workbar::-webkit-scrollbar{height:8px;}',
       '.workbar::-webkit-scrollbar-thumb,.ayb-native-clean-workbar::-webkit-scrollbar-thumb{background:#8aa0c8;border-radius:4px;}',
       '.ayb-native-clean-workbar>*{flex:0 0 auto!important;}',
       '.ayb-pro-group{flex:0 0 auto!important;}',
       '.ayb-pro-row{flex-wrap:nowrap!important;}',
       /* sekme cubugu (Proje/Cizim/Duzenle...) da kaysin */
-      '.tabs{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;}',
+      '.tabs{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;width:100%!important;min-width:0!important;box-sizing:border-box!important;}',
       '.tabs::-webkit-scrollbar{height:6px;}',
       /* Temiz Ekran: bilgi katmanlarini gizle */
       'body.ayb-temiz .coord-overlay,body.ayb-temiz .hint,body.ayb-temiz #kfMeasureInfo,body.ayb-temiz #aybSahaImza{display:none!important;}'
@@ -400,13 +401,8 @@
       }catch(e){}
       return false;
     }
-    ready(function(){
-      var tries=0;
-      var iv=setInterval(function(){
-        tries++;
-        if(contLast() || tries>12){ clearInterval(iv); }
-      }, 500);
-    });
+    /* Kullanici acilista SECIM ekranini istiyor -> otomatik devam KAPALI */
+    void contLast;
   })();
 
   /* ---------- 13) KLASOR BAGLAMA ozelligini TAMAMEN KALDIR ---------- */
@@ -446,6 +442,28 @@
         }
       }catch(e){}
     }
+    /* Proje Acilis Merkezi'ndeki klasor yazilarini/dugmesini gizle */
+    try{
+      var css2=document.createElement('style');
+      css2.textContent='.ayb-project-folder-status,.ayb-project-note,#aybOpenFromFolder{display:none!important;}';
+      (document.head||document.documentElement).appendChild(css2);
+    }catch(e){}
+    /* "Olustur" (yeni proje) -> KLASORSUZ olustur (window.newProject + openProject) */
+    try{
+      document.addEventListener('click', function(e){
+        var btn = e.target && e.target.closest ? e.target.closest('#aybCreateProject') : null;
+        if(!btn) return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        var inp=document.getElementById('aybNewProjectName');
+        var name=(inp && inp.value ? inp.value.trim() : '') || 'Saha Projesi';
+        try{
+          if(typeof window.newProject==='function' && typeof window.openProject==='function'){
+            window.openProject(window.newProject(name));
+            var ps=document.getElementById('projectScreen'); if(ps) ps.classList.remove('show');
+          }
+        }catch(err){}
+      }, true);
+    }catch(e){}
     ready(killFolder);
     setTimeout(killFolder,600); setTimeout(killFolder,1800); setTimeout(killFolder,4000); setTimeout(killFolder,8000);
   })();
