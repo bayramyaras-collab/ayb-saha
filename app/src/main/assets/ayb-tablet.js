@@ -88,56 +88,89 @@
     if(mb){ try{ if(window.setTool) window.setTool(null); }catch(_){ } }
   }, true);
 
-  /* ---------- 4) DISA AKTAR -> Belgeler'e kaydet + WhatsApp paylas (SAGLAM) ---------- */
-  function aybToast(msg){ try{ if(window.toast) return toast(msg); }catch(_){} try{ alert(msg); }catch(_){} }
+  /* ---------- 4) TEMIZ KUTU + DISA AKTAR (once WhatsApp, sonra kaydet) ---------- */
+  /* Uygulama-ici TEMIZ kutu (file:// ASLA cikmaz) */
+  function aybModal(msg, title){
+    try{
+      var ov=document.createElement('div');
+      ov.style.cssText='position:fixed;inset:0;z-index:2147483000;background:rgba(4,10,22,.55);display:flex;align-items:center;justify-content:center;padding:22px;';
+      var box=document.createElement('div');
+      box.style.cssText='max-width:430px;width:100%;background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.42);overflow:hidden;font-family:system-ui,Arial;';
+      var h=document.createElement('div');
+      h.style.cssText='background:linear-gradient(90deg,#123a6b,#1769c4);color:#fff;font-weight:800;font-size:15px;padding:12px 16px;';
+      h.textContent=title||'Körfezim Saha';
+      var b=document.createElement('div');
+      b.style.cssText='padding:16px 16px 6px;color:#14243c;font-size:14px;line-height:1.5;white-space:pre-wrap;';
+      b.textContent=String(msg==null?'':msg);
+      var ft=document.createElement('div'); ft.style.cssText='padding:10px 16px 16px;text-align:right;';
+      var ok=document.createElement('button'); ok.textContent='Tamam';
+      ok.style.cssText='background:#1769c4;color:#fff;border:0;border-radius:10px;font-weight:700;font-size:14px;padding:10px 24px;';
+      ok.onclick=function(){ try{ov.remove();}catch(e){} };
+      ft.appendChild(ok); box.appendChild(h); box.appendChild(b); box.appendChild(ft); ov.appendChild(box);
+      ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+      (document.body||document.documentElement).appendChild(ov);
+    }catch(e){}
+  }
+  window.aybModal=aybModal;
+  /* TUM alert'leri temiz kutuya cevir; klasor uyarilarini yut */
+  try{
+    window.alert=function(m){
+      try{ if(typeof m==='string' && /(klas[oö]r seçmeyi desteklemiyor|doğrudan klasör|Windows Chrome veya Edge|klasör yazma izni)/i.test(m)) return; }catch(e){}
+      aybModal(m);
+    };
+    window.__aybAlertPatched=true; window.__aybAlertClean=true;
+  }catch(e){}
+
   function aybHasNative(){ return !!(window.AYBNative && window.AYBNative.exportFile); }
-  /* Bir Blob'u base64'e cevirip dogrudan Android'e ver (Belgeler/AYB_Saha_Disa + paylas) */
-  function aybSendBlob(filename, blob, mime){
+  function aybNativeSend(filename, blob, mime){
     try{
       var fr=new FileReader();
-      fr.onload=function(){
-        var str=String(fr.result||''); var i=str.indexOf(','); var b64=i>=0?str.slice(i+1):str;
+      fr.onload=function(){ var str=String(fr.result||''); var i=str.indexOf(','); var b64=i>=0?str.slice(i+1):str;
         try{ AYBNative.exportFile(filename, b64, mime||blob.type||'application/octet-stream'); }
-        catch(err){ aybToast('Kaydedilemedi: '+(err&&err.message?err.message:err)); }
-      };
-      fr.onerror=function(){ aybToast('Dosya okunamadi, kaydedilemedi.'); };
+        catch(err){ aybModal('Kaydedilemedi: '+(err&&err.message?err.message:err)); } };
+      fr.onerror=function(){ aybModal('Dosya okunamadi.'); };
       fr.readAsDataURL(blob);
-    }catch(e){ aybToast('Disa aktarma hatasi: '+(e&&e.message?e.message:e)); }
+    }catch(e){ aybModal('Disa aktarma hatasi: '+(e&&e.message?e.message:e)); }
   }
+  /* ANA DISA-AKTARMA: 1) WhatsApp (Web Share, Java gerekmez) 2) Native kaydet 3) indir */
+  function aybShareFile(filename, blob, mime){
+    var m=mime||blob.type||'application/octet-stream';
+    try{
+      var file=new File([blob], filename, {type:m});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:filename}).catch(function(err){
+          if(err && /abort|cancel/i.test(err.name||'')) return;
+          if(aybHasNative()) aybNativeSend(filename, blob, m);
+        });
+        return;
+      }
+    }catch(e){}
+    if(aybHasNative()){ aybNativeSend(filename, blob, m); return; }
+    try{ var url=URL.createObjectURL(blob); var a=document.createElement('a');
+      a.href=url; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click();
+      setTimeout(function(){ try{URL.revokeObjectURL(url); a.remove();}catch(_){} },800);
+    }catch(e){ aybModal('Disa aktarma hatasi: '+(e&&e.message?e.message:e)); }
+  }
+  window.aybShareFile=aybShareFile;
 
-  /* aybDownloadFile'i DOGRUDAN Android'e bagla (a[download] hilesine gerek yok) */
-  try{
-    window.aybDownloadFile=function(filename, content, mime){
-      try{
-        var blob = content instanceof Blob ? content : new Blob([content], {type:mime||'application/octet-stream'});
-        if(aybHasNative()){ aybSendBlob(filename, blob, mime); return; }
-        aybToast('APK guncel degil: dosya Belgeler\'e kaydedilemiyor. Lutfen en yeni APK\'yi kurun.');
-        var url=URL.createObjectURL(blob); var a=document.createElement('a');
-        a.href=url; a.download=filename; a.style.display='none';
-        document.body.appendChild(a); a.click();
-        setTimeout(function(){ try{URL.revokeObjectURL(url); a.remove();}catch(_){} },800);
-      }catch(e){ aybToast('Disa aktarma hatasi: '+(e&&e.message?e.message:e)); }
+  try{ window.aybDownloadFile=function(filename, content, mime){
+    var blob = content instanceof Blob ? content : new Blob([content], {type:mime||'application/octet-stream'});
+    aybShareFile(filename, blob, mime);
+  }; }catch(e){}
+
+  /* METRAJ EXCEL */
+  try{ if(window.XLSX && typeof XLSX.write==='function'){
+    XLSX.writeFile=function(wb, filename, opts){
+      try{ var name=filename||'metraj.xlsx';
+        var b64=XLSX.write(wb, {bookType:'xlsx', type:'base64'});
+        var mm='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        var bin=atob(b64); var arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+        aybShareFile(name, new Blob([arr],{type:mm}), mm);
+      }catch(e){ aybModal('Excel hatasi: '+(e&&e.message?e.message:e)); }
     };
-  }catch(e){}
+  } }catch(e){}
 
-  /* METRAJ EXCEL: XLSX.writeFile -> dogrudan Belgeler'e kaydet + paylas */
-  try{
-    if(window.XLSX && typeof XLSX.write==='function'){
-      XLSX.writeFile=function(wb, filename, opts){
-        try{
-          var name=filename||'metraj.xlsx';
-          var b64=XLSX.write(wb, {bookType:'xlsx', type:'base64'});
-          var m='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-          if(aybHasNative()){ AYBNative.exportFile(name, b64, m); return; }
-          aybToast('APK guncel degil: Excel Belgeler\'e kaydedilemiyor. Lutfen en yeni APK\'yi kurun.');
-          var bin=atob(b64); var arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-          aybSendBlob(name, new Blob([arr],{type:m}), m);
-        }catch(e){ aybToast('Excel kaydetme hatasi: '+(e&&e.message?e.message:e)); }
-      };
-    }
-  }catch(e){}
-
-  /* YEDEK GITMEYENLER ICIN: a[download] tiklamalarini da yakala (KMZ-sembollu vs.) */
+  /* a[download] tiklamalari (KMZ-sembollu vb.) -> aybShareFile */
   document.addEventListener('click', function(e){
     var a=null;
     if(e.target){ if(e.target.tagName==='A'&&e.target.hasAttribute('download')) a=e.target;
@@ -146,10 +179,8 @@
     var href=a.href||''; if(href.indexOf('blob:')!==0&&href.indexOf('data:')!==0) return;
     var name=a.getAttribute('download')||'AYB_dosya';
     e.preventDefault(); e.stopImmediatePropagation();
-    if(!aybHasNative()){ aybToast('APK guncel degil: dosya kaydedilemiyor. Lutfen en yeni APK\'yi kurun.'); return; }
-    fetch(href).then(function(r){return r.blob();}).then(function(blob){
-      aybSendBlob(name, blob, blob.type||'application/octet-stream');
-    }).catch(function(err){ aybToast('Dosya hazirlanamadi: '+(err&&err.message?err.message:err)); });
+    fetch(href).then(function(r){return r.blob();}).then(function(blob){ aybShareFile(name, blob, blob.type); })
+      .catch(function(err){ aybModal('Dosya hazirlanamadi: '+(err&&err.message?err.message:err)); });
   }, true);
 
   /* ---------- 5) DIREK FORMU: Durdurucu + Kafes alanlarini kaldir ---------- */
@@ -576,4 +607,33 @@
   }
   if(document.readyState!=='loading') setTitle(); else document.addEventListener('DOMContentLoaded',setTitle);
   setTimeout(setTitle,600); setTimeout(setTitle,2000);
+})();
+
+/* ====== ACILISTA GPS KONUMUNA ORTALA (sabit koordinat yerine) ====== */
+(function(){
+  var done=false;
+  function hasData(){ try{ return !!(window.project && window.project.objects && window.project.objects.length>0); }catch(e){ return false; } }
+  function tryCenter(){
+    if(done) return true;
+    if(!window.__aybMap) return false;               /* harita henuz olusmadi */
+    if(hasData()){ done=true; return true; }          /* proje verisi var -> GPS'e zorlamayalim */
+    if(!navigator.geolocation){ done=true; return true; }
+    done=true;
+    try{
+      navigator.geolocation.getCurrentPosition(function(pos){
+        try{
+          if(hasData() || !window.__aybMap || !pos || !pos.coords) return;
+          /* Kullanici haritayi tasidiysa (sabit merkezden uzaklastiysa) dokunma */
+          var c=window.__aybMap.getCenter();
+          var atDefault = Math.abs(c.lat-39.6)<0.06 && Math.abs(c.lng-32.85)<0.06;
+          if(!atDefault) return;
+          window.__aybMap.setView([pos.coords.latitude,pos.coords.longitude], 19, {animate:false});
+          if(typeof window.aybShowGpsPosition==='function'){ try{ window.aybShowGpsPosition(pos,true); }catch(e){} }
+        }catch(e){}
+      }, function(){}, {enableHighAccuracy:true, maximumAge:0, timeout:30000});
+    }catch(e){}
+    return true;
+  }
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){ var n=0, iv=setInterval(function(){ n++; if(tryCenter() || n>40) clearInterval(iv); }, 500); });
 })();
