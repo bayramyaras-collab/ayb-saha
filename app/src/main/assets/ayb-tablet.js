@@ -411,6 +411,17 @@
 
   /* ---------- 13) KLASOR BAGLAMA ozelligini TAMAMEN KALDIR ---------- */
   (function(){
+    /* Klasor destekleme uyarilarini yut (yeni proje olustururken cikan rahatsiz edici popup) */
+    try{
+      if(!window.__aybAlertPatched){
+        window.__aybAlertPatched=true;
+        var _al=window.alert ? window.alert.bind(window) : null;
+        window.alert=function(m){
+          try{ if(typeof m==='string' && /(klas[oö]r seçmeyi desteklemiyor|doğrudan klasör seçmeyi|Windows Chrome veya Edge|klasör yazma izni)/i.test(m)) return; }catch(e){}
+          if(_al) return _al(m);
+        };
+      }
+    }catch(e){}
     /* File System Access API'yi HER YERDE kapat (freeze/klasor secici olmasin) */
     try{ Object.defineProperty(window,'showDirectoryPicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showDirectoryPicker=undefined; }catch(_){} }
     try{ Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showSaveFilePicker=undefined; }catch(_){} }
