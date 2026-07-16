@@ -679,8 +679,18 @@
   function applyKmzOverride(){
    try{
     if(typeof aybXml!=="function" || typeof project==="undefined"){ return false; }
+    window.aybKmlLampList=function(o){
+      var p=(o&&o.props)||{};
+      var arr=Array.isArray(p.lambalar)?p.lambalar.slice():[];
+      if(arr.length===0){
+        var g=p.lamba_guc||p.lamba_manual||p.konsol_manual||p.lambaGuc||'';
+        var ad=parseInt(p.lamba_adet||p.lamba_sayisi||1,10)||1;
+        if(g){ arr.push({guc:g, adet:ad}); }
+      }
+      return arr;
+    }
     window.aybKmlLampLabel=function(o){
-      var arr=(o&&o.props&&Array.isArray(o.props.lambalar))?o.props.lambalar:[];
+      var arr=window.aybKmlLampList(o);
       var parts=[];
       arr.forEach(function(l){
         if(!l) return;
@@ -694,7 +704,9 @@
       return out.join(', ');
     }
     window.aybKmlPoleHasLamp=function(o){
-      return o&&o.type==='direk'&&o.props&&Array.isArray(o.props.lambalar)&&o.props.lambalar.some(function(l){ return l&&(String(l.guc||'').trim()||Number(l.adet||0)>0||l.armatur||l.cins); });
+      if(!o||o.type!=='direk') return false;
+      var arr=window.aybKmlLampList(o);
+      return arr.some(function(l){ return l&&(String(l.guc||'').trim()||Number(l.adet||0)>0||l.armatur||l.cins); });
     }
     window.exportKMLString=function(){
       if(!project) return '';
@@ -729,8 +741,8 @@
         const a=project.objects.find(o=>o.id===l.start), b=project.objects.find(o=>o.id===l.end);
         let pts;
         if(a&&b){ pts=aybLinePathPoints(l,a,b); }
-        else if(Array.isArray(l.points)&&l.points.length>=2){ pts=l.points.map(aybNormalizeLinePoint).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])); }
-        else { return ''; }
+        if((!pts||pts.length<2) && Array.isArray(l.points)&&l.points.length>=2){ pts=l.points.map(aybNormalizeLinePoint).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])); }
+        if((!pts||pts.length<2) && a&&b){ pts=[[Number(a.lat),Number(a.lng)],[Number(b.lat),Number(b.lng)]]; }
         if(!pts||pts.length<2) return '';
         const nm=(a&&b)?((lineLabels[l.kind]||'Hat')+' '+getObjectNo(a)+' - '+getObjectNo(b)):(lineLabels[l.kind]||'Hat');
         return `<Placemark>
@@ -1301,73 +1313,78 @@
   }
 
   /* ---------- 8) Dosya seç + işle ---------- */
-  function handleFiles(fileList){
+  /* Ekranda adım adım durum mesajı göster */
+  function status(msg){
+    var el=d.getElementById("aybMifStatus");
+    if(!el){
+      el=d.createElement("div"); el.id="aybMifStatus";
+      el.style.cssText="position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:4000;background:#0f172a;"+
+        "color:#fff;padding:10px 16px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;"+
+        "box-shadow:0 6px 20px rgba(0,0,0,.35);max-width:92vw;text-align:center;";
+      d.body.appendChild(el);
+    }
+    el.textContent=msg; el.style.display="block";
+    clearTimeout(el._t); el._t=setTimeout(function(){ if(el) el.style.display="none"; }, 6000);
+  }
+  function readAB(file){ return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){res(r.result);}; r.onerror=function(){rej(new Error("okunamadı"));}; r.readAsArrayBuffer(file); }); }
+  function isZip(buf){ var u=new Uint8Array(buf); return u.length>3 && u[0]===0x50 && u[1]===0x4B && (u[2]===0x03||u[2]===0x05||u[2]===0x07); }
+
+  function finishMap(map, projName){
+    var cm=33;
+    var probe=map.mif||map.hmif||"";
+    var mm=String(probe).match(/Projection\s+\d+\s*,\s*\d+\s*,\s*"[^"]*"\s*,\s*(\d+)/i);
+    if(mm) cm=+mm[1];
+    if(!map.mif && !map.hmif){ status("Direkler.mif / Hatlar.mif bulunamadı."); (window.aybModal||alert)("ZIP içinde Direkler.mif ve Direkler.mid bulunamadı. Doğru MİF zip'ini seçtiğinden emin ol."); return; }
+    var built;
+    try{ built=buildProject(map, projName, cm); }
+    catch(e){ status("İşlenemedi: "+(e&&e.message?e.message:e)); (window.aybModal||alert)("MİF işlenemedi: "+(e&&e.message?e.message:e)); return; }
+    if(!built.objects.length && !built.lines.length){ status("İçinde direk/hat yok."); (window.aybModal||alert)("MİF içinde direk/hat bulunamadı."); return; }
+    status("Direk: "+built.count.direk+" · Hat: "+built.count.hat+" yükleniyor…");
+    openBuilt(built, projName);
+  }
+
+  function classifyInto(map, name, txt){
+    var low=(name||"").toLowerCase();
+    var looksMif = /\.mif$/.test(low) || /(^|\n)\s*Columns\s+\d+/i.test(txt) || /(^|\n)\s*Version\s+\d+/i.test(txt) || /(^|\n)\s*Data\b/i.test(txt);
+    var looksMid = /\.mid$/.test(low) || (!looksMif && /^\s*"/.test(txt));
+    if(/hatlar/.test(low)){ if(looksMid) map.hmid=txt; else map.hmif=txt; return; }
+    if(/(direktrafolar|trafolar|trafo)/.test(low)){ if(looksMid) map.tmid=txt; else map.tmif=txt; return; }
+    if(/direkler/.test(low)){ if(looksMid) map.mid=txt; else map.mif=txt; return; }
+    /* isim belirsiz: içeriğe göre */
+    if(looksMif){ if(!map.mif) map.mif=txt; else if(!map.hmif && /(^|\n)\s*P?Line\b/i.test(txt)) map.hmif=txt; }
+    else if(looksMid){ if(!map.mid) map.mid=txt; else if(!map.hmid) map.hmid=txt; }
+  }
+
+  async function handleFiles(fileList){
     var files=Array.prototype.slice.call(fileList||[]);
-    if(!files.length) return;
-    var zip=files.find(function(f){ return /\.zip$/i.test(f.name); });
-    var projName=(files[0].name||"MİF").replace(/\.(zip|mif|mid)$/i,"") || "MİF Projesi";
+    if(!files.length){ status("Dosya seçilmedi."); return; }
+    status(files.length+" dosya alındı, işleniyor…");
+    var projName=(files[0].name||"MİF").replace(/\.(zip|rar|mif|mid)$/i,"") || "MİF Projesi";
 
-    function finish(map){
-      // merkez meridyen: dosyadan yakala (CoordSys ... , 33, ...) yoksa 33
-      var cm=33;
-      var probe=map.mif||map.hmif||"";
-      var mm=String(probe).match(/Projection\s+\d+\s*,\s*\d+\s*,\s*"[^"]*"\s*,\s*(\d+)/i);
-      if(mm) cm=+mm[1];
-      var built;
-      try{ built=buildProject(map, projName, cm); }
-      catch(e){ (window.aybModal||alert)("MİF işlenemedi: "+(e&&e.message?e.message:e)); return; }
-      if(!built.objects.length && !built.lines.length){ (window.aybModal||alert)("MİF içinde direk/hat bulunamadı."); return; }
-      openBuilt(built, projName);
+    var bufs=[];
+    for(var i=0;i<files.length;i++){
+      try{ bufs.push({ name:files[i].name||("dosya"+i), buf: await readAB(files[i]) }); }
+      catch(e){}
     }
+    if(!bufs.length){ status("Dosya okunamadı."); return; }
 
-    if(zip){
-      var r=new FileReader();
-      r.onload=function(){
-        try{
-          var files2=unzip(r.result);
-          var map={};
-          Object.keys(files2).forEach(function(name){
-            var low=name.toLowerCase();
-            var txt=decodeText(files2[name]);
-            if(/direkler\.mif$/.test(low)) map.mif=txt;
-            else if(/direkler\.mid$/.test(low)) map.mid=txt;
-            else if(/hatlar\.mif$/.test(low)) map.hmif=txt;
-            else if(/hatlar\.mid$/.test(low)) map.hmid=txt;
-            else if(/(direktrafolar|trafolar|trafo)\.mif$/.test(low)) map.tmif=txt;
-            else if(/(direktrafolar|trafolar|trafo)\.mid$/.test(low)) map.tmid=txt;
-          });
-          if(!map.mif){ // Direkler yoksa herhangi ilk .mif/.mid çiftini dene
-            Object.keys(files2).forEach(function(name){
-              var low=name.toLowerCase(); var txt=decodeText(files2[name]);
-              if(!map.mif && /\.mif$/.test(low)) map.mif=txt;
-              if(!map.mid && /\.mid$/.test(low)) map.mid=txt;
-            });
-          }
-          finish(map);
-        }catch(e){ (window.aybModal||alert)("ZIP açılamadı: "+(e&&e.message?e.message:e)); }
-      };
-      r.onerror=function(){ (window.aybModal||alert)("Dosya okunamadı."); };
-      r.readAsArrayBuffer(zip);
-      return;
+    var zipItem=null;
+    for(var k=0;k<bufs.length;k++){ if(isZip(bufs[k].buf)){ zipItem=bufs[k]; break; } }
+
+    var map={};
+    if(zipItem){
+      status("ZIP açılıyor…");
+      var files2;
+      try{ files2=unzip(zipItem.buf); }
+      catch(e){ status("ZIP açılamadı: "+(e&&e.message?e.message:e)); (window.aybModal||alert)("ZIP açılamadı: "+(e&&e.message?e.message:e)); return; }
+      var names=Object.keys(files2);
+      status("ZIP içinde "+names.length+" dosya bulundu.");
+      names.forEach(function(name){ classifyInto(map, name, decodeText(files2[name])); });
+    } else {
+      /* ZIP değil: seçilen .mif/.mid dosyaları */
+      bufs.forEach(function(b){ classifyInto(map, b.name, decodeText(new Uint8Array(b.buf))); });
     }
-
-    // .mif/.mid dosyaları doğrudan seçildiyse
-    var map={}, pending=files.length;
-    files.forEach(function(f){
-      var rr=new FileReader();
-      rr.onload=function(){
-        var low=f.name.toLowerCase(), txt=String(rr.result||"");
-        if(/direkler\.mif$/.test(low)||(!map.mif&&/\.mif$/.test(low)&&!/hatlar/.test(low)&&!/trafo/.test(low))) map.mif=txt;
-        else if(/direkler\.mid$/.test(low)||(!map.mid&&/\.mid$/.test(low)&&!/hatlar/.test(low)&&!/trafo/.test(low))) map.mid=txt;
-        if(/hatlar\.mif$/.test(low)) map.hmif=txt;
-        else if(/hatlar\.mid$/.test(low)) map.hmid=txt;
-        if(/(direktrafolar|trafolar|trafo)\.mif$/.test(low)) map.tmif=txt;
-        else if(/(direktrafolar|trafolar|trafo)\.mid$/.test(low)) map.tmid=txt;
-        if(--pending===0) finish(map);
-      };
-      rr.onerror=function(){ if(--pending===0) finish(map); };
-      rr.readAsText(f);
-    });
+    finishMap(map, projName);
   }
 
   function pickAndImport(){
@@ -1375,23 +1392,208 @@
     if(!inp){
       inp=d.createElement("input");
       inp.type="file"; inp.id="aybMifZipInput";
-      inp.accept=".zip,.mif,.mid,application/zip";
+      inp.accept="*/*";            /* her dosya seçilebilsin (ZIP dahil) */
       inp.multiple=true;
       inp.style.display="none";
       inp.addEventListener("change",function(){ var fl=inp.files; handleFiles(fl); inp.value=""; });
       d.body.appendChild(inp);
     }
+    status("Dosya seç: MİF .zip dosyasını göster");
     inp.click();
   }
 
-  /* ---------- 9) Butona bağla + geçici buton ---------- */
+  /* ---------- 9) Butonu yakalama modunda bağla (eski işleve kaçmasın) ---------- */
   window.aybImportMifZip = pickAndImport;
-  function wire(){
-    try{ window.importMIF = pickAndImport; }catch(e){}
-    var b=d.getElementById("btnMIFImport");
-    if(b){ b.onclick=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){} pickAndImport(); }; }
+  try{ window.importMIF = pickAndImport; }catch(e){}
+  d.addEventListener("click", function(ev){
+    var t=ev.target;
+    while(t && t!==d){
+      if(t.id==="btnMIFImport"){
+        try{ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }catch(e){}
+        pickAndImport();
+        return;
+      }
+      t=t.parentNode;
+    }
+  }, true);
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — SAHA TAKİP PANELİ (günlük plan + bugün/genel takılan lamba) */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  var d=document;
+  var LSKEY="aybTakip_";
+
+  function proj(){ return window.project; }
+  function pid(){ var p=proj(); return (p&&p.id)?String(p.id):"default"; }
+  function pname(){ var p=proj(); return (p&&p.name)?String(p.name):"Proje"; }
+  function today(){ var t=new Date(); return t.getFullYear()+"-"+("0"+(t.getMonth()+1)).slice(-2)+"-"+("0"+t.getDate()).slice(-2); }
+
+  function load(){
+    try{ var s=localStorage.getItem(LSKEY+pid()); if(s){ var o=JSON.parse(s); if(!o.days)o.days={}; if(!o.plan)o.plan=50; return o; } }catch(e){}
+    return { plan:50, days:{} };
   }
-  if(d.readyState==="loading") d.addEventListener("DOMContentLoaded",function(){ setTimeout(wire,1000); });
-  setTimeout(wire,1000);
-  setTimeout(wire,2500);
+  function save(st){ try{ localStorage.setItem(LSKEY+pid(), JSON.stringify(st)); }catch(e){} }
+
+  function poleCount(){ var p=proj(); if(!p||!p.objects) return 0; return p.objects.filter(function(o){return o.type==="direk";}).length; }
+  function totalLamps(){
+    var p=proj(); if(!p||!p.objects) return 0; var t=0;
+    p.objects.forEach(function(o){
+      if(o.type==="direk" && o.props && Array.isArray(o.props.lambalar)){
+        o.props.lambalar.forEach(function(l){ var a=parseInt(l&&l.adet,10); t+=(isFinite(a)&&a>0)?a:1; });
+      }
+    });
+    return t;
+  }
+  function cumInstalled(st){ var t=0, k; for(k in (st.days||{})) t+=(+st.days[k]||0); return t; }
+
+  function injectStyle(){
+    if(d.getElementById("ayb_takip_style")) return;
+    var st=d.createElement("style"); st.id="ayb_takip_style";
+    st.textContent=
+      "#aybTakipToggle{position:fixed;top:56px;right:14px;z-index:1290;background:#0f766e;color:#fff;border:none;"+
+        "border-radius:20px;padding:8px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 12px rgba(15,23,42,.3);"+
+        "cursor:pointer;font-family:inherit;line-height:1;}"+
+      "#aybTakipToggle:active{transform:scale(.96);}"+
+      "#aybTakipPanel{position:fixed;top:96px;right:14px;z-index:1291;width:290px;max-width:92vw;background:#fff;"+
+        "border:1px solid #0f766e;border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.28);padding:14px 14px 12px;"+
+        "font-family:inherit;color:#0f172a;display:none;}"+
+      "#aybTakipPanel.show{display:block;}"+
+      "#aybTakipPanel h4{margin:0 0 8px;font-size:15px;color:#0f766e;display:flex;justify-content:space-between;align-items:center;}"+
+      "#aybTakipPanel .tk-close{cursor:pointer;font-size:18px;color:#64748b;font-weight:700;line-height:1;padding:0 4px;}"+
+      "#aybTakipPanel .tk-row{display:flex;justify-content:space-between;align-items:center;margin:6px 0;font-size:14px;}"+
+      "#aybTakipPanel .tk-row b{font-size:16px;color:#0f172a;}"+
+      "#aybTakipPanel .tk-sep{height:1px;background:#e2e8f0;margin:9px 0;}"+
+      "#aybTakipPanel input.tk-inp{width:74px;text-align:center;font-size:16px;font-weight:700;padding:6px;border:1px solid #cbd5e1;"+
+        "border-radius:8px;font-family:inherit;color:#0f172a;}"+
+      "#aybTakipPanel .tk-btns{display:flex;gap:6px;align-items:center;}"+
+      "#aybTakipPanel .tk-pm{width:38px;height:38px;border:none;border-radius:9px;background:#0f766e;color:#fff;font-size:20px;"+
+        "font-weight:800;cursor:pointer;line-height:1;}"+
+      "#aybTakipPanel .tk-pm.minus{background:#b91c1c;}"+
+      "#aybTakipPanel .tk-bar{height:10px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin-top:4px;}"+
+      "#aybTakipPanel .tk-bar>span{display:block;height:100%;background:#16a34a;width:0;}"+
+      "#aybTakipPanel .tk-muted{color:#64748b;font-size:12px;}";
+    d.head.appendChild(st);
+  }
+
+  var panel, els={};
+  function buildPanel(){
+    if(d.getElementById("aybTakipPanel")) return;
+    panel=d.createElement("div"); panel.id="aybTakipPanel";
+    panel.innerHTML=
+      '<h4><span id="aybTkTitle">Saha Takip</span><span class="tk-close" id="aybTkClose">✕</span></h4>'+
+      '<div class="tk-row"><span>Toplam Direk</span><b id="aybTkDirek">0</b></div>'+
+      '<div class="tk-row"><span>Projedeki Lamba</span><b id="aybTkLamba">0</b></div>'+
+      '<div class="tk-sep"></div>'+
+      '<div class="tk-row"><span>Günlük Plan</span><input class="tk-inp" id="aybTkPlan" type="number" min="0" inputmode="numeric"></div>'+
+      '<div class="tk-row"><span>Bugün Takılan</span>'+
+        '<span class="tk-btns"><button class="tk-pm minus" id="aybTkMinus">−</button>'+
+        '<input class="tk-inp" id="aybTkToday" type="number" min="0" inputmode="numeric">'+
+        '<button class="tk-pm" id="aybTkPlus">+</button></span></div>'+
+      '<div class="tk-bar"><span id="aybTkBar"></span></div>'+
+      '<div class="tk-row tk-muted"><span id="aybTkProgress">0 / 50</span><span id="aybTkDate"></span></div>'+
+      '<div class="tk-sep"></div>'+
+      '<div class="tk-row"><span>Genel Takılan</span><b id="aybTkGenel">0</b></div>'+
+      '<div class="tk-row"><span>Kalan (projede)</span><b id="aybTkKalan">0</b></div>';
+    d.body.appendChild(panel);
+    els.title=d.getElementById("aybTkTitle");
+    els.direk=d.getElementById("aybTkDirek");
+    els.lamba=d.getElementById("aybTkLamba");
+    els.plan=d.getElementById("aybTkPlan");
+    els.today=d.getElementById("aybTkToday");
+    els.minus=d.getElementById("aybTkMinus");
+    els.plus=d.getElementById("aybTkPlus");
+    els.bar=d.getElementById("aybTkBar");
+    els.progress=d.getElementById("aybTkProgress");
+    els.date=d.getElementById("aybTkDate");
+    els.genel=d.getElementById("aybTkGenel");
+    els.kalan=d.getElementById("aybTkKalan");
+
+    d.getElementById("aybTkClose").onclick=function(){ panel.classList.remove("show"); syncToggle(); };
+    els.plan.onchange=function(){ var st=load(); st.plan=Math.max(0, parseInt(els.plan.value,10)||0); save(st); refresh(); };
+    els.today.onchange=function(){ var st=load(); st.days[today()]=Math.max(0, parseInt(els.today.value,10)||0); save(st); refresh(); };
+    els.plus.onclick=function(){ var st=load(); var t=today(); st.days[t]=(+st.days[t]||0)+1; save(st); refresh(); };
+    els.minus.onclick=function(){ var st=load(); var t=today(); st.days[t]=Math.max(0,(+st.days[t]||0)-1); save(st); refresh(); };
+  }
+
+  function refresh(){
+    if(!panel) return;
+    var st=load();
+    var tCount=(+ (st.days[today()]||0));
+    var plan=(+st.plan||50);
+    var tot=totalLamps();
+    var gen=cumInstalled(st);
+    els.title.textContent="Saha Takip — "+pname();
+    els.direk.textContent=poleCount();
+    els.lamba.textContent=tot;
+    if(d.activeElement!==els.plan) els.plan.value=plan;
+    if(d.activeElement!==els.today) els.today.value=tCount;
+    els.genel.textContent=gen;
+    els.kalan.textContent=Math.max(0, tot-gen);
+    var pct=plan>0?Math.min(100, Math.round(tCount/plan*100)):0;
+    els.bar.style.width=pct+"%";
+    els.progress.textContent=tCount+" / "+plan+"  (%"+pct+")";
+    els.date.textContent=today();
+  }
+
+  function syncToggle(){
+    var b=d.getElementById("aybTakipToggle");
+    if(b) b.textContent = (panel && panel.classList.contains("show")) ? "📋 Kapat" : "📋 Takip";
+  }
+  function makeToggle(){
+    if(d.getElementById("aybTakipToggle")) return;
+    var b=d.createElement("button"); b.id="aybTakipToggle"; b.type="button"; b.textContent="📋 Takip";
+    b.onclick=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){}
+      buildPanel();
+      if(panel.classList.contains("show")){ panel.classList.remove("show"); }
+      else { refresh(); panel.classList.add("show"); }
+      syncToggle();
+    };
+    d.body.appendChild(b);
+  }
+
+  function setup(){ injectStyle(); makeToggle(); buildPanel(); }
+  if(d.readyState==="loading") d.addEventListener("DOMContentLoaded",function(){ setTimeout(setup,900); });
+  setTimeout(setup, 900);
+  setTimeout(setup, 2200);
+  /* proje açıldığında panel açıksa güncelle; gün değişimini de yakala */
+  setInterval(function(){ if(panel && panel.classList.contains("show")) refresh(); }, 4000);
+  window.aybTakipRefresh=refresh;
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — SÜRÜM DAMGASI (yeni build aktif mi anında görünür)          */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  var d=document;
+  var SURUM="v8";
+  var TARIH="16.07.2026";
+  function make(){
+    if(d.getElementById("aybSurumBadge")) return;
+    var b=d.createElement("div");
+    b.id="aybSurumBadge";
+    b.textContent="KÖRFEZİM "+SURUM;
+    b.style.cssText="position:fixed;left:8px;bottom:8px;z-index:3000;background:rgba(15,118,110,.92);color:#fff;"+
+      "padding:5px 10px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;letter-spacing:.3px;"+
+      "box-shadow:0 3px 10px rgba(0,0,0,.3);cursor:pointer;";
+    b.onclick=function(){
+      var mesaj="Körfezim Saha "+SURUM+" ("+TARIH+")\n\nBu sürümde olması gerekenler:\n"+
+        "• Metraj → Excel (.xlsx), trafo bazlı + genel lamba özeti\n"+
+        "• GPS konum → sağ üst 📍 ile gizle/göster\n"+
+        "• MİF İç → ZIP seçince proje gibi çizili gelir (direk+hat+lamba)\n"+
+        "• 📋 Takip → günlük plan (50), bugün/genel takılan lamba\n"+
+        "• KMZ → direkler siyah daire, lambalar sarı yıldız, yer altı hat dahil\n\n"+
+        "Bu yazıyı görüyorsan YENİ sürüm kuruldu demektir.";
+      (window.aybModal||alert)(mesaj,"Sürüm Bilgisi");
+    };
+    d.body.appendChild(b);
+  }
+  if(d.readyState==="loading") d.addEventListener("DOMContentLoaded",function(){ setTimeout(make,800); });
+  setTimeout(make,800);
+  setTimeout(make,2000);
 })();
