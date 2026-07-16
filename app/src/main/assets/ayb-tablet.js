@@ -819,17 +819,115 @@
         return _on?_on(o):"";
       };
     }catch(e){}
-    /* KMZ butonu bunu çağırıyor: doğru KMZ üret (yer altı hat + lamba + doğru ölçek/etiket) */
-    window.aybExportKmzSym=function(){
+    /* KMZ butonu: GERÇEK PROGRAM SEMBOLLERİ (AYBSYMBOLS SVG->PNG) + saha FOTOĞRAFLARI gömülü çok-dosyalı KMZ */
+    window.aybExportKmzSym=async function(){
       try{
-        if(!window.project){ (window.toast||window.alert)("Önce proje aç."); return; }
-        var kml=window.exportKMLString();
-        if(!kml){ (window.aybModal||window.alert)("KMZ oluşturulamadı (boş)."); return; }
-        var kmz = (typeof window.aybBuildKmz==="function") ? window.aybBuildKmz(kml)
-                 : (typeof aybBuildKmz==="function" ? aybBuildKmz(kml) : new Blob([kml],{type:"application/vnd.google-earth.kmz"}));
-        var nm=(((window.project&&window.project.name)||"Korfezim_Saha")+".kmz").replace(/[\\/:*?"<>|]/g,"_");
-        if(window.aybShareFile){ window.aybShareFile(nm, kmz, "application/vnd.google-earth.kmz"); }
-        else if(typeof aybDownloadFile==="function"){ aybDownloadFile(nm, kmz, "application/vnd.google-earth.kmz"); }
+        var project=window.project;
+        if(!project){ (window.toast||window.alert)("Önce proje aç."); return; }
+        if(typeof window.AYBSYMBOLS==="undefined"){ (window.aybModal||window.alert)("Sembol kütüphanesi yüklenmedi."); return; }
+        try{ if(window.toast) toast("Sembollü KMZ hazırlanıyor..."); }catch(e){}
+        function _safe(s){ return String(s==null?"":s).replace(/[^A-Za-z0-9_]/g,"_"); }
+        function _u8(u){ try{ var i=String(u).indexOf(","); var bin=atob(String(u).slice(i+1)); var a=new Uint8Array(bin.length); for(var k=0;k<bin.length;k++)a[k]=bin.charCodeAt(k); return a; }catch(e){ return new Uint8Array(0); } }
+        function _svgPng(svg,size){ return new Promise(function(res){ try{
+          var s=String(svg||""); if(s.indexOf("<svg")>=0 && s.indexOf(" width=")===-1){ s=s.replace("<svg","<svg width=\""+size+"\" height=\""+size+"\""); }
+          var img=new Image();
+          img.onload=function(){ try{ var c=document.createElement("canvas"); c.width=size; c.height=size; var x=c.getContext("2d"); x.clearRect(0,0,size,size); x.drawImage(img,0,0,size,size); res(c.toDataURL("image/png")); }catch(e){ res(null); } };
+          img.onerror=function(){ res(null); };
+          img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(s);
+        }catch(e){ res(null); } }); }
+        function _pget(id){ return new Promise(function(res){ try{ var r=indexedDB.open("ayb_photos_db",1);
+          r.onupgradeneeded=function(){ try{ r.result.createObjectStore("photos",{keyPath:"id"}); }catch(e){} };
+          r.onerror=function(){ res([]); };
+          r.onsuccess=function(){ try{ var db=r.result; var t=db.transaction("photos","readonly"); var g=t.objectStore("photos").get(id);
+            g.onsuccess=function(e){ var v=e.target.result; res((v&&v.items)||[]); }; g.onerror=function(){res([]);}; }catch(e){ res([]); } };
+        }catch(e){ res([]); } }); }
+        function _symId(o){ try{ var m=o.props&&o.props.symbol_id; var f=(typeof defaultSymbolIdForObject==="function")?defaultSymbolIdForObject(o):null; return m||f||null; }catch(e){ return null; } }
+        function _label(o){ try{ if(o&&o.type==="direk"){ var t=(o.props&&o.props.direk_tipi)?String(o.props.direk_tipi).trim():""; if(t) return t; } return (typeof getObjectNo==="function")?String(getObjectNo(o)||""):""; }catch(e){ return ""; } }
+        function _kmz(files){
+          var U16=aybU16,U32=aybU32,CRC=aybCrc32,DT=aybZipDateTime();
+          var locals=[],centrals=[],offset=0;
+          for(var i=0;i<files.length;i++){
+            var nb=new TextEncoder().encode(files[i].name), data=files[i].bytes, crc=CRC(data);
+            var lh=[].concat(U32(0x04034b50),U16(20),U16(0),U16(0),U16(DT.time),U16(DT.date),U32(crc),U32(data.length),U32(data.length),U16(nb.length),U16(0));
+            var la=new Uint8Array(lh.length+nb.length+data.length); la.set(lh,0); la.set(nb,lh.length); la.set(data,lh.length+nb.length); locals.push(la);
+            var ch=[].concat(U32(0x02014b50),U16(20),U16(20),U16(0),U16(0),U16(DT.time),U16(DT.date),U32(crc),U32(data.length),U32(data.length),U16(nb.length),U16(0),U16(0),U16(0),U16(0),U32(0),U32(offset));
+            var ca=new Uint8Array(ch.length+nb.length); ca.set(ch,0); ca.set(nb,ch.length); centrals.push(ca);
+            offset+=la.length;
+          }
+          var csize=0; centrals.forEach(function(c){csize+=c.length;});
+          var end=new Uint8Array([].concat(U32(0x06054b50),U16(0),U16(0),U16(files.length),U16(files.length),U32(csize),U32(offset),U16(0)));
+          return new Blob(locals.concat(centrals).concat([end]),{type:"application/vnd.google-earth.kmz"});
+        }
+        var files=[], styleMap={}, styleXml="";
+        var objects=project.objects||[];
+        var uniq={}; objects.forEach(function(o){ var s=_symId(o); if(s) uniq[s]=true; });
+        var ids=Object.keys(uniq);
+        for(var i=0;i<ids.length;i++){
+          var sid=ids[i], sym=window.AYBSYMBOLS.getById(sid);
+          if(!sym||!sym.svg) continue;
+          var png=await _svgPng(sym.svg,96); if(!png) continue;
+          var fn="files/sym_"+_safe(sid)+".png"; files.push({name:fn,bytes:_u8(png)});
+          var stid="s_"+_safe(sid); styleMap[sid]=stid;
+          styleXml+='<Style id="'+stid+'"><IconStyle><scale>1.2</scale><Icon><href>'+fn+'</href></Icon></IconStyle><LabelStyle><scale>0.8</scale></LabelStyle></Style>\n';
+        }
+        styleXml+=
+          '<Style id="ln_ag"><LineStyle><color>'+aybKmlColor('#1aa260')+'</color><width>3</width></LineStyle></Style>'
+         +'<Style id="ln_abone"><LineStyle><color>'+aybKmlColor('#f59e0b')+'</color><width>3</width></LineStyle></Style>'
+         +'<Style id="ln_og"><LineStyle><color>'+aybKmlColor('#dc2626')+'</color><width>4</width></LineStyle></Style>'
+         +'<Style id="ln_enh"><LineStyle><color>'+aybKmlColor('#111827')+'</color><width>4</width></LineStyle></Style>'
+         +'<Style id="ln_ayd"><LineStyle><color>'+aybKmlColor('#06b6d4')+'</color><width>3</width></LineStyle></Style>'
+         +'<Style id="ln_yeralti"><LineStyle><color>'+aybKmlColor('#1aa260')+'</color><width>3</width></LineStyle></Style>'
+         +'<Style id="ln_kanal"><LineStyle><color>'+aybKmlColor('#facc15')+'</color><width>4</width></LineStyle></Style>'
+         +'<Style id="ln_free"><LineStyle><color>'+aybKmlColor('#f97316')+'</color><width>3</width></LineStyle></Style>'
+         +'<Style id="st_lamba"><IconStyle><scale>0.5</scale><color>'+aybKmlColor('#fde047')+'</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon></IconStyle><LabelStyle><scale>0.72</scale></LabelStyle></Style>'
+         +'<Style id="poly_area"><LineStyle><color>'+aybKmlColor('#22c55e')+'</color><width>2</width></LineStyle><PolyStyle><color>'+aybKmlColor('#22c55e','35')+'</color></PolyStyle></Style>';
+        var objPm="";
+        for(var j=0;j<objects.length;j++){
+          var o=objects[j]; if(o.lat==null||o.lng==null) continue;
+          var sid2=_symId(o); var su=(sid2&&styleMap[sid2])?("<styleUrl>#"+styleMap[sid2]+"</styleUrl>"):"";
+          var base=""; try{ base=(typeof aybObjectDescription==="function")?aybObjectDescription(o):""; }catch(e){}
+          var inner=String(base).replace(/^\s*<!\[CDATA\[/,"").replace(/\]\]>\s*$/,"");
+          var items=await _pget(o.id);
+          if(items&&items.length){
+            inner+='<div style="margin-top:8px"><b>Foto&#287;raflar ('+items.length+')</b><br>';
+            for(var p=0;p<items.length;p++){ var ff="files/foto_"+_safe(o.id)+"_"+p+".jpg"; files.push({name:ff,bytes:_u8(items[p])}); inner+='<img src="'+ff+'" width="260" style="margin:4px 0;border:1px solid #bbb;border-radius:4px"/><br>'; }
+            inner+='</div>';
+          }
+          objPm+='<Placemark><name>'+aybXml(_label(o))+'</name>'+su+'<description><![CDATA['+inner+']]></description>'
+            +'<Point><coordinates>'+Number(o.lng).toFixed(8)+','+Number(o.lat).toFixed(8)+',0</coordinates></Point></Placemark>\n';
+        }
+        var linePm=(project.lines||[]).map(function(l){
+          var a=objects.find(function(o){return o.id===l.start;}), b=objects.find(function(o){return o.id===l.end;});
+          var pts; if(a&&b){ pts=aybLinePathPoints(l,a,b); }
+          if((!pts||pts.length<2)&&Array.isArray(l.points)&&l.points.length>=2){ pts=l.points.map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); }
+          if((!pts||pts.length<2)&&a&&b){ pts=[[Number(a.lat),Number(a.lng)],[Number(b.lat),Number(b.lng)]]; }
+          if(!pts||pts.length<2) return "";
+          var nm=(a&&b)?((lineLabels[l.kind]||"Hat")+" "+getObjectNo(a)+" - "+getObjectNo(b)):(lineLabels[l.kind]||"Hat");
+          return '<Placemark><name>'+aybXml(nm)+'</name><styleUrl>#'+aybLineStyleId(l)+'</styleUrl><description>'+((a&&b)?aybLineDescription(l,a,b,pts):"")+'</description><LineString><tessellate>1</tessellate><coordinates>'+aybKmlCoords(pts)+'</coordinates></LineString></Placemark>';
+        }).join("\n");
+        var lampPm=(project.objects||[]).filter(window.aybKmlPoleHasLamp).map(function(o){
+          var label=window.aybKmlLampLabel(o)||"Lamba"; var dLat=0.000032;
+          return '<Placemark><name>'+aybXml(label)+'</name><styleUrl>#st_lamba</styleUrl><description><![CDATA[Direk '+aybHtml(getObjectNo(o))+' lambasi: '+aybHtml(label)+']]></description><Point><coordinates>'+Number(o.lng).toFixed(8)+','+(Number(o.lat)+dLat).toFixed(8)+',0</coordinates></Point></Placemark>';
+        }).join("\n");
+        var chanPm=(project.channels||[]).map(function(c){ var pts=(c.points||[]).map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); if(pts.length<2) return ""; return '<Placemark><name>'+aybXml("Kanal "+aybKanalFullNameFromProps(c.props))+'</name><styleUrl>#ln_kanal</styleUrl><description>'+aybChannelDescription(c,pts)+'</description><LineString><tessellate>1</tessellate><coordinates>'+aybKmlCoords(pts)+'</coordinates></LineString></Placemark>'; }).join("\n");
+        var freePm=(project.freeLines||[]).map(function(f){ var pts=(f.points||[]).map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); if(pts.length<2) return ""; return '<Placemark><name>'+aybXml(f.kind||"Çizgi")+'</name><styleUrl>#ln_free</styleUrl><LineString><tessellate>1</tessellate><coordinates>'+aybKmlCoords(pts)+'</coordinates></LineString></Placemark>'; }).join("\n");
+        var areaPm=(project.areas||[]).map(function(a){ var pts=(a.points||[]).map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); if(pts.length<3) return ""; var closed=pts.concat([pts[0]]); return '<Placemark><name>'+aybXml(a.kind||"Alan")+'</name><styleUrl>#poly_area</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>'+aybKmlCoords(closed)+'</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>'; }).join("\n");
+        var kml='<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+          +'<name>'+aybXml(project.name||"AYB Saha Projesi")+'</name>'
+          +'<description>Korfezim Saha Metraj - program sembolleri ve saha fotograflari gomulu.</description>'
+          +styleXml
+          +'<Folder><name>Objeler</name>'+objPm+'</Folder>'
+          +'<Folder><name>Hatlar</name>'+linePm+'</Folder>'
+          +'<Folder><name>Lambalar</name>'+lampPm+'</Folder>'
+          +'<Folder><name>Kanallar</name>'+chanPm+'</Folder>'
+          +'<Folder><name>Cizimler</name>'+freePm+areaPm+'</Folder>'
+          +'</Document></kml>';
+        files.unshift({name:"doc.kml", bytes:new TextEncoder().encode(kml)});
+        var blob=_kmz(files);
+        var nm=(((project.name)||"Korfezim_Saha")+"_sembollu.kmz").replace(/[\\/:*?"<>|]/g,"_");
+        if(window.aybShareFile){ window.aybShareFile(nm, blob, "application/vnd.google-earth.kmz"); }
+        else if(typeof aybDownloadFile==="function"){ aybDownloadFile(nm, blob, "application/vnd.google-earth.kmz"); }
+        try{ if(window.toast) toast("Sembollu KMZ hazir ("+files.length+" dosya): "+nm); }catch(e){}
       }catch(e){ (window.aybModal||window.alert)("KMZ hata: "+(e&&e.message?e.message:e)); }
     };
     return true;
@@ -1729,7 +1827,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v18";
+  var SURUM="v19";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
