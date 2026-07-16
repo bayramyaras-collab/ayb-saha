@@ -991,68 +991,58 @@
 
 
 /* ===================================================================== */
-/* KÖRFEZİM — GPS KONUM KARTI GİZLE / GÖSTER (ekranı kapatmasın)          */
+/* KÖRFEZİM — ALT ÇUBUK + GPS KONUM (küçük, altta, haritayı kapatmaz)     */
 /* ===================================================================== */
 (function(){
   "use strict";
-  /* Başlangıçta kart GİZLİ olsun (ekranı kapatmasın); kullanıcı isterse açar */
   var HIDDEN = true;
+
+  /* Ortak alt çubuk (Konum + Takip burada durur, üst menüleri kapatmaz) */
+  window.aybBottomBar=function(){
+    var bar=document.getElementById("aybBottomBar");
+    if(!bar){
+      bar=document.createElement("div"); bar.id="aybBottomBar";
+      bar.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:10px;z-index:1250;"+
+        "display:flex;gap:8px;align-items:center;";
+      document.body.appendChild(bar);
+    }
+    return bar;
+  };
 
   function injectStyle(){
     if(document.getElementById("ayb_gps_toggle_style")) return;
-    var st=document.createElement("style");
-    st.id="ayb_gps_toggle_style";
+    var st=document.createElement("style"); st.id="ayb_gps_toggle_style";
     st.textContent =
       "#gpsCard.ayb-gps-hidden{display:none!important;}" +
-      "#gpsCard.gps-live{top:56px!important;}" +   /* düğmenin altına insin */
-      "#aybGpsToggle{position:fixed;top:14px;right:14px;z-index:1300;" +
-        "background:#2563eb;color:#fff;border:none;border-radius:20px;" +
-        "padding:8px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 12px rgba(15,23,42,.3);" +
-        "cursor:pointer;font-family:inherit;line-height:1;}" +
-      "#aybGpsToggle:active{transform:scale(.96);}";
+      /* konum kartı açılınca: KÜÇÜK ve ALTTA, haritayı kapatmaz */
+      "#gpsCard.gps-live{top:auto!important;bottom:56px!important;right:auto!important;left:8px!important;" +
+        "max-width:230px!important;font-size:11px!important;padding:6px 8px!important;line-height:1.3!important;}" +
+      ".ayb-barbtn{border:none;border-radius:18px;padding:7px 13px;font-size:13px;font-weight:700;" +
+        "box-shadow:0 3px 10px rgba(15,23,42,.3);cursor:pointer;font-family:inherit;line-height:1;color:#fff;}" +
+      ".ayb-barbtn:active{transform:scale(.96);}" +
+      "#aybGpsBtn{background:#2563eb;} #aybTakipBtn{background:#0f766e;}";
     document.head.appendChild(st);
   }
 
   function card(){ return document.getElementById("gpsCard"); }
-
   function apply(){
     var c=card();
-    if(c){
-      if(HIDDEN) c.classList.add("ayb-gps-hidden");
-      else c.classList.remove("ayb-gps-hidden");
-    }
-    var b=document.getElementById("aybGpsToggle");
+    if(c){ if(HIDDEN) c.classList.add("ayb-gps-hidden"); else c.classList.remove("ayb-gps-hidden"); }
+    var b=document.getElementById("aybGpsBtn");
     if(b){ b.textContent = HIDDEN ? "📍 Konum" : "📍 Gizle"; }
   }
-
   function makeButton(){
-    if(document.getElementById("aybGpsToggle")) return;
-    var b=document.createElement("button");
-    b.id="aybGpsToggle";
-    b.type="button";
-    b.textContent="📍 Konum";
-    b.onclick=function(ev){
-      try{ ev&&ev.preventDefault&&ev.preventDefault(); ev&&ev.stopPropagation&&ev.stopPropagation(); }catch(e){}
-      HIDDEN=!HIDDEN;
-      apply();
-    };
-    document.body.appendChild(b);
+    if(document.getElementById("aybGpsBtn")) return;
+    var b=document.createElement("button"); b.id="aybGpsBtn"; b.type="button";
+    b.className="ayb-barbtn"; b.textContent="📍 Konum";
+    b.onclick=function(ev){ try{ev&&ev.preventDefault&&ev.preventDefault();ev&&ev.stopPropagation&&ev.stopPropagation();}catch(e){} HIDDEN=!HIDDEN; apply(); };
+    window.aybBottomBar().appendChild(b);
   }
-
-  function setup(){
-    injectStyle();
-    makeButton();
-    apply();
-  }
-
+  function setup(){ injectStyle(); makeButton(); apply(); }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(setup,700); });
   setTimeout(setup, 700);
   setTimeout(setup, 1800);
-  /* GPS her güncellendiğinde kart gizli kalsın istiyorsak sınıfı koru */
-  setInterval(function(){
-    var c=card();
-    if(c && HIDDEN && !c.classList.contains("ayb-gps-hidden")) c.classList.add("ayb-gps-hidden");
-  }, 1500);
+  setInterval(function(){ var c=card(); if(c && HIDDEN && !c.classList.contains("ayb-gps-hidden")) c.classList.add("ayb-gps-hidden"); }, 3000);
 })();
 
 
@@ -1231,10 +1221,12 @@
         var lambalar=[];
         var g=iGuc>=0?num(row[iGuc]):0, ad=iAd>=0?num(row[iAd]):0;
         if(g>0 && ad>0){ for(var q=0;q<1;q++){} lambalar.push({guc:String(g),adet:ad,cins:"LED",armatur:"",status:"MEVCUT"}); }
+        var mifGenel=iGen>=0?String(row[iGen]||"AG"):"AG";
+        var genelTip=(lambalar.length>0)?"AYD":mifGenel;   /* lambalı direk = AYDINLATMA (AG değil) */
         var props={
           direk_no: iNo>=0?String(row[iNo]||("DRK"+(idx+1))):("DRK"+(idx+1)),
           direk_tipi: iTip>=0?String(row[iTip]||""):"",
-          genel_tip: iGen>=0?String(row[iGen]||"AG"):"AG",
+          genel_tip: genelTip,
           alt_tip: iAlt>=0?String(row[iAlt]||""):"",
           trafo_no: iTr>=0?String(row[iTr]||""):"",
           durum:"MEVCUT", ithal_kaynak:"MIF",
@@ -1278,8 +1270,12 @@
         if(!s){ s={ id:UID("DIREK"), type:"direk", lat:pts[0].lat, lng:pts[0].lng, props:{direk_no:"", direk_tipi:"", genel_tip:"AG", lambalar:[], durum:"MEVCUT", ithal_kaynak:"MIF"} }; direkObjs.push(s); allObjs.push(s); }
         if(!e){ e={ id:UID("DIREK"), type:"direk", lat:pts[pts.length-1].lat, lng:pts[pts.length-1].lng, props:{direk_no:"", direk_tipi:"", genel_tip:"AG", lambalar:[], durum:"MEVCUT", ithal_kaynak:"MIF"} }; direkObjs.push(e); allObjs.push(e); }
         var kesit=iAg>=0?String(row[iAg]||""):"";
-        var line={ id:UID("HAT"), kind:"hat", start:s.id, end:e.id,
-          props:{ hat_tipi:kesit, ag_hat_tipi:kesit, hy:"HAVAİ", durum:"MEVCUT", kaynak:"MIF", ithal_kaynak:"MIF" } };
+        var hatGenel=iGt>=0?String(row[iGt]||"").toUpperCase():"";
+        var isAyd=hatGenel.indexOf("AYD")>=0;
+        var lprops={ hat_tipi:kesit, ag_hat_tipi:kesit, hy:"HAVAİ", durum:"MEVCUT", kaynak:"MIF", ithal_kaynak:"MIF" };
+        if(isAyd){ lprops.genel_tip="AYD"; lprops.ag_hat_aktif=true; }   /* AYDINLATMA hattı: AG değil */
+        else { lprops.genel_tip="AG"; }
+        var line={ id:UID("HAT"), kind:"hat", start:s.id, end:e.id, props:lprops };
         if(pts.length>2){ line.points=pts.map(function(p){return [p.lat,p.lng];}); }
         hatLines.push(line);
       });
@@ -1296,8 +1292,8 @@
     pr.objects=built.objects; pr.lines=built.lines;
     pr.freeLines=pr.freeLines||[]; pr.channels=pr.channels||[]; pr.areas=pr.areas||[];
     window.openProject(pr);
+    /* openProject zaten bir kez renderAll yapıyor; biz sadece haritayı sığdırıyoruz (fazladan render yok = hızlı) */
     setTimeout(function(){
-      try{ if(typeof window.renderAll==="function") window.renderAll(); }catch(e){}
       try{
         var m=window.__aybMap||window.map;
         if(m && built.objects.length){
@@ -1306,7 +1302,7 @@
           m.fitBounds([[latN,lngN],[latX,lngX]], {padding:[40,40], maxZoom:18});
         }
       }catch(e){}
-    }, 500);
+    }, 700);
     (window.aybModal||function(x){try{window.toast&&toast(x);}catch(e){}})(
       "MİF yüklendi — Direk: "+built.count.direk+", Trafo: "+built.count.trafo+", Hat: "+built.count.hat+
       ".\nHaritada çizili olarak açıldı; direğe dokunup lamba ekle/çıkar yapabilirsin.","MİF İçe Aktarma");
@@ -1454,13 +1450,9 @@
     if(d.getElementById("ayb_takip_style")) return;
     var st=d.createElement("style"); st.id="ayb_takip_style";
     st.textContent=
-      "#aybTakipToggle{position:fixed;top:56px;right:14px;z-index:1290;background:#0f766e;color:#fff;border:none;"+
-        "border-radius:20px;padding:8px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 12px rgba(15,23,42,.3);"+
-        "cursor:pointer;font-family:inherit;line-height:1;}"+
-      "#aybTakipToggle:active{transform:scale(.96);}"+
-      "#aybTakipPanel{position:fixed;top:96px;right:14px;z-index:1291;width:290px;max-width:92vw;background:#fff;"+
+      "#aybTakipPanel{position:fixed;bottom:56px;right:8px;z-index:1291;width:290px;max-width:92vw;background:#fff;"+
         "border:1px solid #0f766e;border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.28);padding:14px 14px 12px;"+
-        "font-family:inherit;color:#0f172a;display:none;}"+
+        "font-family:inherit;color:#0f172a;display:none;max-height:74vh;overflow:auto;}"+
       "#aybTakipPanel.show{display:block;}"+
       "#aybTakipPanel h4{margin:0 0 8px;font-size:15px;color:#0f766e;display:flex;justify-content:space-between;align-items:center;}"+
       "#aybTakipPanel .tk-close{cursor:pointer;font-size:18px;color:#64748b;font-weight:700;line-height:1;padding:0 4px;}"+
@@ -1540,27 +1532,39 @@
   }
 
   function syncToggle(){
-    var b=d.getElementById("aybTakipToggle");
+    var b=d.getElementById("aybTakipBtn");
     if(b) b.textContent = (panel && panel.classList.contains("show")) ? "📋 Kapat" : "📋 Takip";
   }
+  function togglePanel(){
+    buildPanel();
+    if(panel.classList.contains("show")){ panel.classList.remove("show"); }
+    else { refresh(); panel.classList.add("show"); }
+    syncToggle();
+  }
+  function openPanel(){ buildPanel(); refresh(); panel.classList.add("show"); syncToggle(); }
   function makeToggle(){
-    if(d.getElementById("aybTakipToggle")) return;
-    var b=d.createElement("button"); b.id="aybTakipToggle"; b.type="button"; b.textContent="📋 Takip";
-    b.onclick=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){}
-      buildPanel();
-      if(panel.classList.contains("show")){ panel.classList.remove("show"); }
-      else { refresh(); panel.classList.add("show"); }
-      syncToggle();
-    };
-    d.body.appendChild(b);
+    /* Alt çubuğa "📋 Takip" düğmesi (üst menüleri kapatmaz) */
+    if(!d.getElementById("aybTakipBtn") && typeof window.aybBottomBar==="function"){
+      var b=d.createElement("button"); b.id="aybTakipBtn"; b.type="button";
+      b.className="ayb-barbtn"; b.textContent="📋 Takip";
+      b.onclick=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){} togglePanel(); };
+      window.aybBottomBar().appendChild(b);
+    }
+    /* "Saha Veri" menüsünden de açılsın (takip saha veri içinde) */
+    if(!window.__aybTakipSahaVeriBound){
+      window.__aybTakipSahaVeriBound=true;
+      d.addEventListener("click", function(ev){
+        var t=ev.target;
+        while(t && t!==d){ if(t.id==="btnFieldDataToggle"){ setTimeout(openPanel, 60); return; } t=t.parentNode; }
+      }, false);
+    }
   }
 
-  function setup(){ injectStyle(); makeToggle(); buildPanel(); }
+  function setup(){ injectStyle(); buildPanel(); makeToggle(); }
   if(d.readyState==="loading") d.addEventListener("DOMContentLoaded",function(){ setTimeout(setup,900); });
   setTimeout(setup, 900);
   setTimeout(setup, 2200);
-  /* proje açıldığında panel açıksa güncelle; gün değişimini de yakala */
-  setInterval(function(){ if(panel && panel.classList.contains("show")) refresh(); }, 4000);
+  setInterval(function(){ if(panel && panel.classList.contains("show")) refresh(); }, 5000);
   window.aybTakipRefresh=refresh;
 })();
 
@@ -1571,7 +1575,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v8";
+  var SURUM="v9";
   var TARIH="16.07.2026";
   function make(){
     if(d.getElementById("aybSurumBadge")) return;
@@ -1587,7 +1591,7 @@
         "• GPS konum → sağ üst 📍 ile gizle/göster\n"+
         "• MİF İç → ZIP seçince proje gibi çizili gelir (direk+hat+lamba)\n"+
         "• 📋 Takip → günlük plan (50), bugün/genel takılan lamba\n"+
-        "• KMZ → direkler siyah daire, lambalar sarı yıldız, yer altı hat dahil\n\n"+
+        "• KMZ → direkler siyah daire, lambalar sarı yıldız, yer altı hat dahil\n"+"• Konum ve Takip artık ALT çubukta (üst menüleri kapatmaz)\n"+"• MİF: aydınlatma (AYD) hatları AG değil, camgöbeği gösterilir\n\n"+
         "Bu yazıyı görüyorsan YENİ sürüm kuruldu demektir.";
       (window.aybModal||alert)(mesaj,"Sürüm Bilgisi");
     };
