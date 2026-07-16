@@ -997,13 +997,13 @@
   "use strict";
   var HIDDEN = true;
 
-  /* Ortak alt çubuk (Konum + Takip burada durur, üst menüleri kapatmaz) */
+  /* Ortak çubuk: Konum + Takip artık SAĞ KENAR ORTASINDA (üst menüyü ve alt imzayı kapatmaz) */
   window.aybBottomBar=function(){
     var bar=document.getElementById("aybBottomBar");
     if(!bar){
       bar=document.createElement("div"); bar.id="aybBottomBar";
-      bar.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:10px;z-index:1250;"+
-        "display:flex;gap:8px;align-items:center;";
+      bar.style.cssText="position:fixed;right:8px;top:46%;transform:translateY(-50%);z-index:1250;"+
+        "display:flex;flex-direction:column;gap:8px;align-items:flex-end;";
       document.body.appendChild(bar);
     }
     return bar;
@@ -1020,7 +1020,13 @@
       ".ayb-barbtn{border:none;border-radius:18px;padding:7px 13px;font-size:13px;font-weight:700;" +
         "box-shadow:0 3px 10px rgba(15,23,42,.3);cursor:pointer;font-family:inherit;line-height:1;color:#fff;}" +
       ".ayb-barbtn:active{transform:scale(.96);}" +
-      "#aybGpsBtn{background:#2563eb;} #aybTakipBtn{background:#0f766e;}";
+      "#aybGpsBtn{background:#2563eb;} #aybTakipBtn{background:#0f766e;}" +
+      /* ÜST ARAÇ SATIRI (Çalışma Alanı / ölçek / ITRF96 / Google Uydu / Uydu Ayar...) YATAY KAYDIRILSIN */
+      ".ayb-native-clean-workbar,.workbar{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;" +
+        "overflow-y:hidden!important;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}" +
+      ".ayb-native-clean-workbar>*,.workbar>*{flex:0 0 auto!important;}" +
+      ".ayb-native-clean-workbar::-webkit-scrollbar,.workbar::-webkit-scrollbar{height:5px;}" +
+      ".ayb-native-clean-workbar::-webkit-scrollbar-thumb,.workbar::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:3px;}";
     document.head.appendChild(st);
   }
 
@@ -1272,9 +1278,9 @@
         var kesit=iAg>=0?String(row[iAg]||""):"";
         var hatGenel=iGt>=0?String(row[iGt]||"").toUpperCase():"";
         var isAyd=hatGenel.indexOf("AYD")>=0;
-        var lprops={ hat_tipi:kesit, ag_hat_tipi:kesit, hy:"HAVAİ", durum:"MEVCUT", kaynak:"MIF", ithal_kaynak:"MIF" };
-        if(isAyd){ lprops.genel_tip="AYD"; lprops.ag_hat_aktif=true; }   /* AYDINLATMA hattı: AG değil */
-        else { lprops.genel_tip="AG"; }
+        /* Kesit SADECE hat_tipi'ne yazılır; ag_hat_tipi/ag_hat_aktif YOK -> "(4x10)+(4x10)" çiftlenmesi biter */
+        var lprops={ hat_tipi:kesit, hy:"HAVAİ", durum:"MEVCUT", kaynak:"MIF", ithal_kaynak:"MIF" };
+        lprops.genel_tip = isAyd ? "AYD" : "AG";
         var line={ id:UID("HAT"), kind:"hat", start:s.id, end:e.id, props:lprops };
         if(pts.length>2){ line.points=pts.map(function(p){return [p.lat,p.lng];}); }
         hatLines.push(line);
@@ -1288,24 +1294,41 @@
     if(typeof window.newProject!=="function" || typeof window.openProject!=="function"){
       (window.aybModal||alert)("Program hazır değil, tekrar deneyin."); return;
     }
+    /* Yükleniyor perdesi (donuk görünmesin, kullanıcı beklesin) */
+    var ov=d.getElementById("aybLoadOverlay");
+    if(!ov){
+      ov=d.createElement("div"); ov.id="aybLoadOverlay";
+      ov.style.cssText="position:fixed;inset:0;z-index:5000;background:rgba(15,23,42,.72);color:#fff;"+
+        "display:flex;align-items:center;justify-content:center;text-align:center;font-family:inherit;"+
+        "font-size:16px;font-weight:700;padding:24px;";
+      d.body.appendChild(ov);
+    }
+    ov.innerHTML="MİF çiziliyor…<br><span style='font-weight:400;font-size:13px'>"+
+      built.count.direk+" direk · "+built.count.hat+" hat · büyük projede birkaç saniye sürebilir, lütfen bekleyin.</span>";
+    ov.style.display="flex";
+
     var pr=window.newProject(projName||"MİF Projesi");
     pr.objects=built.objects; pr.lines=built.lines;
     pr.freeLines=pr.freeLines||[]; pr.channels=pr.channels||[]; pr.areas=pr.areas||[];
-    window.openProject(pr);
-    /* openProject zaten bir kez renderAll yapıyor; biz sadece haritayı sığdırıyoruz (fazladan render yok = hızlı) */
+
+    /* Perde boyansın diye kısa gecikme, sonra: ÖNCE haritayı veriye götür (boş harita = anında),
+       SONRA tek renderAll doğru zoom'da çalışsın (çift çizim yok = daha hızlı, daha az donma) */
     setTimeout(function(){
       try{
         var m=window.__aybMap||window.map;
         if(m && built.objects.length){
           var lat0=built.objects[0].lat, lng0=built.objects[0].lng, latN=lat0, latX=lat0, lngN=lng0, lngX=lng0;
           built.objects.forEach(function(o){ if(o.lat<latN)latN=o.lat; if(o.lat>latX)latX=o.lat; if(o.lng<lngN)lngN=o.lng; if(o.lng>lngX)lngX=o.lng; });
-          m.fitBounds([[latN,lngN],[latX,lngX]], {padding:[40,40], maxZoom:18});
+          m.fitBounds([[latN,lngN],[latX,lngX]], {padding:[40,40], maxZoom:18, animate:false});
         }
       }catch(e){}
-    }, 700);
-    (window.aybModal||function(x){try{window.toast&&toast(x);}catch(e){}})(
-      "MİF yüklendi — Direk: "+built.count.direk+", Trafo: "+built.count.trafo+", Hat: "+built.count.hat+
-      ".\nHaritada çizili olarak açıldı; direğe dokunup lamba ekle/çıkar yapabilirsin.","MİF İçe Aktarma");
+      try{ if(window.aybApplyLabelZoom) window.aybApplyLabelZoom(); }catch(e){}  /* uzaktaysa etiketler baştan kapalı = hafif */
+      window.openProject(pr);   /* tek render */
+      setTimeout(function(){ if(ov) ov.style.display="none"; }, 400);
+      (window.aybModal||function(x){try{window.toast&&toast(x);}catch(e){}})(
+        "MİF yüklendi — Direk: "+built.count.direk+", Trafo: "+built.count.trafo+", Hat: "+built.count.hat+
+        ".\nHaritada çizili olarak açıldı; direğe dokunup lamba ekle/çıkar yapabilirsin.","MİF İçe Aktarma");
+    }, 80);
   }
 
   /* ---------- 8) Dosya seç + işle ---------- */
@@ -1335,8 +1358,133 @@
     try{ built=buildProject(map, projName, cm); }
     catch(e){ status("İşlenemedi: "+(e&&e.message?e.message:e)); (window.aybModal||alert)("MİF işlenemedi: "+(e&&e.message?e.message:e)); return; }
     if(!built.objects.length && !built.lines.length){ status("İçinde direk/hat yok."); (window.aybModal||alert)("MİF içinde direk/hat bulunamadı."); return; }
-    status("Direk: "+built.count.direk+" · Hat: "+built.count.hat+" yükleniyor…");
-    openBuilt(built, projName);
+    status("Direk: "+built.count.direk+" · Hat: "+built.count.hat+" hazır.");
+    askImportMode(built, projName);
+  }
+
+  /* ---- MİF: Altlık mı Çizim mi? ---- */
+  function askImportMode(built, projName){
+    var old=d.getElementById("aybMifModeDlg"); if(old) old.remove();
+    var wrap=d.createElement("div"); wrap.id="aybMifModeDlg";
+    wrap.style.cssText="position:fixed;inset:0;z-index:6000;background:rgba(15,23,42,.55);display:flex;"+
+      "align-items:center;justify-content:center;padding:20px;font-family:inherit;";
+    wrap.innerHTML=
+      '<div style="background:#fff;border-radius:16px;max-width:360px;width:100%;padding:18px 18px 16px;box-shadow:0 18px 50px rgba(0,0,0,.4);">'+
+        '<div style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:4px;">MİF nasıl açılsın?</div>'+
+        '<div style="font-size:13px;color:#475569;margin-bottom:14px;">'+built.count.direk+' direk · '+built.count.hat+' hat</div>'+
+        '<button id="aybModeAltlik" style="width:100%;border:none;border-radius:11px;background:#0f766e;color:#fff;'+
+          'padding:13px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:9px;font-family:inherit;">'+
+          '🗺️ Altlık (hafif) — önerilen<br><span style="font-weight:400;font-size:12px;">Sadece görüntü: direk tipi + lamba. Tableti yormaz.</span></button>'+
+        '<button id="aybModeCizim" style="width:100%;border:none;border-radius:11px;background:#2563eb;color:#fff;'+
+          'padding:13px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:9px;font-family:inherit;">'+
+          '✏️ Çizim (düzenlenebilir)<br><span style="font-weight:400;font-size:12px;">Düzenle/metraj yapılır ama ağır olabilir.</span></button>'+
+        '<button id="aybModeCancel" style="width:100%;border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#475569;'+
+          'padding:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Vazgeç</button>'+
+      '</div>';
+    d.body.appendChild(wrap);
+    d.getElementById("aybModeAltlik").onclick=function(){ wrap.remove(); openAltlik(built, projName); };
+    d.getElementById("aybModeCizim").onclick=function(){ wrap.remove(); openBuilt(built, projName); };
+    d.getElementById("aybModeCancel").onclick=function(){ wrap.remove(); };
+  }
+
+  /* ---- Hafif ALTLIK (canvas) : obje oluşturmaz, tableti yormaz ---- */
+  function openAltlik(built, projName){
+    var m=window.__aybMap||window.map;
+    if(!m || typeof L==="undefined"){ (window.aybModal||alert)("Harita hazır değil."); return; }
+    /* built -> hafif veri */
+    var idMap={};
+    (built.objects||[]).forEach(function(o){ idMap[o.id]={lat:o.lat,lng:o.lng}; });
+    var poles=[];
+    (built.objects||[]).forEach(function(o){
+      if(o.type!=="direk") return;
+      var p=o.props||{}, watt="";
+      if(Array.isArray(p.lambalar)&&p.lambalar.length){ var l=p.lambalar[0]; watt=String(l.guc||"").trim(); }
+      poles.push({ lat:o.lat, lng:o.lng, no:String(p.direk_no||""), tip:String(p.direk_tipi||""),
+        watt:watt, ayd:(String(p.genel_tip||"").toUpperCase().indexOf("AYD")>=0) });
+    });
+    var lines=[];
+    (built.lines||[]).forEach(function(ln){
+      var pts=[];
+      if(Array.isArray(ln.points)&&ln.points.length>=2){ pts=ln.points.map(function(pp){ return [pp[0],pp[1]]; }); }
+      else { var a=idMap[ln.start], b=idMap[ln.end]; if(a&&b){ pts=[[a.lat,a.lng],[b.lat,b.lng]]; } }
+      if(pts.length>=2){ var pr=ln.props||{}; lines.push({ pts:pts, ayd:(String(pr.genel_tip||"").toUpperCase().indexOf("AYD")>=0), kesit:String(pr.hat_tipi||"") }); }
+    });
+
+    if(window.__aybAltlikLayer){ try{ m.removeLayer(window.__aybAltlikLayer); }catch(e){} window.__aybAltlikLayer=null; }
+    var layer=aybMakeAltlikLayer(poles, lines);
+    layer.addTo(m);
+    window.__aybAltlikLayer=layer;
+    window.aybClearAltlik=function(){ try{ m.removeLayer(layer); }catch(e){} window.__aybAltlikLayer=null; };
+
+    /* haritayı veriye sığdır */
+    try{
+      if(poles.length){ var la0=poles[0].lat,ln0=poles[0].lng,laN=la0,laX=la0,lnN=ln0,lnX=ln0;
+        poles.forEach(function(p){ if(p.lat<laN)laN=p.lat; if(p.lat>laX)laX=p.lat; if(p.lng<lnN)lnN=p.lng; if(p.lng>lnX)lnX=p.lng; });
+        m.fitBounds([[laN,lnN],[laX,lnX]],{padding:[40,40],maxZoom:18,animate:false});
+      }
+    }catch(e){}
+    status("Altlık çizildi: "+poles.length+" direk, "+lines.length+" hat (hafif).");
+  }
+
+  /* Canvas tabanlı hafif katman (obje yok) */
+  function aybMakeAltlikLayer(poles, lines){
+    var THRESH=17;
+    var Lyr=L.Layer.extend({
+      onAdd:function(map){
+        this._map=map;
+        var c=this._canvas=L.DomUtil.create("canvas","ayb-altlik-canvas");
+        c.style.position="absolute"; c.style.pointerEvents="none"; c.style.zIndex=200;
+        map.getPanes().overlayPane.appendChild(c);
+        map.on("moveend",this._redraw,this);
+        map.on("zoomstart",this._hide,this);
+        map.on("zoomend",this._redraw,this);
+        map.on("resize",this._redraw,this);
+        this._redraw();
+        return this;
+      },
+      onRemove:function(map){
+        map.off("moveend",this._redraw,this); map.off("zoomstart",this._hide,this);
+        map.off("zoomend",this._redraw,this); map.off("resize",this._redraw,this);
+        if(this._canvas&&this._canvas.parentNode) this._canvas.parentNode.removeChild(this._canvas);
+      },
+      _hide:function(){ if(this._canvas) this._canvas.style.visibility="hidden"; },
+      _redraw:function(){
+        var map=this._map; if(!map) return;
+        var c=this._canvas, size=map.getSize();
+        var tl=map.containerPointToLayerPoint([0,0]);
+        L.DomUtil.setPosition(c, tl);
+        if(c.width!==size.x) c.width=size.x;
+        if(c.height!==size.y) c.height=size.y;
+        c.style.visibility="visible";
+        var ctx=c.getContext("2d"); ctx.clearRect(0,0,size.x,size.y);
+        var z=map.getZoom(), showLbl=(z>=THRESH);
+        /* hatlar */
+        for(var i=0;i<lines.length;i++){
+          var ln=lines[i]; ctx.beginPath();
+          for(var j=0;j<ln.pts.length;j++){ var q=map.latLngToContainerPoint(ln.pts[j]); if(j===0) ctx.moveTo(q.x,q.y); else ctx.lineTo(q.x,q.y); }
+          ctx.strokeStyle=ln.ayd?"#06b6d4":"#1aa260"; ctx.lineWidth=2.5; ctx.stroke();
+          if(showLbl && ln.kesit){ var mid=map.latLngToContainerPoint(ln.pts[(ln.pts.length/2)|0]);
+            ctx.font="11px sans-serif"; ctx.fillStyle="#e0f2fe"; ctx.strokeStyle="#0f172a"; ctx.lineWidth=3; ctx.textAlign="center";
+            ctx.strokeText(ln.kesit, mid.x, mid.y-3); ctx.fillText(ln.kesit, mid.x, mid.y-3); }
+        }
+        /* direkler + lamba + etiket */
+        ctx.textAlign="left";
+        for(var k=0;k<poles.length;k++){
+          var po=poles[k], pt=map.latLngToContainerPoint([po.lat,po.lng]);
+          if(pt.x<-60||pt.y<-60||pt.x>size.x+60||pt.y>size.y+60) continue; /* görünmeyeni atla */
+          ctx.beginPath(); ctx.arc(pt.x,pt.y,4,0,Math.PI*2); ctx.fillStyle="#111827"; ctx.fill();
+          ctx.lineWidth=1.6; ctx.strokeStyle=po.ayd?"#06b6d4":"#f59e0b"; ctx.stroke();
+          if(po.watt){ ctx.beginPath(); ctx.arc(pt.x,pt.y-10,3,0,Math.PI*2); ctx.fillStyle="#fde047"; ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle="#a16207"; ctx.stroke(); }
+          if(showLbl){
+            ctx.font="bold 11px sans-serif";
+            if(po.watt){ ctx.fillStyle="#facc15"; ctx.strokeStyle="#0f172a"; ctx.lineWidth=3; ctx.strokeText(po.watt+"W", pt.x+7, pt.y-8); ctx.fillText(po.watt+"W", pt.x+7, pt.y-8); }
+            var t=(po.no?po.no+" ":"")+(po.tip||"");
+            if(t.trim()){ ctx.fillStyle="#ffffff"; ctx.strokeStyle="#0f172a"; ctx.lineWidth=3; ctx.strokeText(t, pt.x+7, pt.y+5); ctx.fillText(t, pt.x+7, pt.y+5); }
+          }
+        }
+      }
+    });
+    return new Lyr();
   }
 
   function classifyInto(map, name, txt){
@@ -1575,7 +1723,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v9";
+  var SURUM="v14";
   var TARIH="16.07.2026";
   function make(){
     if(d.getElementById("aybSurumBadge")) return;
@@ -1591,7 +1739,7 @@
         "• GPS konum → sağ üst 📍 ile gizle/göster\n"+
         "• MİF İç → ZIP seçince proje gibi çizili gelir (direk+hat+lamba)\n"+
         "• 📋 Takip → günlük plan (50), bugün/genel takılan lamba\n"+
-        "• KMZ → direkler siyah daire, lambalar sarı yıldız, yer altı hat dahil\n"+"• Konum ve Takip artık ALT çubukta (üst menüleri kapatmaz)\n"+"• MİF: aydınlatma (AYD) hatları AG değil, camgöbeği gösterilir\n\n"+
+        "• KMZ → direkler siyah daire, lambalar sarı yıldız, yer altı hat dahil\n"+"• Konum ve Takip SAĞ kenarda (üst menü ve alt imzayı kapatmaz)\n"+"• Üst araç satırı (Google Uydu vb.) YATAY kayar\n"+"• MİF: aydınlatma (AYD) hatları AG değil, camgöbeği gösterilir\n"+"• MİF hat kesiti artık TEK yazılır (çiftlenme düzeltildi)\n"+"• MİF yüklerken 'çiziliyor' perdesi + tek çizim (daha az donma)\n"+"• Etiketler zoom'a göre: UZAKTA gizli, YAKINDA görünür (tablet rahat)\n"+"• MİF alırken 'Altlık (hafif)' / 'Çizim (düzenlenebilir)' seçimi\n"+"• Altlık: canvas ile hafif çizim, direk tipi + lamba, DONMAZ\n"+"• Offline hız: karo yükü azaltıldı (6→2), boş karo anında geçilir\n"+"• İnternet yokken çizim/altlık/GPS hızlı; Uydu Kapat en hızlısı\n\n"+
         "Bu yazıyı görüyorsan YENİ sürüm kuruldu demektir.";
       (window.aybModal||alert)(mesaj,"Sürüm Bilgisi");
     };
@@ -1600,4 +1748,99 @@
   if(d.readyState==="loading") d.addEventListener("DOMContentLoaded",function(){ setTimeout(make,800); });
   setTimeout(make,800);
   setTimeout(make,2000);
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — ZOOM'A GÖRE ETİKET AÇ/KAPAT (uzakken kapalı = tablet rahat) */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  var d=document;
+  var THRESH=17;   /* bu zoom'un ALTINDA yazılar gizli, ÜSTÜNDE görünür */
+
+  function injectCss(){
+    if(d.getElementById("ayb_label_zoom_css")) return;
+    var st=d.createElement("style"); st.id="ayb_label_zoom_css";
+    /* Uzaktayken SADECE metin etiketleri gizlenir; direk/lamba/hat şekilleri görünür kalır */
+    st.textContent=
+      "body.ayb-labels-off .symbol .sym-label,"+
+      "body.ayb-labels-off .sym-label,"+
+      "body.ayb-labels-off .sym-label-trafo,"+
+      "body.ayb-labels-off .ayb-line-label,"+
+      "body.ayb-labels-off .ayb-lamp-watt{display:none!important;}";
+    d.head.appendChild(st);
+  }
+  function theMap(){ return window.__aybMap||window.map; }
+  function apply(){
+    var m=theMap(); if(!m||!m.getZoom) return;
+    var z=0; try{ z=m.getZoom(); }catch(e){ return; }
+    if(z<THRESH) d.body.classList.add("ayb-labels-off");
+    else d.body.classList.remove("ayb-labels-off");
+  }
+  function bind(){
+    var m=theMap();
+    if(!m||!m.on){ return; }
+    if(m.__aybLblZoomBound) { apply(); return; }
+    m.__aybLblZoomBound=true;
+    m.on("zoomend", apply);
+    m.on("zoomstart", function(){ /* zoom sırasında da hafiflet */ });
+    apply();
+  }
+  injectCss();
+  bind();
+  setTimeout(bind, 900);
+  setTimeout(bind, 2200);
+  setTimeout(bind, 4000);
+  window.aybApplyLabelZoom=apply;
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — OFFLINE HIZ: karo yükünü azalt, başarısız karoyu boş geç    */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  /* 1x1 saydam GIF: internet yokken karo takılmadan boş görünsün (gri/broken ikon yok) */
+  var BLANK="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+  function patchTile(l){
+    if(!l||!l.options) return;
+    try{
+      l.options.keepBuffer=2;              /* 6 -> 2 : görüntü başına çok daha az karo isteği */
+      l.options.updateWhenIdle=true;
+      l.options.updateWhenZooming=false;
+      if(!l._aybBlank){ l.options.errorTileUrl=BLANK; l._aybBlank=true; }
+    }catch(e){}
+  }
+  function tune(){
+    var m=window.__aybMap||window.map;
+    if(!m||!m.eachLayer||typeof L==="undefined") return false;
+    m.eachLayer(function(l){ if(l instanceof L.TileLayer) patchTile(l); });
+    if(!m.__aybTileHook){
+      m.__aybTileHook=true;
+      m.on("layeradd", function(e){ if(e.layer instanceof L.TileLayer){ patchTile(e.layer); } });
+    }
+    return true;
+  }
+  var tr=0; (function loop(){ if(tune()||tr++>25) return; setTimeout(loop,600); })();
+
+  /* İnternet yok uyarısı (kısa süre görünür) */
+  function note(){
+    if(navigator.onLine) return;
+    var el=document.getElementById("aybNetNote");
+    if(!el){
+      el=document.createElement("div"); el.id="aybNetNote";
+      el.style.cssText="position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:2600;background:#b45309;"+
+        "color:#fff;padding:6px 12px;border-radius:14px;font-family:inherit;font-size:12px;font-weight:700;"+
+        "box-shadow:0 3px 10px rgba(0,0,0,.3);max-width:92vw;text-align:center;";
+      document.body.appendChild(el);
+    }
+    el.textContent="İnternet yok — uydu sınırlı. Çizim/Altlık/GPS hızlı çalışır. (Uydu Kapat = daha da hızlı)";
+    el.style.display="block";
+    clearTimeout(el._t); el._t=setTimeout(function(){ if(el) el.style.display="none"; }, 7000);
+  }
+  window.addEventListener("offline", note);
+  window.addEventListener("online", function(){ var el=document.getElementById("aybNetNote"); if(el) el.style.display="none"; });
+  setTimeout(note, 1800);
 })();
