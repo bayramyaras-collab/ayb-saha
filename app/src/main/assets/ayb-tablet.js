@@ -36,6 +36,14 @@
       '.ayb-pro-row{flex-wrap:nowrap!important;}',
       /* sekme cubugu (Proje/Cizim/Duzenle...) da kaysin */
       '.tabs{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;width:100%!important;min-width:0!important;box-sizing:border-box!important;}',
+      /* UST SEKME CUBUGU (Proje/Cizim/Duzenle/Analiz/Rapor/Baski) - grid yerine yana kaydir */
+      '#aybRibbonTabs{display:flex!important;flex-wrap:nowrap!important;grid-template-columns:none!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;height:auto!important;min-height:31px!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;}',
+      '#aybRibbonTabs>*{flex:0 0 auto!important;min-width:78px!important;}',
+      '#aybRibbonTabs::-webkit-scrollbar{height:7px;}',
+      '#aybRibbonTabs::-webkit-scrollbar-thumb{background:#8aa0c8;border-radius:4px;}',
+      '.ayb-ribbon-tab{overflow:visible!important;text-overflow:clip!important;}',
+      /* alet cubugu (aybRibbonTools) da kaysin */
+      '#aybRibbonTools{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;min-width:0!important;max-width:100vw!important;}',
       '.tabs::-webkit-scrollbar{height:6px;}',
       /* Temiz Ekran: bilgi katmanlarini gizle */
       'body.ayb-temiz .coord-overlay,body.ayb-temiz .hint,body.ayb-temiz #kfMeasureInfo,body.ayb-temiz #aybSahaImza{display:none!important;}'
@@ -80,24 +88,69 @@
     if(mb){ try{ if(window.setTool) window.setTool(null); }catch(_){ } }
   }, true);
 
-  /* ---------- 4) DISA AKTAR -> paylas ekrani ---------- */
-  if(window.AYBNative && window.AYBNative.exportFile){
-    document.addEventListener('click', function(e){
-      var a=null;
-      if(e.target){ if(e.target.tagName==='A'&&e.target.hasAttribute('download')) a=e.target;
-        else if(e.target.closest) a=e.target.closest('a[download]'); }
-      if(!a) return;
-      var href=a.href||''; if(href.indexOf('blob:')!==0&&href.indexOf('data:')!==0) return;
-      var name=a.getAttribute('download')||'AYB_dosya';
-      e.preventDefault(); e.stopImmediatePropagation();
-      fetch(href).then(function(r){return r.blob();}).then(function(blob){
-        var mime=blob.type||'application/octet-stream'; var fr=new FileReader();
-        fr.onload=function(){ var s=String(fr.result||''); var i=s.indexOf(','); var b64=i>=0?s.slice(i+1):s;
-          try{ AYBNative.exportFile(name,b64,mime); }catch(err){} };
-        fr.readAsDataURL(blob);
-      }).catch(function(){});
-    }, true);
+  /* ---------- 4) DISA AKTAR -> Belgeler'e kaydet + WhatsApp paylas (SAGLAM) ---------- */
+  function aybToast(msg){ try{ if(window.toast) return toast(msg); }catch(_){} try{ alert(msg); }catch(_){} }
+  function aybHasNative(){ return !!(window.AYBNative && window.AYBNative.exportFile); }
+  /* Bir Blob'u base64'e cevirip dogrudan Android'e ver (Belgeler/AYB_Saha_Disa + paylas) */
+  function aybSendBlob(filename, blob, mime){
+    try{
+      var fr=new FileReader();
+      fr.onload=function(){
+        var str=String(fr.result||''); var i=str.indexOf(','); var b64=i>=0?str.slice(i+1):str;
+        try{ AYBNative.exportFile(filename, b64, mime||blob.type||'application/octet-stream'); }
+        catch(err){ aybToast('Kaydedilemedi: '+(err&&err.message?err.message:err)); }
+      };
+      fr.onerror=function(){ aybToast('Dosya okunamadi, kaydedilemedi.'); };
+      fr.readAsDataURL(blob);
+    }catch(e){ aybToast('Disa aktarma hatasi: '+(e&&e.message?e.message:e)); }
   }
+
+  /* aybDownloadFile'i DOGRUDAN Android'e bagla (a[download] hilesine gerek yok) */
+  try{
+    window.aybDownloadFile=function(filename, content, mime){
+      try{
+        var blob = content instanceof Blob ? content : new Blob([content], {type:mime||'application/octet-stream'});
+        if(aybHasNative()){ aybSendBlob(filename, blob, mime); return; }
+        aybToast('APK guncel degil: dosya Belgeler\'e kaydedilemiyor. Lutfen en yeni APK\'yi kurun.');
+        var url=URL.createObjectURL(blob); var a=document.createElement('a');
+        a.href=url; a.download=filename; a.style.display='none';
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ try{URL.revokeObjectURL(url); a.remove();}catch(_){} },800);
+      }catch(e){ aybToast('Disa aktarma hatasi: '+(e&&e.message?e.message:e)); }
+    };
+  }catch(e){}
+
+  /* METRAJ EXCEL: XLSX.writeFile -> dogrudan Belgeler'e kaydet + paylas */
+  try{
+    if(window.XLSX && typeof XLSX.write==='function'){
+      XLSX.writeFile=function(wb, filename, opts){
+        try{
+          var name=filename||'metraj.xlsx';
+          var b64=XLSX.write(wb, {bookType:'xlsx', type:'base64'});
+          var m='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          if(aybHasNative()){ AYBNative.exportFile(name, b64, m); return; }
+          aybToast('APK guncel degil: Excel Belgeler\'e kaydedilemiyor. Lutfen en yeni APK\'yi kurun.');
+          var bin=atob(b64); var arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+          aybSendBlob(name, new Blob([arr],{type:m}), m);
+        }catch(e){ aybToast('Excel kaydetme hatasi: '+(e&&e.message?e.message:e)); }
+      };
+    }
+  }catch(e){}
+
+  /* YEDEK GITMEYENLER ICIN: a[download] tiklamalarini da yakala (KMZ-sembollu vs.) */
+  document.addEventListener('click', function(e){
+    var a=null;
+    if(e.target){ if(e.target.tagName==='A'&&e.target.hasAttribute('download')) a=e.target;
+      else if(e.target.closest) a=e.target.closest('a[download]'); }
+    if(!a) return;
+    var href=a.href||''; if(href.indexOf('blob:')!==0&&href.indexOf('data:')!==0) return;
+    var name=a.getAttribute('download')||'AYB_dosya';
+    e.preventDefault(); e.stopImmediatePropagation();
+    if(!aybHasNative()){ aybToast('APK guncel degil: dosya kaydedilemiyor. Lutfen en yeni APK\'yi kurun.'); return; }
+    fetch(href).then(function(r){return r.blob();}).then(function(blob){
+      aybSendBlob(name, blob, blob.type||'application/octet-stream');
+    }).catch(function(err){ aybToast('Dosya hazirlanamadi: '+(err&&err.message?err.message:err)); });
+  }, true);
 
   /* ---------- 5) DIREK FORMU: Durdurucu + Kafes alanlarini kaldir ---------- */
   /* Direk/Trafo alanlari KAYNAKTAN silindi; arka plan gozlemcisi kaldirildi. */
@@ -468,4 +521,58 @@
     setTimeout(killFolder,600); setTimeout(killFolder,1800); setTimeout(killFolder,4000); setTimeout(killFolder,8000);
   })();
 
+})();
+
+/* ====== EK DUZELTMELER (v: direk-tasima + direkt silme) ====== */
+(function(){
+  'use strict';
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+
+  /* 1) DIREK TASININCA HAT UCU TAKIP ETSIN
+     Yer Alti Hat, kayitli line.points kullaniyordu -> uclar eski kaliyordu.
+     Ilk/son noktayi canli direk konumuna sabitle (kirik noktalar korunur). */
+  function patchLinePoints(){
+    if(typeof window.aybNormalizeLinePoints!=='function' || window.__aybLinePtsPatched) return;
+    window.__aybLinePtsPatched=true;
+    window.aybNormalizeLinePoints=function(points,start,end){
+      var arr=(Array.isArray(points)?points:[]).map(function(p){
+        try{ return window.aybNormalizeLinePoint?window.aybNormalizeLinePoint(p):p; }catch(e){ return p; }
+      }).filter(function(p){ return p&&isFinite(p[0])&&isFinite(p[1]); });
+      if(arr.length>=2){
+        if(start&&isFinite(+start.lat)&&isFinite(+start.lng)) arr[0]=[Number(start.lat),Number(start.lng)];
+        if(end&&isFinite(+end.lat)&&isFinite(+end.lng)) arr[arr.length-1]=[Number(end.lat),Number(end.lng)];
+        return arr;
+      }
+      return (start&&end)?[[Number(start.lat),Number(start.lng)],[Number(end.lat),Number(end.lng)]]:arr;
+    };
+    try{ if(window.project && window.renderAll) window.renderAll(); }catch(e){}
+  }
+  ready(patchLinePoints);
+  setTimeout(patchLinePoints,800); setTimeout(patchLinePoints,2500); setTimeout(patchLinePoints,6000);
+
+  /* 2) "SIL" DEDIGINDE DIREKT SILSIN (silme onaylarinda otomatik EVET)
+     Diger onaylar temiz Android diyaloguna gider (MainActivity). */
+  try{
+    var _confirm = window.confirm ? window.confirm.bind(window) : function(){return true;};
+    window.confirm=function(msg){
+      try{
+        var s=String(msg||'');
+        if(/sil(in|me|di)|kaldır|kaldir|temizle/i.test(s)) return true; /* direkt sil */
+      }catch(e){}
+      try{ return _confirm(msg); }catch(e){ return true; }
+    };
+  }catch(e){}
+})();
+
+/* ====== UST BASLIK: "Korfezim Saha Metraj" ====== */
+(function(){
+  function setTitle(){
+    try{
+      var t=document.querySelector('.titlebar .title')||document.querySelector('.title');
+      if(t && t.textContent.indexOf('Körfezim')===-1){ t.textContent='Körfezim Saha Metraj'; }
+    }catch(e){}
+    try{ if(document.title.indexOf('Pafta')===-1) document.title='Körfezim Saha Metraj'; }catch(e){}
+  }
+  if(document.readyState!=='loading') setTitle(); else document.addEventListener('DOMContentLoaded',setTitle);
+  setTimeout(setTitle,600); setTimeout(setTitle,2000);
 })();
