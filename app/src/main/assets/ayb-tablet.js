@@ -276,7 +276,8 @@
     var tog=document.createElement('button'); tog.textContent='🧰 Araçlar';
     tog.style.cssText='font:700 13px system-ui;padding:8px 12px;border:0;border-radius:20px;background:#388cff;color:#fff;box-shadow:0 3px 10px rgba(0,0,0,.35)';
     tog.onclick=function(){ panel.style.display = panel.style.display==='none'?'flex':'none'; };
-    wrap.appendChild(panel); wrap.appendChild(fin); wrap.appendChild(tog);
+    /* Kullanici istegi: sag alttaki 'Araclar' paneli+dugmesi KALDIRILDI. Sadece Bitir kalir. */
+    wrap.appendChild(fin);
     document.body.appendChild(wrap);
   });
 
