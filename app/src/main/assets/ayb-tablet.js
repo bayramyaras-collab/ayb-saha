@@ -1844,7 +1844,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v20";
+  var SURUM="v21";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -1997,15 +1997,27 @@
   function load(){ try{ var s=localStorage.getItem(LSK+pid()); if(s){ var o=JSON.parse(s); o.base=o.base||{}; o.days=o.days||{}; return o; } }catch(e){} return {base:{},days:{},init:false}; }
   function save(st){ try{ localStorage.setItem(LSK+pid(), JSON.stringify(st)); }catch(e){} }
 
-  /* Otomatik takip: lamba ekledikçe bugüne yazılır (manuel yok) */
+  function lampWatt(l){ var w=l&&(l.guc||l.watt||l.w||l.güc); w=(w==null||w==="")?"":String(w).replace(/[^0-9.]/g,""); return w?(w+"W"):"?W"; }
+  function poleNewWatts(o){ var m={}; if(o.type==="direk"&&o.props&&Array.isArray(o.props.lambalar)){ o.props.lambalar.forEach(function(l){ if(isNewLamp(l,o)){ var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1; var w=lampWatt(l); m[w]=(m[w]||0)+a; } }); } return m; }
+  function projectNewByWatt(){ var p=proj(), m={}; if(p&&p.objects) p.objects.forEach(function(o){ if(o.type!=="direk")return; var pm=poleNewWatts(o); Object.keys(pm).forEach(function(w){ m[w]=(m[w]||0)+pm[w]; }); }); return m; }
+  function ekipAdi(){ try{ return (localStorage.getItem("ayb_ekip_adi")||"").trim()||"(ekip adı yok)"; }catch(e){ return "(ekip)"; } }
+
+  /* Otomatik takip: lamba ekledikçe bugüne yazılır (adet + W kırılımı) */
   function track(){
     var p=proj(); if(!p||!p.objects) return;
-    var st=load(), cur={};
-    p.objects.forEach(function(o){ if(o.type==="direk"){ var c=poleNewCount(o); if(c>0) cur[o.id]=c; } });
-    if(!st.init){ st.base=cur; st.days=st.days||{}; st.init=true; save(st); return; }
+    var st=load(), cur={}, curW={};
+    p.objects.forEach(function(o){ if(o.type==="direk"){ var c=poleNewCount(o); if(c>0){ cur[o.id]=c; curW[o.id]=poleNewWatts(o); } } });
+    st.baseW=st.baseW||{}; st.daysW=st.daysW||{};
+    if(!st.init){ st.base=cur; st.baseW=curW; st.days=st.days||{}; st.init=true; save(st); return; }
     var t=today();
-    Object.keys(cur).forEach(function(id){ var prev=st.base[id]||0; if(cur[id]>prev){ st.days[t]=(st.days[t]||0)+(cur[id]-prev); } st.base[id]=cur[id]; });
-    Object.keys(st.base).forEach(function(id){ if(!(id in cur)) st.base[id]=0; });
+    Object.keys(cur).forEach(function(id){
+      var prev=st.base[id]||0;
+      if(cur[id]>prev){ st.days[t]=(st.days[t]||0)+(cur[id]-prev); }
+      var pW=st.baseW[id]||{}, cW=curW[id]||{};
+      Object.keys(cW).forEach(function(w){ var dd=(cW[w]||0)-(pW[w]||0); if(dd>0){ st.daysW[t]=st.daysW[t]||{}; st.daysW[t][w]=(st.daysW[t][w]||0)+dd; } });
+      st.base[id]=cur[id]; st.baseW[id]=cW;
+    });
+    Object.keys(st.base).forEach(function(id){ if(!(id in cur)){ st.base[id]=0; st.baseW[id]={}; } });
     save(st);
   }
   function stats(){
@@ -2067,15 +2079,80 @@
   function excel(){
     try{
       if(typeof window.aybBuildXlsx!=="function"){ (window.aybModal||alert)("Excel üretici hazır değil."); return; }
-      var s=stats();
-      var rows=[["KÖRFEZİM — GÜNÜN ÖZETİ",""],["Proje",pname()],["Tarih",today()],["",""],
-        ["Bugün Takılan Lamba",s.bugun],["Genel Takılan (tüm günler)",s.genel],
-        ["Projede Yeni Lamba",s.yeni],["Projede Mevcut Lamba",s.mevcut],["Toplam Direk",s.direk]];
-      var blob=window.aybBuildXlsx([{name:"Gunun_Ozeti", rows:rows}]);
+      track();
+      var st=load(), s=stats();
+      var days=st.days||{}, daysW=st.daysW||{};
+      var ekip=ekipAdi();
+      /* tüm W türlerini topla (proje + geçmiş) */
+      var wattSet={};
+      var projW=projectNewByWatt(); Object.keys(projW).forEach(function(w){ wattSet[w]=true; });
+      Object.keys(daysW).forEach(function(dk){ Object.keys(daysW[dk]).forEach(function(w){ wattSet[w]=true; }); });
+      var watts=Object.keys(wattSet).sort(function(a,b){ return (parseFloat(a)||0)-(parseFloat(b)||0); });
+      var tgun=today();
+
+      /* SAYFA 1: GENEL ÖZET */
+      var s1=[["KÖRFEZİM — GÜNÜN ÖZETİ / GENEL","",""],
+        ["Proje",pname(),""],["Ekip",ekip,""],["Rapor Tarihi",tgun,""],["",""],
+        ["Bugün Takılan Lamba (toplam)",s.bugun,""],
+        ["Genel Takılan (tüm günler)",s.genel,""],
+        ["Projede Yeni Lamba (toplam)",s.yeni,""],
+        ["Projede Mevcut Lamba",s.mevcut,""],
+        ["Toplam Direk",s.direk,""],["",""],
+        ["GENEL TOPLAM — GÜCE GÖRE TAKILAN LAMBA","",""],
+        ["Güç (W)","Adet",""]];
+      var toplamProj=0;
+      watts.forEach(function(w){ var c=projW[w]||0; toplamProj+=c; s1.push([w,c,""]); });
+      s1.push(["TOPLAM",toplamProj,""]);
+
+      /* SAYFA 2: BUGÜN — güce göre */
+      var bW=daysW[tgun]||{};
+      var s2=[["BUGÜN TAKILAN LAMBA — GÜCE GÖRE"],["Tarih",tgun],["Ekip",ekip],["",""],["Güç (W)","Adet"]];
+      var bToplam=0, anyB=false;
+      watts.forEach(function(w){ var c=bW[w]||0; if(c>0){ anyB=true; } bToplam+=c; s2.push([w,c]); });
+      if(!anyB) s2.push(["(Bugün henüz kayıt yok)",""]);
+      s2.push(["TOPLAM",bToplam]);
+
+      /* SAYFA 3: TARİH TARİH (geçmiş günler, güce göre matris) */
+      var allDates=Object.keys(days); Object.keys(daysW).forEach(function(dk){ if(allDates.indexOf(dk)<0) allDates.push(dk); });
+      allDates.sort();
+      var head=["Tarih"].concat(watts).concat(["Gün Toplam"]);
+      var s3=[["TARİH TARİH TAKILAN LAMBA (güce göre)"],head];
+      var colTotals={}; watts.forEach(function(w){ colTotals[w]=0; }); var grand=0;
+      allDates.forEach(function(dt){
+        var row=[dt]; var dW=daysW[dt]||{}; var rowTot=0;
+        watts.forEach(function(w){ var c=dW[w]||0; row.push(c); colTotals[w]+=c; rowTot+=c; });
+        /* eski kayıtta W kırılımı yoksa gün toplamını days'ten al */
+        var dayTot=(+days[dt]||0); if(rowTot===0 && dayTot>0) rowTot=dayTot;
+        row.push(rowTot); grand+=rowTot; s3.push(row);
+      });
+      if(allDates.length===0) s3.push(["(Kayıt yok)"]);
+      var totRow=["TOPLAM"]; watts.forEach(function(w){ totRow.push(colTotals[w]); }); totRow.push(grand); s3.push(totRow);
+
+      /* SAYFA 4: EKİP PERFORMANS */
+      var calisan=allDates.filter(function(dt){ return (+days[dt]||0)>0 || Object.keys(daysW[dt]||{}).length; });
+      var gunSay=calisan.length;
+      var ortalama = gunSay? Math.round((grand/gunSay)*10)/10 : 0;
+      var enIyi={dt:"-",n:0}; calisan.forEach(function(dt){ var dW=daysW[dt]||{}; var tot=0; Object.keys(dW).forEach(function(w){tot+=dW[w];}); if(tot===0) tot=(+days[dt]||0); if(tot>enIyi.n){ enIyi={dt:dt,n:tot}; } });
+      var s4=[["EKİP PERFORMANS"],["Ekip",ekip],["Proje",pname()],["",""],
+        ["Toplam Takılan Lamba",grand],
+        ["Çalışılan Gün Sayısı",gunSay],
+        ["Günlük Ortalama (lamba/gün)",ortalama],
+        ["En Verimli Gün",enIyi.dt+" ("+enIyi.n+" adet)"],["",""],
+        ["Gün","Takılan Lamba"]];
+      calisan.forEach(function(dt){ var dW=daysW[dt]||{}; var tot=0; Object.keys(dW).forEach(function(w){tot+=dW[w];}); if(tot===0) tot=(+days[dt]||0); s4.push([dt,tot]); });
+      if(gunSay===0) s4.push(["(Kayıt yok)",""]);
+
+      var blob=window.aybBuildXlsx([
+        {name:"Genel_Ozet", rows:s1},
+        {name:"Bugun_Guc", rows:s2},
+        {name:"Tarih_Tarih", rows:s3},
+        {name:"Ekip_Performans", rows:s4}
+      ]);
       var nm=pname()+"_gunun_ozeti.xlsx";
       var mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       if(window.aybShareFile) window.aybShareFile(nm, blob, mime);
       else if(typeof aybDownloadFile==="function") aybDownloadFile(nm, blob, mime);
+      try{ if(window.toast) toast("Günün Özeti Excel hazır."); }catch(e){}
     }catch(e){ (window.aybModal||alert)("Hata: "+(e&&e.message?e.message:e)); }
   }
 
@@ -2295,27 +2372,69 @@
 
 
 /* ===================================================================== */
-/* KÖRFEZİM — GPS kartı tek dokunuşla sağa gizlen / tekrar dokun aç       */
+/* KÖRFEZİM — GPS kartı + Lejant: BASILI TUT SÜRÜKLE, TEK DOKUN kenara gizle */
 /* ===================================================================== */
 (function(){
   "use strict";
   var d=document;
   function css(){
-    if(d.getElementById("aybGpsTogCss")) return;
-    var st=d.createElement("style"); st.id="aybGpsTogCss";
+    if(d.getElementById("aybDragCss")) return;
+    var st=d.createElement("style"); st.id="aybDragCss";
     st.textContent=
-      "#gpsCard.gps-live{transition:transform .22s ease,opacity .22s ease;cursor:pointer;}"+
-      "#gpsCard.gps-live.ayb-gps-min{transform:translateX(calc(100% - 20px))!important;opacity:.9;}"+
-      "#gpsCard.gps-live.ayb-gps-min::before{content:'\\2039';position:absolute;left:5px;top:50%;transform:translateY(-50%);font-weight:900;font-size:15px;color:#0f766e;}";
+      "#gpsCard.gps-live{cursor:grab;touch-action:none;}"+
+      ".legend{cursor:grab;touch-action:none;}"+
+      ".ayb-draggable{transition:transform .2s ease,opacity .2s ease;}"+
+      ".ayb-draggable.ayb-drag-hidden{opacity:.92;}"+
+      ".ayb-draggable.ayb-drag-hidden::after{content:'';}";
     (d.head||d.documentElement).appendChild(st);
+  }
+  function toggleHide(el){
+    if(el.classList.contains("ayb-drag-hidden")){
+      el.classList.remove("ayb-drag-hidden"); el.style.transform="none"; return;
+    }
+    var r=el.getBoundingClientRect(); var center=r.left+r.width/2;
+    var toLeft=center < (window.innerWidth/2); var vis=22;
+    el.classList.add("ayb-drag-hidden");
+    el.style.transform = toLeft ? ("translateX(calc(-100% + "+vis+"px))") : ("translateX(calc(100% - "+vis+"px))");
+  }
+  function makeDraggable(el, tapHide){
+    if(!el || el.__aybDrag) return; el.__aybDrag=true;
+    el.classList.add("ayb-draggable");
+    var pressing=false, moved=false, sx=0, sy=0, gx=0, gy=0;
+    el.addEventListener("pointerdown", function(e){
+      /* gizliyken tek dokunuş = geri aç (sürükleme başlatma) */
+      if(el.classList.contains("ayb-drag-hidden")){ el.classList.remove("ayb-drag-hidden"); el.style.transform="none"; pressing=false; return; }
+      pressing=true; moved=false; sx=e.clientX; sy=e.clientY;
+      var r=el.getBoundingClientRect(); gx=e.clientX-r.left; gy=e.clientY-r.top;
+      el.style.position="fixed"; el.style.left=r.left+"px"; el.style.top=r.top+"px";
+      el.style.right="auto"; el.style.bottom="auto"; el.style.transform="none"; el.style.transition="none";
+      try{ el.setPointerCapture(e.pointerId); }catch(_){}
+    });
+    el.addEventListener("pointermove", function(e){
+      if(!pressing) return;
+      var dx=e.clientX-sx, dy=e.clientY-sy;
+      if(Math.abs(dx)+Math.abs(dy)>6) moved=true;
+      if(moved){
+        try{ e.preventDefault(); }catch(_){}
+        var nx=e.clientX-gx, ny=e.clientY-gy;
+        nx=Math.max(0, Math.min(window.innerWidth-24, nx));
+        ny=Math.max(0, Math.min(window.innerHeight-24, ny));
+        el.style.left=nx+"px"; el.style.top=ny+"px";
+      }
+    });
+    function endDrag(e){
+      if(!pressing) return; pressing=false; el.style.transition="";
+      try{ el.releasePointerCapture(e.pointerId); }catch(_){}
+      if(!moved && tapHide){ toggleHide(el); }
+    }
+    el.addEventListener("pointerup", endDrag);
+    el.addEventListener("pointercancel", endDrag);
   }
   function bind(){
     css();
-    var c=d.getElementById("gpsCard");
-    if(!c || c.__aybGpsTog) return;
-    c.__aybGpsTog=true;
-    c.addEventListener("click", function(){ c.classList.toggle("ayb-gps-min"); }, false);
+    makeDraggable(d.getElementById("gpsCard"), true);
+    d.querySelectorAll(".legend, .leaflet-control-scale").forEach(function(el){ makeDraggable(el, true); });
   }
   var n=0, iv=setInterval(function(){ bind(); if(++n>40) clearInterval(iv); }, 500);
-  if(d.readyState!=="loading") bind(); else d.addEventListener("DOMContentLoaded",bind);
+  if(d.readyState!=="loading") bind(); else d.addEventListener("DOMContentLoaded", bind);
 })();
