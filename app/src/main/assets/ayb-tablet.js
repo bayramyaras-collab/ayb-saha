@@ -463,7 +463,7 @@
     function wire(){
       hook('#btnKML', function(){ try{ if(window.aybExportKmzSym){ window.aybExportKmzSym(); return; } }catch(e){} dl(sname()+'.geojson',toGeoJson(),'application/geo+json'); });
       hook('#btnGeo', function(){ dl(sname()+'.geojson',toGeoJson(),'application/geo+json'); });
-      hook('#btnExcel', function(){ dl(sname()+'_metraj.csv',toCsv(),'text/csv;charset=utf-8'); });
+      /* #btnExcel KAPSAMLI METRAJA bağlı (aşağıda), CSV kancası KALDIRILDI */
       hook('#btnAYB', function(){ dl(sname()+'_proje.json',JSON.stringify({app:'AYB Saha Harita',preparedBy:'Bayram YARAS',phone:'0530 630 05 40',savedAt:new Date().toISOString(),project:proj()},null,2),'application/json'); });
     }
     ready(wire); setTimeout(wire,1500); setTimeout(wire,4000); setTimeout(wire,8000);
@@ -976,12 +976,24 @@
     try{ if(window.toast) toast("Trafo bazlı + genel metraj Excel hazır."); }catch(e){}
   };
 
-  /* Metraj düğmesini (btnExcel) bu kapsamlı metraja bağla */
+  /* Metraj düğmesini (btnExcel) bu kapsamlı metraja bağla (YAKALAMA fazı = garanti) */
   function bindMetrajBtn(){
     try{
       window.exportProfessionalMetraj = window.exportKorfezimMetraj;
-      var b=document.getElementById("btnExcel");
-      if(b){ b.onclick=window.exportKorfezimMetraj; }
+      if(!window.__aybMetrajBound){
+        window.__aybMetrajBound=true;
+        document.addEventListener("click", function(ev){
+          var t=ev.target;
+          while(t && t!==document){
+            if(t.id==="btnExcel"){
+              try{ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }catch(e){}
+              window.exportKorfezimMetraj();
+              return;
+            }
+            t=t.parentNode;
+          }
+        }, true);
+      }
     }catch(e){}
   }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(bindMetrajBtn,900); });
@@ -995,60 +1007,30 @@
 /* ===================================================================== */
 (function(){
   "use strict";
-  var HIDDEN = true;
-
-  /* Ortak çubuk: Konum + Takip artık SAĞ KENAR ORTASINDA (üst menüyü ve alt imzayı kapatmaz) */
-  window.aybBottomBar=function(){
-    var bar=document.getElementById("aybBottomBar");
-    if(!bar){
-      bar=document.createElement("div"); bar.id="aybBottomBar";
-      bar.style.cssText="position:fixed;right:8px;top:46%;transform:translateY(-50%);z-index:1250;"+
-        "display:flex;flex-direction:column;gap:8px;align-items:flex-end;";
-      document.body.appendChild(bar);
-    }
-    return bar;
-  };
-
   function injectStyle(){
     if(document.getElementById("ayb_gps_toggle_style")) return;
     var st=document.createElement("style"); st.id="ayb_gps_toggle_style";
     st.textContent =
-      "#gpsCard.ayb-gps-hidden{display:none!important;}" +
-      /* konum kartı açılınca: KÜÇÜK ve ALTTA, haritayı kapatmaz */
-      "#gpsCard.gps-live{top:auto!important;bottom:56px!important;right:auto!important;left:8px!important;" +
-        "max-width:230px!important;font-size:11px!important;padding:6px 8px!important;line-height:1.3!important;}" +
-      ".ayb-barbtn{border:none;border-radius:18px;padding:7px 13px;font-size:13px;font-weight:700;" +
-        "box-shadow:0 3px 10px rgba(15,23,42,.3);cursor:pointer;font-family:inherit;line-height:1;color:#fff;}" +
-      ".ayb-barbtn:active{transform:scale(.96);}" +
-      "#aybGpsBtn{background:#2563eb;} #aybTakipBtn{background:#0f766e;}" +
-      /* ÜST ARAÇ SATIRI (Çalışma Alanı / ölçek / ITRF96 / Google Uydu / Uydu Ayar...) YATAY KAYDIRILSIN */
-      ".ayb-native-clean-workbar,.workbar{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;" +
-        "overflow-y:hidden!important;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}" +
-      ".ayb-native-clean-workbar>*,.workbar>*{flex:0 0 auto!important;}" +
-      ".ayb-native-clean-workbar::-webkit-scrollbar,.workbar::-webkit-scrollbar{height:5px;}" +
-      ".ayb-native-clean-workbar::-webkit-scrollbar-thumb,.workbar::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:3px;}";
+      /* GPS kartı: SAĞ ALT köşe, KÜÇÜK, haritayı kapatmaz (hassasiyet vs oradan görünür) */
+      "#gpsCard.gps-live{top:auto!important;left:auto!important;right:8px!important;bottom:92px!important;"+
+        "max-width:215px!important;font-size:11px!important;padding:6px 9px!important;line-height:1.3!important;border-radius:10px!important;}"+
+      /* ÜST ARAÇ SATIRI yatay kaydırılsın */
+      ".ayb-native-clean-workbar,.workbar{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;"+
+        "overflow-y:hidden!important;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}"+
+      ".ayb-native-clean-workbar>*,.workbar>*{flex:0 0 auto!important;}"+
+      ".ayb-native-clean-workbar::-webkit-scrollbar,.workbar::-webkit-scrollbar{height:5px;}"+
+      ".ayb-native-clean-workbar::-webkit-scrollbar-thumb,.workbar::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:3px;}"+
+      /* SAHA VERİ grubu tamamen kaldırıldı */
+      ".ayb-pro-group.fielddata{display:none!important;}"+
+      "#btnFieldDataToggle{display:none!important;}";
     document.head.appendChild(st);
   }
-
-  function card(){ return document.getElementById("gpsCard"); }
-  function apply(){
-    var c=card();
-    if(c){ if(HIDDEN) c.classList.add("ayb-gps-hidden"); else c.classList.remove("ayb-gps-hidden"); }
-    var b=document.getElementById("aybGpsBtn");
-    if(b){ b.textContent = HIDDEN ? "📍 Konum" : "📍 Gizle"; }
-  }
-  function makeButton(){
-    if(document.getElementById("aybGpsBtn")) return;
-    var b=document.createElement("button"); b.id="aybGpsBtn"; b.type="button";
-    b.className="ayb-barbtn"; b.textContent="📍 Konum";
-    b.onclick=function(ev){ try{ev&&ev.preventDefault&&ev.preventDefault();ev&&ev.stopPropagation&&ev.stopPropagation();}catch(e){} HIDDEN=!HIDDEN; apply(); };
-    window.aybBottomBar().appendChild(b);
-  }
-  function setup(){ injectStyle(); makeButton(); apply(); }
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(setup,700); });
-  setTimeout(setup, 700);
-  setTimeout(setup, 1800);
-  setInterval(function(){ var c=card(); if(c && HIDDEN && !c.classList.contains("ayb-gps-hidden")) c.classList.add("ayb-gps-hidden"); }, 3000);
+  /* Geriye dönük uyumluluk için gizli kapsayıcı (artık düğme yok) */
+  window.aybBottomBar=function(){ var b=document.getElementById("aybBottomBar"); if(!b){ b=document.createElement("div"); b.id="aybBottomBar"; b.style.display="none"; document.body.appendChild(b);} return b; };
+  function setup(){ injectStyle(); }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",setup);
+  setup();
+  setTimeout(setup, 1500);
 })();
 
 
@@ -1708,12 +1690,9 @@
     }
   }
 
-  function setup(){ injectStyle(); buildPanel(); makeToggle(); }
-  if(d.readyState==="loading") d.addEventListener("DOMContentLoaded",function(){ setTimeout(setup,900); });
-  setTimeout(setup, 900);
-  setTimeout(setup, 2200);
-  setInterval(function(){ if(panel && panel.classList.contains("show")) refresh(); }, 5000);
-  window.aybTakipRefresh=refresh;
+  function setup(){ /* TAKİP KALDIRILDI: artık düğme/panel/saha-veri kancası oluşturulmuyor */ }
+  /* eski takip localStorage'ı Günün Özeti'ne bırakıldı; burada hiçbir UI kurulmuyor */
+  window.aybTakipRefresh=function(){};
 })();
 
 
@@ -1723,14 +1702,14 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v14";
+  var SURUM="v15";
   var TARIH="16.07.2026";
   function make(){
     if(d.getElementById("aybSurumBadge")) return;
     var b=d.createElement("div");
     b.id="aybSurumBadge";
     b.textContent="KÖRFEZİM "+SURUM;
-    b.style.cssText="position:fixed;left:8px;bottom:8px;z-index:3000;background:rgba(15,118,110,.92);color:#fff;"+
+    b.style.cssText="position:fixed;right:8px;top:132px;z-index:3000;background:rgba(15,118,110,.95);color:#fff;"+
       "padding:5px 10px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;letter-spacing:.3px;"+
       "box-shadow:0 3px 10px rgba(0,0,0,.3);cursor:pointer;";
     b.onclick=function(){
@@ -1739,7 +1718,7 @@
         "• GPS konum → sağ üst 📍 ile gizle/göster\n"+
         "• MİF İç → ZIP seçince proje gibi çizili gelir (direk+hat+lamba)\n"+
         "• 📋 Takip → günlük plan (50), bugün/genel takılan lamba\n"+
-        "• KMZ → direkler siyah daire, lambalar sarı yıldız, yer altı hat dahil\n"+"• Konum ve Takip SAĞ kenarda (üst menü ve alt imzayı kapatmaz)\n"+"• Üst araç satırı (Google Uydu vb.) YATAY kayar\n"+"• MİF: aydınlatma (AYD) hatları AG değil, camgöbeği gösterilir\n"+"• MİF hat kesiti artık TEK yazılır (çiftlenme düzeltildi)\n"+"• MİF yüklerken 'çiziliyor' perdesi + tek çizim (daha az donma)\n"+"• Etiketler zoom'a göre: UZAKTA gizli, YAKINDA görünür (tablet rahat)\n"+"• MİF alırken 'Altlık (hafif)' / 'Çizim (düzenlenebilir)' seçimi\n"+"• Altlık: canvas ile hafif çizim, direk tipi + lamba, DONMAZ\n"+"• Offline hız: karo yükü azaltıldı (6→2), boş karo anında geçilir\n"+"• İnternet yokken çizim/altlık/GPS hızlı; Uydu Kapat en hızlısı\n\n"+
+        "• KMZ → direkler siyah daire, lambalar sarı yıldız, yer altı hat dahil\n"+"• Konum ve Takip SAĞ kenarda (üst menü ve alt imzayı kapatmaz)\n"+"• Üst araç satırı (Google Uydu vb.) YATAY kayar\n"+"• MİF: aydınlatma (AYD) hatları AG değil, camgöbeği gösterilir\n"+"• MİF hat kesiti artık TEK yazılır (çiftlenme düzeltildi)\n"+"• MİF yüklerken 'çiziliyor' perdesi + tek çizim (daha az donma)\n"+"• Etiketler zoom'a göre: UZAKTA gizli, YAKINDA görünür (tablet rahat)\n"+"• MİF alırken 'Altlık (hafif)' / 'Çizim (düzenlenebilir)' seçimi\n"+"• Altlık: canvas ile hafif çizim, direk tipi + lamba, DONMAZ\n"+"• Metraj artık gerçek EXCEL (.xlsx), detaylı — CSV değil\n"+"• Günün Özeti (Rapor/Veri): bugün takılan lamba OTOMATİK\n"+"• GPS bilgisi sağ-alt köşede küçük; Takip ve Saha Veri kaldırıldı\n"+"• Offline hız: karo yükü azaltıldı (6→2), boş karo anında geçilir\n"+"• İnternet yokken çizim/altlık/GPS hızlı; Uydu Kapat en hızlısı\n\n"+
         "Bu yazıyı görüyorsan YENİ sürüm kuruldu demektir.";
       (window.aybModal||alert)(mesaj,"Sürüm Bilgisi");
     };
@@ -1843,4 +1822,131 @@
   window.addEventListener("offline", note);
   window.addEventListener("online", function(){ var el=document.getElementById("aybNetNote"); if(el) el.style.display="none"; });
   setTimeout(note, 1800);
+})();
+
+
+/* ===================================================================== */
+/* KÖRFEZİM — GÜNÜN ÖZETİ (Rapor/Veri altında; bugün takılan lamba OTO)   */
+/* ===================================================================== */
+(function(){
+  "use strict";
+  var d=document;
+  var LSK="aybGun_";
+  function proj(){ return window.project; }
+  function pid(){ var p=proj(); return (p&&p.id)?String(p.id):"default"; }
+  function pname(){ var p=proj(); return (p&&p.name)?String(p.name):"Proje"; }
+  function today(){ var t=new Date(); return t.getFullYear()+"-"+("0"+(t.getMonth()+1)).slice(-2)+"-"+("0"+t.getDate()).slice(-2); }
+  function norm(s){ try{ return String(s==null?"":s).toLocaleUpperCase("tr").trim(); }catch(e){ return String(s==null?"":s).toUpperCase().trim(); } }
+
+  /* Lamba "yeni mi"? MEVCUT ise HAYIR; YENİ/DM/DM+MON ise EVET */
+  function isNewLamp(l, pole){
+    var s=norm(l&&l.status);
+    if(!s && pole&&pole.props) s=norm(pole.props.durum);
+    if(!s) s="YENİ";
+    return s.indexOf("MEVCUT")<0;
+  }
+  function poleNewCount(o){
+    if(o.type!=="direk"||!o.props||!Array.isArray(o.props.lambalar)) return 0;
+    var t=0; o.props.lambalar.forEach(function(l){ if(isNewLamp(l,o)){ var a=parseInt(l&&l.adet,10); t+=(isFinite(a)&&a>0)?a:1; } });
+    return t;
+  }
+  function load(){ try{ var s=localStorage.getItem(LSK+pid()); if(s){ var o=JSON.parse(s); o.base=o.base||{}; o.days=o.days||{}; return o; } }catch(e){} return {base:{},days:{},init:false}; }
+  function save(st){ try{ localStorage.setItem(LSK+pid(), JSON.stringify(st)); }catch(e){} }
+
+  /* Otomatik takip: lamba ekledikçe bugüne yazılır (manuel yok) */
+  function track(){
+    var p=proj(); if(!p||!p.objects) return;
+    var st=load(), cur={};
+    p.objects.forEach(function(o){ if(o.type==="direk"){ var c=poleNewCount(o); if(c>0) cur[o.id]=c; } });
+    if(!st.init){ st.base=cur; st.days=st.days||{}; st.init=true; save(st); return; }
+    var t=today();
+    Object.keys(cur).forEach(function(id){ var prev=st.base[id]||0; if(cur[id]>prev){ st.days[t]=(st.days[t]||0)+(cur[id]-prev); } st.base[id]=cur[id]; });
+    Object.keys(st.base).forEach(function(id){ if(!(id in cur)) st.base[id]=0; });
+    save(st);
+  }
+  function stats(){
+    var p=proj(), st=load(), direk=0, yeni=0, mevcut=0;
+    if(p&&p.objects) p.objects.forEach(function(o){ if(o.type!=="direk")return; direk++;
+      if(o.props&&Array.isArray(o.props.lambalar)) o.props.lambalar.forEach(function(l){ var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1; if(isNewLamp(l,o)) yeni+=a; else mevcut+=a; });
+    });
+    var genel=0; Object.keys(st.days||{}).forEach(function(k){ genel+=(+st.days[k]||0); });
+    return { direk:direk, yeni:yeni, mevcut:mevcut, bugun:(+(st.days[today()]||0)), genel:genel };
+  }
+
+  function panelEl(){
+    var el=d.getElementById("aybGunPanel");
+    if(el) return el;
+    el=d.createElement("div"); el.id="aybGunPanel";
+    el.style.cssText="position:fixed;inset:0;z-index:6100;background:rgba(15,23,42,.5);display:none;"+
+      "align-items:center;justify-content:center;padding:20px;font-family:inherit;";
+    el.innerHTML=
+      '<div style="background:#fff;border-radius:16px;max-width:360px;width:100%;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.4);">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
+          '<div style="font-size:17px;font-weight:800;color:#0f766e;">📅 Günün Özeti</div>'+
+          '<div id="aybGunClose" style="cursor:pointer;font-size:20px;color:#64748b;font-weight:800;">✕</div></div>'+
+        '<div id="aybGunProj" style="font-size:12px;color:#64748b;margin-bottom:12px;"></div>'+
+        '<div style="background:#ecfdf5;border:1px solid #10b981;border-radius:12px;padding:12px;text-align:center;margin-bottom:10px;">'+
+          '<div style="font-size:13px;color:#065f46;font-weight:600;">Bugün Takılan Lamba</div>'+
+          '<div id="aybGunBugun" style="font-size:34px;font-weight:800;color:#059669;line-height:1.1;">0</div>'+
+          '<div id="aybGunTarih" style="font-size:11px;color:#065f46;"></div></div>'+
+        '<div class="ayb-gun-row"><span>Genel Takılan (tüm günler)</span><b id="aybGunGenel">0</b></div>'+
+        '<div class="ayb-gun-row"><span>Projede Yeni Lamba</span><b id="aybGunYeni">0</b></div>'+
+        '<div class="ayb-gun-row"><span>Projede Mevcut Lamba</span><b id="aybGunMevcut">0</b></div>'+
+        '<div class="ayb-gun-row"><span>Toplam Direk</span><b id="aybGunDirek">0</b></div>'+
+        '<div style="display:flex;gap:8px;margin-top:14px;">'+
+          '<button id="aybGunExcel" style="flex:1;border:none;border-radius:10px;background:#16a34a;color:#fff;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Excel İndir</button>'+
+          '<button id="aybGunKapat" style="flex:1;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Kapat</button></div>'+
+      '</div>';
+    d.body.appendChild(el);
+    if(!d.getElementById("aybGunCss")){ var st=d.createElement("style"); st.id="aybGunCss";
+      st.textContent="#aybGunPanel .ayb-gun-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:14px;color:#0f172a;border-bottom:1px solid #f1f5f9;}#aybGunPanel .ayb-gun-row b{font-size:16px;}";
+      d.head.appendChild(st);
+    }
+    d.getElementById("aybGunClose").onclick=hide;
+    d.getElementById("aybGunKapat").onclick=hide;
+    d.getElementById("aybGunExcel").onclick=excel;
+    return el;
+  }
+  function fill(){
+    track();
+    var s=stats();
+    d.getElementById("aybGunProj").textContent=pname();
+    d.getElementById("aybGunBugun").textContent=s.bugun;
+    d.getElementById("aybGunTarih").textContent=today();
+    d.getElementById("aybGunGenel").textContent=s.genel;
+    d.getElementById("aybGunYeni").textContent=s.yeni;
+    d.getElementById("aybGunMevcut").textContent=s.mevcut;
+    d.getElementById("aybGunDirek").textContent=s.direk;
+  }
+  function show(){ panelEl(); fill(); d.getElementById("aybGunPanel").style.display="flex"; }
+  function hide(){ var el=d.getElementById("aybGunPanel"); if(el) el.style.display="none"; }
+  function excel(){
+    try{
+      if(!window.XLSX){ (window.aybModal||alert)("Excel modülü yok."); return; }
+      var s=stats();
+      var aoa=[["KÖRFEZİM — GÜNÜN ÖZETİ",""],["Proje",pname()],["Tarih",today()],["",""],
+        ["Bugün Takılan Lamba",s.bugun],["Genel Takılan (tüm günler)",s.genel],
+        ["Projede Yeni Lamba",s.yeni],["Projede Mevcut Lamba",s.mevcut],["Toplam Direk",s.direk]];
+      var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Gunun_Ozeti");
+      XLSX.writeFile(wb, pname()+"_gunun_ozeti.xlsx");
+    }catch(e){ (window.aybModal||alert)("Hata: "+(e&&e.message?e.message:e)); }
+  }
+
+  /* Rapor/Veri satırına "Günün Özeti" düğmesi ekle */
+  function injectBtn(){
+    if(d.getElementById("btnGunOzeti")) return true;
+    var row=d.querySelector(".ayb-pro-group.report .ayb-pro-row");
+    if(!row) return false;
+    var b=d.createElement("button");
+    b.id="btnGunOzeti"; b.className="ayb-pro-btn toolbtn"; b.type="button"; b.title="Günün Özeti — bugün takılan lamba";
+    b.innerHTML='<div class="ayb-pro-ico" style="color:#059669;">📅</div><small>Günün Özeti</small>';
+    b.onclick=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){} show(); };
+    row.appendChild(b);
+    return true;
+  }
+  var n=0, iv=setInterval(function(){ if(injectBtn()||++n>60) clearInterval(iv); }, 500);
+  setTimeout(injectBtn, 1200);
+  /* arka planda otomatik takip (lamba ekledikçe bugüne yazsın) */
+  setInterval(function(){ try{ track(); }catch(e){} }, 6000);
+  window.aybGunOzeti=show;
 })();
