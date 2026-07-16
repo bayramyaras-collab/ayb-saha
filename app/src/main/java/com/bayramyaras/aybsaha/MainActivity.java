@@ -13,6 +13,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.widget.EditText;
+import android.webkit.JsResult;
+import android.webkit.JsPromptResult;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -87,40 +92,107 @@ public class MainActivity extends Activity {
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin,
                     GeolocationPermissions.Callback cb) { cb.invoke(origin, true, false); }
+            // --- Tarayici tarzi "file://" pencerelerini temiz Turkce diyaloglarla degistir ---
+            @Override
+            public boolean onJsAlert(WebView v, String url, String message, final JsResult result) {
+                try {
+                    new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Körfezim Saha")
+                        .setMessage(message)
+                        .setCancelable(false)
+                        .setPositiveButton("Tamam", new DialogInterface.OnClickListener(){
+                            public void onClick(DialogInterface d, int w){ result.confirm(); }})
+                        .show();
+                } catch (Exception e) { result.confirm(); }
+                return true;
+            }
+            @Override
+            public boolean onJsConfirm(WebView v, String url, String message, final JsResult result) {
+                try {
+                    new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Körfezim Saha")
+                        .setMessage(message)
+                        .setCancelable(false)
+                        .setPositiveButton("Evet", new DialogInterface.OnClickListener(){
+                            public void onClick(DialogInterface d, int w){ result.confirm(); }})
+                        .setNegativeButton("İptal", new DialogInterface.OnClickListener(){
+                            public void onClick(DialogInterface d, int w){ result.cancel(); }})
+                        .show();
+                } catch (Exception e) { result.confirm(); }
+                return true;
+            }
+            @Override
+            public boolean onJsPrompt(WebView v, String url, String message, String defaultValue, final JsPromptResult result) {
+                try {
+                    final EditText input = new EditText(MainActivity.this);
+                    if (defaultValue != null) input.setText(defaultValue);
+                    new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Körfezim Saha")
+                        .setMessage(message)
+                        .setView(input)
+                        .setCancelable(false)
+                        .setPositiveButton("Tamam", new DialogInterface.OnClickListener(){
+                            public void onClick(DialogInterface d, int w){ result.confirm(input.getText().toString()); }})
+                        .setNegativeButton("İptal", new DialogInterface.OnClickListener(){
+                            public void onClick(DialogInterface d, int w){ result.cancel(); }})
+                        .show();
+                } catch (Exception e) { result.cancel(); }
+                return true;
+            }
             @Override
             public boolean onShowFileChooser(WebView w, ValueCallback<Uri[]> cb,
                     FileChooserParams params) {
                 if (filePathCallback != null) { try { filePathCallback.onReceiveValue(null); } catch (Exception ex) {} }
                 filePathCallback = cb;
                 cameraOutputUri = null;
+
+                // Girdi RESIM mi istiyor? (foto) yoksa DOSYA mi? (.mif/.kmz/.json/.kml)
+                boolean wantsImage = false; boolean capture = false;
+                try {
+                    if (params.isCaptureEnabled()) { wantsImage = true; capture = true; }
+                    String[] at = params.getAcceptTypes();
+                    if (at != null) for (String a : at) if (a != null && a.toLowerCase().contains("image")) wantsImage = true;
+                } catch (Exception ex) { wantsImage = false; }
+
+                // DOSYA girdisi: kamera YOK, tum dosyalari goster (.mif/.kmz/.json secilebilsin)
+                if (!wantsImage) {
+                    Intent get = new Intent(Intent.ACTION_GET_CONTENT);
+                    get.addCategory(Intent.CATEGORY_OPENABLE);
+                    get.setType("*/*");
+                    try { startActivityForResult(Intent.createChooser(get, "Dosya seç"), REQ_FILE); }
+                    catch (Exception e) { filePathCallback = null; return false; }
+                    return true;
+                }
+
+                // KAMERA cikti dosyasi (MediaStore) hazirla
                 Intent cameraIntent = null;
                 try {
-                    Intent ci = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-                    if (ci.resolveActivity(getPackageManager()) != null) {
-                        android.content.ContentValues cv = new android.content.ContentValues();
-                        cv.put(MediaStore.Images.Media.DISPLAY_NAME, "AYB_" + System.currentTimeMillis() + ".jpg");
-                        cv.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-                        if (android.os.Build.VERSION.SDK_INT >= 29)
-                            cv.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AYB_Saha");
-                        cameraOutputUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
-                        if (cameraOutputUri != null) {
-                            ci.putExtra(MediaStore.EXTRA_OUTPUT, cameraOutputUri);
-                            ci.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                            cameraIntent = ci;
-                        }
+                    android.content.ContentValues cv = new android.content.ContentValues();
+                    cv.put(MediaStore.Images.Media.DISPLAY_NAME, "AYB_" + System.currentTimeMillis() + ".jpg");
+                    cv.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                    if (android.os.Build.VERSION.SDK_INT >= 29)
+                        cv.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AYB_Saha");
+                    cameraOutputUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+                    if (cameraOutputUri != null) {
+                        cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                        cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraOutputUri);
+                        cameraIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                        cameraIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     }
                 } catch (Exception ex) { cameraIntent = null; cameraOutputUri = null; }
 
-                Intent contentIntent;
-                try { contentIntent = params.createIntent(); }
-                catch (Exception ex) {
-                    contentIntent = new Intent(Intent.ACTION_GET_CONTENT);
-                    contentIntent.addCategory(Intent.CATEGORY_OPENABLE);
-                    contentIntent.setType("image/*");
+                // capture=environment (foto dugmesi) ise KAMERAYI DOGRUDAN AC
+                if (capture && cameraIntent != null) {
+                    try { startActivityForResult(cameraIntent, REQ_FILE); return true; }
+                    catch (Exception e) { /* kamera acilamadi -> asagida secim ekranina dus */ }
                 }
 
+                // Aksi halde: KAMERA + GALERI secim ekrani
+                Intent gallery = new Intent(Intent.ACTION_GET_CONTENT);
+                gallery.addCategory(Intent.CATEGORY_OPENABLE);
+                gallery.setType("image/*");
                 Intent chooser = new Intent(Intent.ACTION_CHOOSER);
-                chooser.putExtra(Intent.EXTRA_INTENT, contentIntent);
+                chooser.putExtra(Intent.EXTRA_INTENT, gallery);
                 chooser.putExtra(Intent.EXTRA_TITLE, "Fotoğraf çek veya seç");
                 if (cameraIntent != null)
                     chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{ cameraIntent });
@@ -155,7 +227,7 @@ public class MainActivity extends Activity {
                     ContentValues cv = new ContentValues();
                     cv.put(MediaStore.Downloads.DISPLAY_NAME, safe);
                     cv.put(MediaStore.Downloads.MIME_TYPE, "application/json");
-                    cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/AYB_Saha_Yedek");
+                    cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AYB_Saha_Yedek");
                     Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
                     if (u != null) {
                         OutputStream os = getContentResolver().openOutputStream(u, "wt");
@@ -187,7 +259,7 @@ public class MainActivity extends Activity {
                         ContentValues cv = new ContentValues();
                         cv.put(MediaStore.Downloads.DISPLAY_NAME, safe);
                         cv.put(MediaStore.Downloads.MIME_TYPE, m);
-                        cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/AYB_Saha_Disa");
+                        cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AYB_Saha_Disa");
                         shareUri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
                         if (shareUri != null) {
                             OutputStream os = getContentResolver().openOutputStream(shareUri, "wt");
@@ -207,9 +279,9 @@ public class MainActivity extends Activity {
                         Intent chooser = Intent.createChooser(sh, "Nereye gönderilsin? (WhatsApp / Dosyalar)");
                         chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(chooser);
-                        Toast.makeText(MainActivity.this, "Ayrıca Belgeler/AYB_Saha_Disa klasörüne kaydedildi.", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "Ayrıca İndirilenler/AYB_Saha_Disa klasörüne kaydedildi.", Toast.LENGTH_SHORT).show();
                     } else {
-                        Toast.makeText(MainActivity.this, "Kaydedildi: Belgeler/AYB_Saha_Disa", Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "Kaydedildi: İndirilenler/AYB_Saha_Disa", Toast.LENGTH_LONG).show();
                     }
                 } catch (Exception e) {
                     Toast.makeText(MainActivity.this, "Dışa aktarma hatası: " + e.getMessage(), Toast.LENGTH_LONG).show();
