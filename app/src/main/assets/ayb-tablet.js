@@ -133,8 +133,23 @@
     }catch(e){ aybModal('Disa aktarma hatasi: '+(e&&e.message?e.message:e)); }
   }
   /* ANA DISA-AKTARMA: 1) WhatsApp (Web Share, Java gerekmez) 2) Native kaydet 3) indir */
+  function aybDesktopPicker(){ try{ return (typeof window.showSaveFilePicker==='function') && !/Android/i.test(navigator.userAgent||''); }catch(e){ return false; } }
   function aybShareFile(filename, blob, mime){
     var m=mime||blob.type||'application/octet-stream';
+    /* MASAÜSTÜ (PC/Chrome/Electron): "Farklı Kaydet" penceresi aç, kullanıcı yeri seçsin. Tablet/Android'de çalışmaz -> eski davranış. */
+    if(aybDesktopPicker()){
+      (async function(){
+        try{
+          var h=await window.showSaveFilePicker({ suggestedName: filename });
+          var w=await h.createWritable(); await w.write(blob); await w.close();
+          try{ if(window.toast) toast('Kaydedildi: '+filename); }catch(e){}
+        }catch(err){
+          if(err && /abort|cancel/i.test(err.name||'')) return; /* kullanıcı vazgeçti */
+          try{ var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(function(){ try{URL.revokeObjectURL(url);a.remove();}catch(_){} },800); }catch(e){ try{ aybModal('Kaydetme hatası: '+(e&&e.message?e.message:e)); }catch(_){} }
+        }
+      })();
+      return;
+    }
     try{
       var file=new File([blob], filename, {type:m});
       if(navigator.canShare && navigator.canShare({files:[file]})){
@@ -158,7 +173,14 @@
     aybShareFile(filename, blob, mime);
   }; }catch(e){}
 
-  /* METRAJ EXCEL */
+  /* MASAÜSTÜ: "KMZ Dış" (#btnKML) programın klasör-kaydetmesini atla -> Sembollü KMZ + Farklı Kaydet */
+  document.addEventListener('click', function(ev){
+    if(!aybDesktopPicker()) return;
+    var t=ev.target; while(t && t!==document){ if(t.id==='btnKML'){
+        if(window.aybExportKmzSym){ try{ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }catch(e){} try{ window.aybExportKmzSym(); }catch(e){} }
+        return; } t=t.parentNode; }
+  }, true);
+
   try{ if(window.XLSX && typeof XLSX.write==='function'){
     XLSX.writeFile=function(wb, filename, opts){
       try{ var name=filename||'metraj.xlsx';
@@ -503,10 +525,12 @@
         };
       }
     }catch(e){}
-    /* File System Access API'yi HER YERDE kapat (freeze/klasor secici olmasin) */
-    try{ Object.defineProperty(window,'showDirectoryPicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showDirectoryPicker=undefined; }catch(_){} }
-    try{ Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showSaveFilePicker=undefined; }catch(_){} }
-    try{ Object.defineProperty(window,'FileSystemDirectoryHandle',{value:undefined,configurable:true}); }catch(e){ try{ window.FileSystemDirectoryHandle=undefined; }catch(_){} }
+    /* File System Access API'yi SADECE TABLET'te kapat; PC'de showSaveFilePicker açık kalmalı (kaydet penceresi) */
+    if(window.AYBNative){
+      try{ Object.defineProperty(window,'showDirectoryPicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showDirectoryPicker=undefined; }catch(_){} }
+      try{ Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}); }catch(e){ try{ window.showSaveFilePicker=undefined; }catch(_){} }
+      try{ Object.defineProperty(window,'FileSystemDirectoryHandle',{value:undefined,configurable:true}); }catch(e){ try{ window.FileSystemDirectoryHandle=undefined; }catch(_){} }
+    }
     /* Klasor-baglama arayuz ogelerini gizle */
     try{
       var css=document.createElement('style');
@@ -602,8 +626,9 @@
     try{
       var t=document.querySelector('.titlebar .title')||document.querySelector('.title');
       var ver=window.AYB_SURUM||'';
-      var want='Körfezim Saha Metraj'+(ver?(' '+ver):'');
+      var want='Körfezim Saha Metraj'+(ver?(' '+ver):'')+'\u00A0\u00A0\u00A0Hazırlayan Bayram YARAŞ';
       if(t && t.textContent!==want){ t.textContent=want; }
+      try{ var imza=document.getElementById('aybSahaImza'); if(imza) imza.style.display='none'; }catch(e){}
     }catch(e){}
     try{ if(document.title.indexOf('Pafta')===-1) document.title='Körfezim Saha Metraj'; }catch(e){}
   }
@@ -1096,12 +1121,32 @@
     var s6=[["Tip","No/Ad","Enlem","Boylam"]];
     objects.forEach(function(o){ s6.push([ o.type, S(objNo(o)), o.lat, o.lng ]); });
 
+    /* SAYFA 7: Otomat Değişimi (direk hırdavat) */
+    function otomatsOf(o){
+      var arr=(o&&o.props&&o.props.otomatlar)||[];
+      if(!Array.isArray(arr)) return [];
+      return arr.map(function(x){ return {tip:S((x&&x.tip)||"").trim(), adet:N((x&&x.adet)||0)}; }).filter(function(x){ return x.tip && x.adet>0; });
+    }
+    var otoGenel={}, otoTotal=0, otoAny=false;
+    var s7=[["Direk No","Otomat Tipi","Adet"]];
+    direkler.forEach(function(o){
+      otomatsOf(o).forEach(function(x){
+        s7.push([ S(objNo(o)), x.tip, x.adet ]);
+        otoGenel[x.tip]=(otoGenel[x.tip]||0)+x.adet; otoTotal+=x.adet; otoAny=true;
+      });
+    });
+    if(!otoAny) s7.push(["(Otomat değişimi girilmemiş)","",""]);
+    s7.push(["","",""]); s7.push(["ÖZET — Tipe Göre","",""]); s7.push(["Otomat Tipi","Toplam Adet",""]);
+    Object.keys(otoGenel).sort().forEach(function(t){ s7.push([t, otoGenel[t], ""]); });
+    s7.push(["GENEL TOPLAM", otoTotal, ""]);
+
     var sheets=[
       {name:"Trafo_Lamba_Ozeti", rows:s1},
       {name:"Genel_Lamba_Ozeti", rows:s2},
       {name:"Direk_Aksam", rows:s3},
       {name:"Trafo_Listesi", rows:s4},
       {name:"Hatlar", rows:s5},
+      {name:"Otomat_Degisimi", rows:s7},
       {name:"Koordinatlar", rows:s6}
     ];
     var fname=(window.aybFileTag?window.aybFileTag():(S(project.name)||"Korfezim_Saha"))+"_metraj.xlsx";
@@ -1482,8 +1527,51 @@
     catch(e){ status("İşlenemedi: "+(e&&e.message?e.message:e)); (window.aybModal||alert)("MİF işlenemedi: "+(e&&e.message?e.message:e)); return; }
     if(!built.objects.length && !built.lines.length){ status("İçinde direk/hat yok."); (window.aybModal||alert)("MİF içinde direk/hat bulunamadı."); return; }
     status("Direk: "+built.count.direk+" · Hat: "+built.count.hat+" hazır.");
+    if(window.__aybPCMerge){ window.aybMergeBuilt(built, projName); return; }
     askImportMode(built, projName);
   }
+
+  /* ---- PC: gelen MİF'i mevcut projeye BİRLEŞTİR + koordinat mükerrer kontrolü ---- */
+  window.aybMergeBuilt=function(built, projName){
+    try{
+      var p=window.project;
+      if(!p || !Array.isArray(p.objects)){ openBuilt(built, projName); return; }
+      var TOL=0.00002; /* ~2 m */
+      function near(a,b){ return Math.abs((a.lat||0)-(b.lat||0))<TOL && Math.abs((a.lng||0)-(b.lng||0))<TOL; }
+      var existing=p.objects, idMap={}, added=0, dup=0, lamp=0;
+      var EKIP=(window.__aybImportEkip||"(bilinmiyor)");
+      function _gun2(){ var t=new Date(); return t.getFullYear()+"-"+("0"+(t.getMonth()+1)).slice(-2)+"-"+("0"+t.getDate()).slice(-2); }
+      var GUN=(window.__aybImportGun||_gun2());
+      (built.objects||[]).forEach(function(o){
+        var m=null;
+        for(var i=0;i<existing.length;i++){ if(existing[i].type===o.type && near(existing[i],o)){ m=existing[i]; break; } }
+        if(m){
+          dup++; idMap[o.id]=m.id;
+          if(o.type==="direk" && o.props && Array.isArray(o.props.lambalar) && o.props.lambalar.length){
+            m.props=m.props||{}; m.props.lambalar=Array.isArray(m.props.lambalar)?m.props.lambalar:[];
+            o.props.lambalar.forEach(function(nl){
+              var ex=m.props.lambalar.some(function(el){ return String(el.guc||"")===String(nl.guc||"") && String(el.cins||"")===String(nl.cins||"") && String(el.durum||"")===String(nl.durum||""); });
+              if(!ex){ try{ nl._ekip=EKIP; nl._gun=GUN; }catch(_){} m.props.lambalar.push(nl); lamp++; }
+            });
+          }
+        } else { try{ o.props=o.props||{}; o.props._ekip=EKIP; o.props._gun=GUN; if(Array.isArray(o.props.lambalar)) o.props.lambalar.forEach(function(l){ l._ekip=EKIP; l._gun=GUN; }); }catch(_){} existing.push(o); idMap[o.id]=o.id; added++; }
+      });
+      p.lines=Array.isArray(p.lines)?p.lines:[];
+      var addedL=0;
+      (built.lines||[]).forEach(function(l){
+        var ns=idMap[l.start]||l.start, ne=idMap[l.end]||l.end;
+        var ex=p.lines.some(function(el){ return (el.start===ns&&el.end===ne)||(el.start===ne&&el.end===ns); });
+        if(!ex){ l.start=ns; l.end=ne; p.lines.push(l); addedL++; }
+      });
+      try{ if(typeof saveProjects==="function") saveProjects(); }catch(e){}
+      try{ if(typeof renderAll==="function") renderAll(); }catch(e){}
+      var msg="Birleştirildi ✓  +"+added+" direk, +"+addedL+" hat · "+dup+" mükerrer atlandı"+(lamp?(" · +"+lamp+" lamba"):"");
+      status(msg);
+      try{ if(window.aybPCLog) window.aybPCLog(projName, msg); }catch(e){}
+      return {added:added, dup:dup, addedL:addedL, lamp:lamp};
+    }catch(e){ status("Birleştirme hatası: "+(e&&e.message?e.message:e)); }
+  };
+  window.aybHandleFiles=handleFiles;
 
   /* ---- MİF: Altlık mı Çizim mi? ---- */
   function askImportMode(built, projName){
@@ -1646,12 +1734,19 @@
       catch(e){ status("ZIP açılamadı: "+(e&&e.message?e.message:e)); (window.aybModal||alert)("ZIP açılamadı: "+(e&&e.message?e.message:e)); return; }
       var names=Object.keys(files2);
       status("ZIP içinde "+names.length+" dosya bulundu.");
-      names.forEach(function(name){ classifyInto(map, name, decodeText(files2[name])); });
+      names.forEach(function(name){
+        if(/aybnotes\.json$/i.test(name)){ try{ window.__aybPendingNotes=JSON.parse(new TextDecoder().decode(files2[name])); }catch(e){} return; }
+        if(/aybekip\.json$/i.test(name)){ try{ var _ek=JSON.parse(new TextDecoder().decode(files2[name])); window.__aybImportEkip=(_ek&&_ek.ekip)||window.__aybImportEkip; window.__aybImportGun=(_ek&&_ek.gun)||window.__aybImportGun; }catch(e){} return; }
+        classifyInto(map, name, decodeText(files2[name]));
+      });
     } else {
       /* ZIP değil: seçilen .mif/.mid dosyaları */
       bufs.forEach(function(b){ classifyInto(map, b.name, decodeText(new Uint8Array(b.buf))); });
     }
     finishMap(map, projName);
+    if(window.__aybPendingNotes && window.__aybPCMerge && window.aybMergeNotes){
+      try{ window.aybMergeNotes(window.__aybPendingNotes); window.__aybPendingNotes=null; }catch(e){}
+    }
   }
 
   function pickAndImport(){
@@ -1843,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v24";
+  var SURUM="v65";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -1999,7 +2094,8 @@
   function lampCins(l){ var c=l&&(l.cins||l.armatur_cinsi||l.armatur||l.tip); c=(c==null)?"":String(c).trim(); return c||"Armatür"; }
   function matKey(l){ return lampCins(l)+" || "+lampWatt(l); }
   /* bir direğin YENİ lambalarını malzeme (cins||güç) bazında say: {key: adet} */
-  function poleNewMats(o){ var m={}; if(o.type==="direk"&&o.props&&Array.isArray(o.props.lambalar)){ o.props.lambalar.forEach(function(l){ if(isNewLamp(l,o)){ var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1; var k=matKey(l); m[k]=(m[k]||0)+a; } }); } return m; }
+  function poleNewMats(o){ var m={}; if(o.type==="direk"&&o.props&&Array.isArray(o.props.lambalar)){ o.props.lambalar.forEach(function(l){ if(isNewLamp(l,o)){ var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1; var k=matKey(l); m[k]=(m[k]||0)+a; } }); } if(o.type==="direk"&&o.props&&Array.isArray(o.props.otomatlar)){ o.props.otomatlar.forEach(function(x){ var tip=(x&&x.tip!=null)?String(x.tip).trim():""; if(!tip)return; var a=parseInt(x&&x.adet,10); a=(isFinite(a)&&a>0)?a:1; var k=("Otomat "+tip)+" || "; m[k]=(m[k]||0)+a; }); } return m; }
+  function poleOtoCount(o){ var t=0; if(o.type==="direk"&&o.props&&Array.isArray(o.props.otomatlar)){ o.props.otomatlar.forEach(function(x){ var tip=(x&&x.tip!=null)?String(x.tip).trim():""; if(!tip)return; var a=parseInt(x&&x.adet,10); t+=(isFinite(a)&&a>0)?a:1; }); } return t; }
   function projectNewMats(){ var p=proj(), m={}; if(p&&p.objects) p.objects.forEach(function(o){ if(o.type!=="direk")return; var pm=poleNewMats(o); Object.keys(pm).forEach(function(k){ m[k]=(m[k]||0)+pm[k]; }); }); return m; }
   function splitKey(k){ var i=String(k).indexOf(" || "); return { cins:(i>=0?k.slice(0,i):k), guc:(i>=0?k.slice(i+4):"") }; }
   function poleNewWatts(o){ var m={}; if(o.type==="direk"&&o.props&&Array.isArray(o.props.lambalar)){ o.props.lambalar.forEach(function(l){ if(isNewLamp(l,o)){ var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1; var w=lampWatt(l); m[w]=(m[w]||0)+a; } }); } return m; }
@@ -2010,7 +2106,7 @@
   function track(){
     var p=proj(); if(!p||!p.objects) return;
     var st=load(), cur={}, curW={}, curM={};
-    p.objects.forEach(function(o){ if(o.type==="direk"){ var c=poleNewCount(o); if(c>0){ cur[o.id]=c; curW[o.id]=poleNewWatts(o); curM[o.id]=poleNewMats(o); } } });
+    p.objects.forEach(function(o){ if(o.type==="direk"){ var c=poleNewCount(o); var oc=poleOtoCount(o); if(c>0||oc>0){ cur[o.id]=c; curW[o.id]=poleNewWatts(o); curM[o.id]=poleNewMats(o); } } });
     st.baseW=st.baseW||{}; st.daysW=st.daysW||{}; st.baseM=st.baseM||{}; st.daysM=st.daysM||{};
     if(!st.init){ st.base=cur; st.baseW=curW; st.baseM=curM; st.days=st.days||{}; st.init=true; save(st); return; }
     var t=today();
@@ -2266,10 +2362,13 @@
       if(!p||!p.objects){ (window.aybModal||alert)("Önce proje aç."); return; }
       var direks=(p.objects||[]).filter(function(o){return o.type==='direk';});
       var lines=(p.lines||[]);
-      if(!direks.length && !lines.length){ (window.aybModal||alert)("Dışa aktarılacak direk/hat yok."); return; }
+      if(!direks.length && !lines.length && !((p.aybNotes||[]).length)){ (window.aybModal||alert)("Dışa aktarılacak direk/hat yok."); return; }
       var files=[];
       if(direks.length){ var dd=buildDirekler(direks); files.push({name:'Direkler.mif',bytes:encWin(dd.mif)}); files.push({name:'Direkler.mid',bytes:encWin(dd.mid)}); }
       if(lines.length){ var hh=buildHatlar(lines, p.objects); files.push({name:'Hatlar.mif',bytes:encWin(hh.mif)}); files.push({name:'Hatlar.mid',bytes:encWin(hh.mid)}); }
+      var _notes=(p.aybNotes||[]);
+      if(_notes.length){ try{ files.push({name:'aybnotes.json', bytes:new TextEncoder().encode(JSON.stringify(_notes.map(function(n){return {id:n.id,lat:n.lat,lng:n.lng,text:n.text};})))}); }catch(e){} }
+      try{ var _ekip=(localStorage.getItem('ayb_ekip_adi')||'').trim()||'(ekip adı yok)'; var _gn=new Date(); var _gs=_gn.getFullYear()+'-'+('0'+(_gn.getMonth()+1)).slice(-2)+'-'+('0'+_gn.getDate()).slice(-2); files.push({name:'aybekip.json', bytes:new TextEncoder().encode(JSON.stringify({ekip:_ekip, gun:_gs, proje:(p.name||'')}))}); }catch(e){}
       var blob=buildZip(files);
       var nm=((window.aybFileTag?window.aybFileTag():(p.name||'Korfezim'))+'_MIF.zip');
       if(window.aybShareFile) window.aybShareFile(nm, blob, 'application/zip');
@@ -2599,23 +2698,1036 @@
       var ico=b.querySelector(".ayb-pro-ico"); if(ico) ico.textContent="⚙️";
       var sm=b.querySelector("small"); if(sm) sm.textContent="Ayarlar";
     }
+    try{ var grp=b.closest?b.closest(".ayb-pro-group"):null; if(!grp){ grp=b; while(grp&&grp!==d&&!(grp.className&&String(grp.className).indexOf("ayb-pro-group")>=0)) grp=grp.parentNode; } if(grp&&grp.querySelector){ var tt=grp.querySelector(".ayb-pro-title"); if(tt&&tt.textContent!=="Ayarlar") tt.textContent="Ayarlar"; } }catch(e){}
   }
   /* app'in kendi Saha paneli açılmasın: yakalama fazında Ayarlar aç */
   d.addEventListener("click", function(ev){
     var t=ev.target; while(t && t!==d){ if(t.id==="btnFieldDataToggle"){ try{ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }catch(e){} openSettings(); return; } t=t.parentNode; }
   }, true);
 
-  function injectProjeAyar(){
-    if(d.getElementById("btnAybAyarlar")) return;
-    var row=d.querySelector(".ayb-pro-group.project .ayb-pro-row");
-    if(!row) return;
-    var b=d.createElement("button");
-    b.id="btnAybAyarlar"; b.className="ayb-pro-btn toolbtn"; b.type="button"; b.title="Ayarlar — kullanıcı/firma bilgileri ve şifre";
-    b.innerHTML='<div class="ayb-pro-ico" style="color:#0f766e;">⚙️</div><small>Ayarlar</small>';
-    b.onclick=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){} openSettings(); };
-    row.appendChild(b);
+  function removeProjeAyar(){
+    try{ var b=d.getElementById("btnAybAyarlar"); if(b&&b.parentNode) b.parentNode.removeChild(b); }catch(e){}
   }
-  function boot(){ relabelBtn(); injectProjeAyar(); showGiris(); }
+  function renameSahaTab(){
+    try{
+      var t=d.querySelector('.ayb-ribbon-tab[data-section="fielddata"]');
+      if(t && t.getAttribute("data-ayb-ren")!=="1"){
+        t.innerHTML='<span>⚙️</span>Ayarlar';
+        t.setAttribute("data-ayb-ren","1");
+        t.addEventListener("click", function(){ setTimeout(openSettings, 90); });
+      }
+    }catch(e){}
+  }
+  function boot(){ relabelBtn(); removeProjeAyar(); renameSahaTab(); showGiris(); }
   if(d.readyState!=="loading") boot(); else d.addEventListener("DOMContentLoaded", boot);
-  var n=0, iv=setInterval(function(){ relabelBtn(); injectProjeAyar(); if(!girisAcik()) showGiris(); if(++n>60) clearInterval(iv); }, 500);
+  var n=0, iv=setInterval(function(){ relabelBtn(); removeProjeAyar(); renameSahaTab(); if(!girisAcik()) showGiris(); if(++n>60) clearInterval(iv); }, 500);
+})();
+
+/* ===================== YAPIŞKAN NOT (koordinata sabit + ok + zoom ölçek, tablet) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap || window.map || null; }
+  var layer=null, curPid="__none__", mkById={}, zbound=false;
+  var REF=18, MINS=0.10, MAXS=1.0; /* 1/500 = tam boy (en büyük); daha yakın = aynı; uzaklaştıkça küçülür */
+  function appScaleN(){ try{ var el=d.getElementById("statusScale"); if(el){ var m=String(el.textContent||"").replace(/\./g,"").match(/1\s*\/\s*(\d+)/); if(m) return parseFloat(m[1]); } }catch(e){} return null; }
+  function zScale(){
+    var N=appScaleN();
+    if(N&&isFinite(N)&&N>0){ var s=500/N; if(s<MINS)s=MINS; if(s>MAXS)s=MAXS; return s; }
+    var map=M(); if(!map||typeof map.getZoom!=='function') return 1; var s2=Math.pow(2,(map.getZoom()-REF)); if(s2<MINS)s2=MINS; if(s2>MAXS)s2=MAXS; return s2;
+  }
+
+  function getNotes(){ var p=window.project; if(!p) return null; if(!Array.isArray(p.aybNotes)) p.aybNotes=[]; return p.aybNotes; }
+  function findNote(id){ var a=getNotes(); if(!a) return null; for(var i=0;i<a.length;i++){ if(a[i].id===id) return a[i]; } return null; }
+  function save(){ try{ if(typeof window.saveProjects==="function") window.saveProjects(); }catch(e){} }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return c==="&"?"&amp;":c==="<"?"&lt;":"&gt;";}); }
+  function aLL(n){ return [n.lat, n.lng]; }
+  function bLL(n){ return [ (n.noteLat!=null?n.noteLat:n.lat), (n.noteLng!=null?n.noteLng:n.lng) ]; }
+
+  function applyScale(){ var s=zScale(); Object.keys(mkById).forEach(function(id){ var g=mkById[id]; if(!g)return;
+      if(g.body&&g.body.getElement){ var el=g.body.getElement(); if(el){ var note=el.querySelector(".ayb-note"); if(note){ note.style.transformOrigin="top left"; note.style.transform="scale("+s+")"; } } }
+      updateArrow(id,s);
+    });
+  }
+  function updateArrow(id,s){
+    var g=mkById[id]; if(!g||!g.arrow) return; var map=M(); var L=window.L; if(!map||!L) return;
+    var n=findNote(id); if(!n) return;
+    if(s==null) s=zScale();
+    var pa=map.latLngToLayerPoint(L.latLng(aLL(n)[0],aLL(n)[1]));
+    var pb=map.latLngToLayerPoint(L.latLng(bLL(n)[0],bLL(n)[1]));
+    var dx=pa.x-pb.x, dy=pa.y-pb.y; var near=(dx*dx+dy*dy)<100;
+    var ang=Math.atan2(dy,dx)*180/Math.PI;
+    var el=g.arrow.getElement?g.arrow.getElement():null;
+    if(el){ var a=el.querySelector(".ayb-note-arrow"); if(a){ a.style.transform="rotate("+(ang+90)+"deg) scale("+s+")"; } el.style.display=near?"none":""; }
+    if(g.line){ try{ g.line.setStyle({opacity:near?0:0.9}); }catch(e){} }
+  }
+
+  function noteHtml(n){
+    return '<div class="ayb-note">'
+      +'<div class="ayb-note-bar"><span class="ayb-note-grip" title="Taşı">✥</span><button class="ayb-note-del" title="Sil">×</button></div>'
+      +'<div class="ayb-note-text" contenteditable="true" spellcheck="false">'+esc(n.text)+'</div>'
+      +'</div>';
+  }
+  function addMarker(n){
+    var L=window.L, map=M(); if(!L||!map||!layer) return;
+    var line=L.polyline([bLL(n),aLL(n)], {color:"#b45309",weight:2,opacity:.9,dashArray:"5,4",interactive:false}).addTo(layer);
+    var arrow=L.marker(aLL(n), {icon:L.divIcon({className:"ayb-note-arrowwrap",html:'<div class="ayb-note-arrow">▲</div>',iconSize:[20,20],iconAnchor:[10,10]}),interactive:false,keyboard:false,zIndexOffset:11000}).addTo(layer);
+    var body=L.marker(bLL(n), {icon:L.divIcon({className:"ayb-note-wrap",html:noteHtml(n),iconSize:[168,72],iconAnchor:[0,0]}),interactive:true,keyboard:false,zIndexOffset:12000}).addTo(layer);
+    mkById[n.id]={body:body,line:line,arrow:arrow};
+    wire(n); setTimeout(function(){ applyScale(); },30);
+  }
+  function wire(n){
+    var g=mkById[n.id]; if(!g||!g.body) return;
+    var mk=g.body, el=mk.getElement?mk.getElement():null;
+    if(!el){ setTimeout(function(){wire(n);},60); return; }
+    var L=window.L, map=M();
+    try{ L.DomEvent.disableClickPropagation(el); L.DomEvent.disableScrollPropagation(el); }catch(e){}
+    var txt=el.querySelector(".ayb-note-text"), del=el.querySelector(".ayb-note-del"), grip=el.querySelector(".ayb-note-grip");
+    if(txt){
+      txt.addEventListener("input",function(){ n.text=txt.innerText; save(); });
+      txt.addEventListener("pointerdown",function(e){ e.stopPropagation(); });
+      txt.addEventListener("dblclick",function(e){ e.stopPropagation(); });
+    }
+    if(del){ del.addEventListener("click",function(e){ e.stopPropagation(); e.preventDefault(); removeNote(n); }); }
+    if(grip){
+      var drag=false;
+      grip.addEventListener("pointerdown",function(e){ e.preventDefault(); e.stopPropagation(); drag=true; try{map.dragging.disable();}catch(_){}
+        try{grip.setPointerCapture(e.pointerId);}catch(_){}
+      });
+      grip.addEventListener("pointermove",function(e){ if(!drag) return; var pt; try{ pt=map.mouseEventToLatLng(e); }catch(_){ pt=null; }
+        if(pt){ n.noteLat=pt.lat; n.noteLng=pt.lng; mk.setLatLng(pt);
+          if(g.line){ try{ g.line.setLatLngs([[pt.lat,pt.lng],aLL(n)]); }catch(_){} }
+          updateArrow(n.id);
+        }
+      });
+      function end(){ if(!drag) return; drag=false; try{map.dragging.enable();}catch(_){} save(); }
+      grip.addEventListener("pointerup",end); grip.addEventListener("pointercancel",end);
+    }
+  }
+  function removeNote(n){
+    try{ var g=mkById[n.id]; if(g&&layer){ if(g.body)layer.removeLayer(g.body); if(g.line)layer.removeLayer(g.line); if(g.arrow)layer.removeLayer(g.arrow); } delete mkById[n.id]; }catch(e){}
+    var arr=getNotes(); if(arr){ for(var i=0;i<arr.length;i++){ if(arr[i].id===n.id){ arr.splice(i,1); break; } } }
+    save();
+  }
+  function rebuild(){
+    var L=window.L, map=M(); if(!L||!map) return;
+    if(!layer){ layer=L.layerGroup().addTo(map); }
+    layer.clearLayers(); mkById={};
+    bindZoom();
+    var arr=getNotes(); if(!arr) return;
+    arr.forEach(function(n){ addMarker(n); });
+    setTimeout(applyScale,40);
+  }
+  function bindZoom(){ var map=M(); if(!map||zbound) return; try{ map.on("zoomend",applyScale); map.on("zoom",applyScale); map.on("moveend",applyScale); zbound=true; }catch(e){} }
+  function placeAt(latlng){
+    var arr=getNotes(); if(!arr){ (window.aybModal||alert)("Önce bir proje aç."); return; }
+    var n={ id:"note_"+Date.now()+"_"+Math.floor(Math.random()*1000), lat:latlng.lat, lng:latlng.lng, noteLat:latlng.lat, noteLng:latlng.lng, text:"" };
+    arr.push(n); addMarker(n); save();
+    setTimeout(function(){ try{ mkById[n.id].body.getElement().querySelector(".ayb-note-text").focus(); }catch(e){} },160);
+  }
+  function startPlace(){
+    var map=M(); if(!map) return;
+    if(!getNotes()){ (window.aybModal||alert)("Önce bir proje aç."); return; }
+    try{ if(typeof window.setTool==="function") window.setTool(null); }catch(e){}
+    try{ if(typeof window.hint==="function") window.hint("Yapışkan not için haritaya dokun."); }catch(e){}
+    try{ map.getContainer().style.cursor="crosshair"; }catch(e){}
+    map.once("click", function(e){ try{ map.getContainer().style.cursor=""; }catch(_){} placeAt(e.latlng); });
+  }
+  function css(){
+    if(d.getElementById("aybNoteCss")) return;
+    var s=d.createElement("style"); s.id="aybNoteCss";
+    s.textContent=
+      ".ayb-note-wrap{background:transparent!important;border:none!important;}"
+      +".ayb-note{width:168px;background:#fff9c4;border:1px solid #e6d54a;border-radius:7px;box-shadow:0 4px 12px rgba(0,0,0,.35);font:13px system-ui,Arial;overflow:hidden;transform-origin:top left;}"
+      +".ayb-note-bar{display:flex;align-items:center;justify-content:space-between;background:#fde68a;padding:3px 5px;}"
+      +".ayb-note-grip{cursor:move;font-size:15px;color:#92400e;padding:0 4px;touch-action:none;user-select:none;}"
+      +".ayb-note-del{border:none;background:#ef4444;color:#fff;width:20px;height:20px;border-radius:5px;font-size:15px;line-height:1;cursor:pointer;}"
+      +".ayb-note-text{padding:7px 8px;min-height:36px;color:#3b2f00;outline:none;white-space:pre-wrap;word-break:break-word;}"
+      +".ayb-note-arrowwrap{background:transparent!important;border:none!important;}"
+      +".ayb-note-arrow{color:#b45309;font-size:18px;line-height:1;transform-origin:center;text-shadow:0 0 3px #fff,0 0 3px #fff;}";
+    (d.head||d.documentElement).appendChild(s);
+  }
+  function injectBtn(){
+    if(d.getElementById("aybNoteBtn")) return true;
+    var row=d.querySelector(".ayb-pro-group.draw .ayb-pro-row");
+    if(!row) return false;
+    var b=d.createElement("button");
+    b.type="button"; b.id="aybNoteBtn"; b.className="ayb-pro-btn toolbtn"; b.title="Yapışkan Not (koordinata sabit, ok ile, zoomla küçülür)";
+    b.innerHTML='<div class="ayb-pro-ico" style="font-size:18px">📝</div><small>Yap. Not</small>';
+    b.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); startPlace(); });
+    row.appendChild(b);
+    return true;
+  }
+  function mergeNotes(arr){
+    var notes=getNotes(); if(!notes||!Array.isArray(arr)) return 0;
+    var byId={}; notes.forEach(function(n){ byId[n.id]=n; });
+    var add=0;
+    arr.forEach(function(nn){
+      if(!nn || nn.lat==null || nn.lng==null) return;
+      if(nn.id && byId[nn.id]){ var e=byId[nn.id]; e.lat=nn.lat; e.lng=nn.lng; if(nn.noteLat!=null)e.noteLat=nn.noteLat; if(nn.noteLng!=null)e.noteLng=nn.noteLng; if(nn.text!=null) e.text=nn.text; }
+      else {
+        var dup=notes.some(function(n){ return Math.abs(n.lat-nn.lat)<0.00002 && Math.abs(n.lng-nn.lng)<0.00002 && (n.text||"")===(nn.text||""); });
+        if(!dup){ notes.push({ id:nn.id||("note_"+Date.now()+"_"+Math.floor(Math.random()*1000)), lat:nn.lat, lng:nn.lng, noteLat:(nn.noteLat!=null?nn.noteLat:nn.lat), noteLng:(nn.noteLng!=null?nn.noteLng:nn.lng), text:nn.text||"" }); add++; }
+      }
+    });
+    save(); rebuild(); return add;
+  }
+  window.aybMergeNotes=mergeNotes;
+  window.aybNotesRebuild=rebuild;
+
+  function watch(){
+    var pid=(window.project&&window.project.id)||"__none__";
+    if(pid!==curPid){ curPid=pid; rebuild(); }
+    if(window.__aybPendingNotes && getNotes()){ try{ mergeNotes(window.__aybPendingNotes); }catch(e){} window.__aybPendingNotes=null; }
+  }
+  function boot(){
+    css();
+    var t=0, iv=setInterval(function(){ var ok=injectBtn(); if(M()&&window.L){ bindZoom(); rebuild(); } if((ok&&M())|| ++t>40) clearInterval(iv); },500);
+    setInterval(watch,1200);
+  }
+  if(d.readyState!=="loading") boot(); else d.addEventListener("DOMContentLoaded", boot);
+})();
+
+/* ===================== DİREK OTOMAT DEĞİŞİMİ (Hırdavat sekmesi) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  var OTO_TIPLER=["B6","B10","B16","B20","B25","B32","B40","C6","C10","C16","C20","C25","C32","C40","C50","C63",
+    "3x16","3x25","3x32","3x40","3x50","3x63","1x16","1x25","1x32"];
+  function save(){ try{ if(typeof window.saveProjects==="function") window.saveProjects(); }catch(e){} }
+  function S(v){ return v==null?"":String(v); }
+
+  function ensureDatalist(){
+    if(d.getElementById("aybOtoList")) return;
+    var dl=d.createElement("datalist"); dl.id="aybOtoList";
+    OTO_TIPLER.forEach(function(t){ var o=d.createElement("option"); o.value=t; dl.appendChild(o); });
+    (d.body||d.documentElement).appendChild(dl);
+  }
+
+  function render(obj, listEl){
+    listEl.innerHTML="";
+    var arr=obj.props.otomatlar;
+    arr.forEach(function(row,i){
+      var r=d.createElement("div");
+      r.style.cssText="display:grid;grid-template-columns:1fr 66px 30px;gap:6px;align-items:center;margin:3px 0;";
+      var tip=d.createElement("input"); tip.type="text"; tip.setAttribute("list","aybOtoList");
+      tip.placeholder="Tip (örn: B6, C16, 3x25)"; tip.value=S(row.tip);
+      tip.style.cssText="height:28px;padding:2px 6px;border:1px solid #c8ced8;border-radius:4px;min-width:0;";
+      var adet=d.createElement("input"); adet.type="number"; adet.min="1"; adet.step="1"; adet.value=(row.adet||1);
+      adet.style.cssText="height:28px;padding:2px 4px;border:1px solid #c8ced8;border-radius:4px;text-align:center;min-width:0;";
+      var del=d.createElement("button"); del.type="button"; del.textContent="×"; del.title="Sil";
+      del.style.cssText="height:28px;border:none;background:#ef4444;color:#fff;border-radius:5px;font-size:16px;cursor:pointer;";
+      tip.addEventListener("input",function(){ row.tip=tip.value; save(); });
+      adet.addEventListener("input",function(){ var n=parseInt(adet.value,10); row.adet=(isNaN(n)||n<1)?1:n; save(); });
+      del.addEventListener("click",function(){ arr.splice(i,1); save(); render(obj,listEl); });
+      r.appendChild(tip); r.appendChild(adet); r.appendChild(del);
+      listEl.appendChild(r);
+    });
+    if(!arr.length){
+      var empty=d.createElement("div"); empty.textContent="Otomat değişimi girilmedi.";
+      empty.style.cssText="color:#7a8699;font-size:12px;padding:3px 2px;"; listEl.appendChild(empty);
+    }
+  }
+
+  function injectOtomat(obj){
+    if(!obj || !obj.props) return;
+    var tab=d.getElementById("tab_hirdavat");
+    if(!tab) return;
+    obj.props.otomatlar=Array.isArray(obj.props.otomatlar)?obj.props.otomatlar:[];
+    ensureDatalist();
+    var old=d.getElementById("aybOtoBox"); if(old&&old.parentNode) old.parentNode.removeChild(old);
+    var box=d.createElement("div"); box.id="aybOtoBox";
+    box.style.cssText="border:1px solid #d9a441;background:#fff7e6;border-radius:8px;padding:8px 10px;margin:4px 0 10px;";
+    var head=d.createElement("div");
+    head.style.cssText="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;";
+    var title=d.createElement("div"); title.innerHTML="⚡ <b>Otomat Değişimi</b>";
+    title.style.cssText="font-size:13px;color:#92400e;";
+    var add=d.createElement("button"); add.type="button"; add.textContent="+ Otomat Ekle";
+    add.style.cssText="height:30px;padding:0 12px;border:none;border-radius:6px;background:#2563eb;color:#fff;font-weight:700;font-size:12px;cursor:pointer;";
+    head.appendChild(title); head.appendChild(add);
+    var list=d.createElement("div"); list.id="aybOtoList_rows";
+    box.appendChild(head); box.appendChild(list);
+    tab.insertBefore(box, tab.firstChild);
+    add.addEventListener("click",function(){ obj.props.otomatlar.push({tip:"",adet:1}); save(); render(obj,list);
+      setTimeout(function(){ var ins=list.querySelectorAll('input[type=text]'); if(ins.length) ins[ins.length-1].focus(); },40);
+    });
+    render(obj, list);
+  }
+
+  function tryInjectPoll(o){
+    if(!o) return;
+    var tries=0;
+    var iv=setInterval(function(){
+      var tab=d.getElementById("tab_hirdavat");
+      if(tab){ injectOtomat(o); clearInterval(iv); }
+      if(++tries>30) clearInterval(iv); /* ~3 sn */
+    },100);
+  }
+  function wrap(){
+    if(window.__aybOtoWrapped) return false;
+    if(typeof window.openPointForm!=="function") return false;
+    var orig=window.openPointForm;
+    window.openPointForm=function(type,latlng,existing){
+      var r=orig.apply(this,arguments);
+      try{ if(type==="direk" && existing){ tryInjectPoll(existing); } }catch(e){}
+      return r;
+    };
+    window.__aybOtoWrapped=true;
+    return true;
+  }
+  var t=0, iv=setInterval(function(){ if(wrap()|| ++t>60) clearInterval(iv); },500);
+})();
+
+/* ===================== BUL (arama: trafo/direk/box/kofre no + trafoya bağlı direkler) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap||window.map||null; }
+  var hl=null, curType="all", curQuery="", curTrafo="";
+
+  function objNo(o){ try{ return String((window.getObjectNo?window.getObjectNo(o):null) || (o.props&&(o.props.direk_no||o.props.trafo_no||o.props.kofre_no||o.props.box_no||o.props.ad)) || o.id); }catch(e){ return String(o.id||""); } }
+  function objTip(o){ try{ return String((window.getObjectTip?window.getObjectTip(o):null) || o.type || ""); }catch(e){ return String(o.type||""); } }
+  function tLabel(t){ var m={direk:'Direk',trafo:'Trafo',box:'Box',kofre:'Kofre',abone:'Abone',ekmuf:'Ek Muf',not:'Not'}; return m[t]||t; }
+  function tIcon(t){ var m={direk:'📍',trafo:'⚡',box:'🔲',kofre:'🗄️',abone:'🏠',ekmuf:'🔗',not:'📝'}; return m[t]||'•'; }
+  function low(s){ return String(s==null?"":s).toLocaleLowerCase("tr"); }
+
+  function results(){
+    var p=window.project; if(!p||!Array.isArray(p.objects)) return [];
+    var q=low(curQuery).trim(), out=[];
+    p.objects.forEach(function(o){
+      if(!o||o.lat==null) return;
+      if(curTrafo){ if(o.type!=="direk") return; var tn=low(o.props&&(o.props.trafo_no||o.props.baslangic_trafo_no||o.props.enerji_direk_no)); if(tn!==low(curTrafo)) return; }
+      else if(curType!=="all" && o.type!==curType) return;
+      var no=objNo(o), tip=objTip(o);
+      if(!curTrafo && q){ var hay=low(no+" "+tip+" "+tLabel(o.type)+" "+(o.props&&o.props.trafo_no||"")); if(hay.indexOf(q)<0) return; }
+      out.push({o:o,no:no,tip:tip,type:o.type});
+    });
+    out.sort(function(a,b){ if(a.type!==b.type) return a.type<b.type?-1:1; return String(a.no).localeCompare(String(b.no),'tr',{numeric:true}); });
+    return out.slice(0,400);
+  }
+
+  function highlight(o){
+    var map=M(), L=window.L; if(!map||!L) return;
+    try{ if(hl){ map.removeLayer(hl); hl=null; } }catch(e){}
+    var c=L.circleMarker([o.lat,o.lng], {radius:20,color:"#ff2d55",weight:4,fill:false,opacity:1}).addTo(map); hl=c;
+    var r=20,grow=true,n=0;
+    var iv=setInterval(function(){ r+=grow?3:-3; if(r>34)grow=false; if(r<14)grow=true; try{c.setRadius(r);}catch(e){} if(++n>50){ clearInterval(iv); try{ map.removeLayer(c);}catch(e){} if(hl===c)hl=null; } },80);
+  }
+  function flyTo(o){ var map=M(); if(!map||typeof map.setView!=='function') return; try{ map.setView([o.lat,o.lng], Math.max((map.getZoom&&map.getZoom())||0,18), {animate:true}); }catch(e){} highlight(o); }
+
+  function render(){
+    var box=d.getElementById("aybBulList"); if(!box) return;
+    var rs=results();
+    var head=d.getElementById("aybBulHead");
+    if(head) head.textContent = curTrafo ? ('“'+curTrafo+'” trafosuna bağlı direkler: '+rs.length) : (rs.length+' sonuç');
+    if(!rs.length){ box.innerHTML='<div style="padding:12px;color:#7a8699;font-size:13px;">Sonuç yok.</div>'; return; }
+    var h="";
+    rs.forEach(function(r,i){
+      h+='<div class="aybBulRow" data-i="'+i+'" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #eef1f6;cursor:pointer;">'
+        +'<span style="font-size:16px;">'+tIcon(r.type)+'</span>'
+        +'<span style="font-weight:800;color:#0f2c66;min-width:70px;">'+tLabel(r.type)+'</span>'
+        +'<span style="font-weight:700;">No: '+r.no+'</span>'
+        +'<span style="color:#64748b;font-size:12px;flex:1;text-align:right;">'+(r.tip||"")+'</span>'
+        +(r.type==="trafo"?'<button class="aybBulBagli" data-i="'+i+'" style="border:none;border-radius:6px;background:#0e7490;color:#fff;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;">Bağlı direkler</button>':'')
+        +'</div>';
+    });
+    box.innerHTML=h;
+    box._rs=rs;
+    Array.prototype.forEach.call(box.querySelectorAll(".aybBulRow"), function(row){
+      row.addEventListener("click", function(e){ if(e.target && e.target.classList.contains("aybBulBagli")) return; var i=+row.getAttribute("data-i"); var r=box._rs[i]; if(r) flyTo(r.o); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll(".aybBulBagli"), function(btn){
+      btn.addEventListener("click", function(e){ e.stopPropagation(); var i=+btn.getAttribute("data-i"); var r=box._rs[i]; if(r){ curTrafo=r.no; curType="direk"; curQuery=""; var inp=d.getElementById("aybBulInput"); if(inp) inp.value=""; syncChips(); render(); } });
+    });
+  }
+  function syncChips(){
+    Array.prototype.forEach.call(d.querySelectorAll(".aybBulChip"), function(c){
+      var on=(c.getAttribute("data-t")===curType && !curTrafo);
+      c.style.background=on?"#2563eb":"#e8edf5"; c.style.color=on?"#fff":"#33415a";
+    });
+    var clr=d.getElementById("aybBulClrTrafo"); if(clr) clr.style.display=curTrafo?"inline-block":"none";
+  }
+
+  function panel(){
+    if(d.getElementById("aybBulPanel")) return d.getElementById("aybBulPanel");
+    var el=d.createElement("div"); el.id="aybBulPanel";
+    el.style.cssText="position:fixed;top:96px;left:10px;z-index:2147481000;width:340px;max-width:92vw;background:#fff;border:1px solid #c7d0de;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.35);font:13px system-ui,Arial;display:none;overflow:hidden;";
+    el.innerHTML=
+      '<div style="display:flex;align-items:center;gap:8px;background:#0f2c66;color:#fff;padding:9px 12px;">'
+        +'<span style="font-weight:800;">🔍 Bul</span>'
+        +'<span id="aybBulHead" style="font-size:11px;opacity:.85;flex:1;"></span>'
+        +'<button id="aybBulClose" style="border:none;background:#ef4444;color:#fff;border-radius:6px;width:24px;height:24px;font-size:15px;cursor:pointer;">×</button>'
+      +'</div>'
+      +'<div style="padding:8px 10px;">'
+        +'<input id="aybBulInput" type="text" placeholder="No veya tip yaz (örn: 12, TR01, box)" style="width:100%;height:34px;padding:4px 10px;border:1px solid #c7d0de;border-radius:8px;box-sizing:border-box;">'
+        +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">'
+          +'<button class="aybBulChip" data-t="all" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Tümü</button>'
+          +'<button class="aybBulChip" data-t="direk" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Direk</button>'
+          +'<button class="aybBulChip" data-t="trafo" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Trafo</button>'
+          +'<button class="aybBulChip" data-t="box" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Box</button>'
+          +'<button class="aybBulChip" data-t="kofre" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Kofre</button>'
+          +'<button id="aybBulClrTrafo" style="display:none;border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;background:#f59e0b;color:#fff;">↩ Trafo filtresini kaldır</button>'
+        +'</div>'
+      +'</div>'
+      +'<div id="aybBulList" style="max-height:52vh;overflow:auto;border-top:1px solid #eef1f6;"></div>';
+    d.body.appendChild(el);
+    d.getElementById("aybBulClose").onclick=function(){ el.style.display="none"; };
+    var inp=d.getElementById("aybBulInput");
+    inp.addEventListener("input", function(){ curQuery=inp.value; curTrafo=""; syncChips(); render(); });
+    Array.prototype.forEach.call(el.querySelectorAll(".aybBulChip"), function(c){
+      c.addEventListener("click", function(){ curType=c.getAttribute("data-t"); curTrafo=""; syncChips(); render(); });
+    });
+    d.getElementById("aybBulClrTrafo").onclick=function(){ curTrafo=""; curType="all"; syncChips(); render(); };
+    return el;
+  }
+  function openBul(){ var el=panel(); el.style.display="block"; curTrafo=""; syncChips(); render(); var inp=d.getElementById("aybBulInput"); setTimeout(function(){ try{inp.focus();}catch(e){} },60); }
+  window.aybOpenBul=openBul;
+
+  function injectBtn(){
+    if(d.getElementById("aybBulBtn")) return true;
+    var bar=d.querySelector(".workbar")||d.querySelector(".ayb-native-clean-workbar");
+    if(!bar) return false;
+    var b=d.createElement("button");
+    b.id="aybBulBtn"; b.type="button";
+    b.textContent="🔍 Bul";
+    b.style.cssText="height:26px;padding:0 12px;border:none;border-radius:7px;background:#0f2c66;color:#fff;font-weight:800;font-size:12px;cursor:pointer;margin-right:6px;";
+    b.onclick=function(e){ try{e.preventDefault();e.stopPropagation();}catch(_){} openBul(); };
+    bar.insertBefore(b, bar.firstChild);
+    return true;
+  }
+  var t=0, iv=setInterval(function(){ if(injectBtn()|| ++t>60) clearInterval(iv); },500);
+})();
+
+/* ===================== SEMBOL ÖLÇEĞİ (baskı ölçeğine 1/N göre, sabit/kapaklı) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap||window.map||null; }
+  var REF=1000, MIN=0.30, MAX=1.0; /* 1/1000 ve daha yakın = tam boy; uzaklaştıkça küçülür; 1.0'ı ASLA aşmaz */
+  function appScaleN(){ try{ var el=d.getElementById("statusScale"); if(el){ var m=String(el.textContent||"").replace(/\./g,"").match(/1\s*\/\s*(\d+)/); if(m) return parseFloat(m[1]); } }catch(e){} return null; }
+  function symScale(){
+    var N=appScaleN();
+    if(N&&isFinite(N)&&N>0){ var s=REF/N; if(s<MIN)s=MIN; if(s>MAX)s=MAX; return s; }
+    var map=M(); if(map&&typeof map.getZoom==='function'){ var s2=Math.pow(2,((map.getZoom()||18)-18)); if(s2<MIN)s2=MIN; if(s2>MAX)s2=MAX; return s2; }
+    return 1;
+  }
+  function css(){
+    if(d.getElementById("aybSymScaleCss")) return;
+    var st=d.createElement("style"); st.id="aybSymScaleCss";
+    st.textContent=
+      ".leaflet-marker-pane .symbol{ transform: scale(var(--ayb-sym-scale,1)) !important; transform-origin:30px 20px !important; }"+
+      ".leaflet-marker-pane .symbol .hit{ transform: translate(-50%,-50%) scale(calc(1 / var(--ayb-sym-scale,1))) !important; }";
+    (d.head||d.documentElement).appendChild(st);
+  }
+  function apply(){ try{ d.documentElement.style.setProperty("--ayb-sym-scale", symScale()); }catch(e){} }
+  var bound=false;
+  function bind(){ var map=M(); if(!map||bound) return; try{ map.on("zoomend",apply); map.on("zoom",apply); map.on("moveend",apply); bound=true; }catch(e){} }
+  function boot(){ css(); apply(); var t=0, iv=setInterval(function(){ css(); bind(); apply(); if(++t>40) clearInterval(iv); },500); setInterval(apply,1500); }
+  if(d.readyState!=="loading") boot(); else d.addEventListener("DOMContentLoaded", boot);
+})();
+
+
+/* ===================== DXF FONT GÖMME + ORİJİNAL RENKLER ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  /* --- gömülü TTF fontlar (AutoCAD T_Romans + B_Cad) --- */
+  function fonts(){
+    if(d.getElementById("aybCadFontCss")) return;
+    var st=d.createElement("style"); st.id="aybCadFontCss";
+    st.textContent=
+      "@font-face{font-family:'AYB_TRomans';font-display:swap;src:url(data:font/ttf;base64,AAEAAAAPAIAAAwBwT1MvMnvYQKwAAAF4AAAAYFBDTFTBAaCgAACnbAAAADZjbWFwToMHlQAABqwAAAZuY3Z0IAGm/jcAAA/8AAAADGZwZ20iUD7FAAANHAAAArVnYXNwABcAAwAAp1wAAAAQZ2x5ZhJKLIkAABJ0AACOAGhlYWTY9Na8AAAA/AAAADZoaGVhD9gHswAAATQAAAAkaG10eJxWCU8AAAHYAAAE1GxvY2Gjf8bQAAAQCAAAAmxtYXhwA1ADEgAAAVgAAAAgbmFtZawTUGkAAKB0AAAB5HBvc3RWMPFXAACiWAAABQRwcmVwywI4HgAAD9QAAAAlAAEAAAABAAA9tRswXw889QAZCAAAAAAAsvdOaQAAAAC/Hj2LAAT9/AewB9cAAAAAAAAAAAAAAAAAAQAAB5z9/ACFCIcABP/6B7AAAQAAAAAAAAAAAAAAAAAAATUAAQAAATUAXAAGAAAAAAABAAAAAAAUAAACAAK1AAAAAAACBPMBkAAFAAEFmgUzAAABJQWaBTMAAAOgAGYCEgAAAgAEAAAAAAAAAAAAAgcAAAAAAAAAAAAAAABBTFRTAEAAIOECBfL9+gCFB5wCBAAAAf8AAAAAA/YF8gAAACAAAAYCAAAHaAEKBboABAW6AJMCXgEfAu4BGQQMARkGAgDnBboA1wchAR8HaADXAu4BGQQMAR8EDADbBJwA3wdoAS8C7gEZAu4BGQZKAJEFugDXBboBtgW6AMEFugDZBboAxwW6ANkFugEfBboA5wW6ANcFugEfAu4BGQLuARkG2QEOB2gBLwbZAScFKwEfB7AA1wUrAEoHIQEfByEA1wYCAR8FcwEfBSsBHwYCANcGkQEfAl4BHwScAI8GSgEfBJwBHwbZAR8GSgEfBkoA1wYCAR8GSgDXBgIBHwW6AR8EnABYBkoBHwUrAEoG2QCPBboA2QUrAEwFugDJA30A1wZKAJEDfQCgBkoA3wchAKAC7gEfBXMA1wVzAR8FKwDXBXMA1wUrANcDfQCgBXMA1wVzAR8CXgDRAu4AXATjAR8CXgEfCIcBHwVzAR8FcwDXBXMBHwVzANcDxQEfBOMA1QN9AKAFcwEfBJwAkQZKANcE4wDbBJwAWATjAMcEDAEKAl4BHwQMAScHIQDXA8UBGQUrANcFKwDBBkoATAW6ANcDxQEfBSsA0QKmAEgHaAEvA8UBHwUrANsFKwDXBSsASgUrAEoFKwBKBSsASgUrAEoFKwBKBXMASgchANcFcwEfBXMBHwVzAR8FcwEfAl4AkwJeAR8CXgCTAl4AQgZKAR8GAgCPBgIAjwYCAI8GSgDXBkoA1wZKANcGSgEfBkoBHwZKAR8GSgEfBSsA2wVzANcFcwDXBXMA1wVzANcFcwDXBXMA1wW6ANcFKwDXBSsA1wUrANcFKwDXBSsA1wM1AN8DNQDfAzUA3QM1ANEFcwEfBXMA1wVzANcFcwDXBXMA1wVzANcFKwEvBboA1wVzAR8FcwEfBXMBHwVzARkEnABYBkoA1wdoAS8GSgDXB0gBDwdIAR8GAgAABSsAkwM1ASEFugEfBOMA1QW6AMkGSgEfBgIA1wUrANcHaAEvBSsASgUrANcGAgDTBOMAxwdoAS8FmwBICCEAAAf4AScH+AEnCCEAAAYCAFgFKwBMBgIBHwVzANcEnABYBXMBHwVzANcGAgEfBXMA1wVzAR8FKwDXBXMBHwUrANcGSgEfBXMBHwZKAR8FcwEfBkoA1wVzANcGAgEfA8UA2wW6ANcE4wDTBJwAWAN9AKAGSgEfBXMBHwZKAR8FcwEfBboAyQTjAMcFugDJBOMAxwUrAEoGAgEfBkoBHwTjAR8G2QCPBXMBHwbZAEwFKwBQBkoBHwZKAR8FugEfBboAUAbZAR8GSgEfBkoA1wZKAR8FugEfBboA1wScAFgEnABKB2gA1wScAEoGSgEfBgIA1wg/AR8IPwEfBgIAWAbZAR8FugEfBXMAkwdoAR8FugCPBXMA1wVzAR8FcwEfBOMA1wVzANcFKwDXBkoATAQMAFIFcwEfBXMBHwScAR8FKwDnBkoBHwVzAR8FcwDXBXMBHwVzAR8E4wDXB/gBHwQMABAGSgDXA8UATAVzAR8FKwDXB/gBHwf4AR8FKwBYBgIBHwUrAR8E4wCTBtkBHwTjANcGSgDXBXMA1wW6AR8DFACIBZkAxwUKADgFmQDHAxQAiAa4AMYGuAEOBikAPgdIAR8GuAEOBnEBDgcBAQ4E/ADgBcMA4AXDAOYF3ADmA9gBPgAAAAQAAAADAAAAJAABAAAAAAJcAAMAAQAABBIAAwAKAAAGXgAEAjgAAAByAEAABQAyACAALAAtAH4AgACNAKMApQCnAKsArQCyALUAvgDPANYA3ADeAO8A8AD8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BDEAAAADAR//8gRUBawABQALAB0AJbgACiu6AAAAAgANKwC4AAQvuAAOL7gAHC+6AAwADgAEERI5MDEBByc1NxcHNScHFRcBDwEjLwERMxEfATM/AREzESMDfaCgoKAhf39/AVa8lt+aSSBGhc+J0SEhBLlQUKRPT5B7QEB7P/xqvkhK4QLP/TXNQ0XPAsf8FAAAAAADAR//8gUrB9cAAwAHABsAG7gACiu6AAAABQANKwC4AAIvuAAGL7gACy8wMQEjETMBIxEzAQ8CIy8CETMRHwIzPwIRMwPFISH+4SEhAoVKld2U3ZZJIEaJ0YvRikUhBnEBZv6aAWb51d2VSEiV3QQ2+8/RikVFitEEMQAAAwEf//IEVAYpAAMABwAZACm4AAorugAAAAUADSsAuAACL7gABi+4AAovuAAYL7oACAAKAAIREjkwMQEjETMBIxEzAQ8BIy8BETMRHwEzPwERMxEjA30hIf6aISECHLyW35pJIEaFz4nRISEFCwEe/uIBHvrPvkhK4QLP/TXNQ0XPAsf8FAAAAAIAyf/yBPIHnAAHAAsALbgACisAuAADL7gACS+6AAAAAwAJERI5ugABAAMACRESOboABQADAAkREjkwMQkBIRUhASE1LQEXBQTy/BQDzfv2A+v8MwFdAR4V/uEF8vofHwXfIdPXGdcAAgDH//IEHQUZAAcACwAtuAAKKwC4AAkvuAADL7oAAAADAAkREjm6AAEAAwAJERI5ugAFAAMACRESOTAxCQEhFSEBITUlNxcHBB386wL0/MsDFP0MARfXENcD/PwVHwPqII6PHY8AAAACAMn/8gTyBzQABwARAC24AAorALgAAy+4AAovugAAAAMAChESOboAAQADAAoREjm6AAUAAwAKERI5MDEJASEVIQEhNSU0MzIWFRQGIyIE8vwUA8379gPr/DMBr0ceKioeRwXy+h8fBd8h+kgqHh4qAAAAAAIAx//yBB0FCwAHABEALbgACisAuAALL7gAAy+6AAAAAwALERI5ugABAAMACxESOboABQADAAsREjkwMQkBIRUhASE1JTQ2MzIVFCMiJgQd/OsC9PzLAxT9DAFEKh5HRx4qA/z8FR8D6iDHHipISCoAAAAAAgBK//wE4QXiAAcACgAxuAAKKwC4AAEvuAAEL7gABi+6AAgAAQAGERI5ugAJAAEABhESOboACgABAAYREjkwMSUHAyEDJwEzCQIE4Ry9/Ru9HAI7IgFV/pr+mQcLAer+FgsF2/wlA678UgAAAgEf//IFKwXyAAkAFwAPuAAKKwC4AA0vuAAPLzAxAREhPwI1LwIBDwIhESEVIREhHwIBPwJz0UJFRULRAXlKTt39aQMl/PsCd91OSgME/Q1FRInPiURF/heVTEgGACH9VElMlgAAAAADAR//8gUrBfIACQATACQAGbgACisAuAAXL7gAGS+6ACEAFwAZERI5MDEBIT8CNS8CIQEhESE/AjUvARMPAiERIR8CFQ8CHwIBPwJz0UJFRULR/Y0Cc/2NAnPRQkVFQqhKTt39aQKX3U5KSk6srE5KAyVGQ4qHiURF/TP9DUVEic+JRP5clUxIBgBKS5aYlUw5OUyWAAAAAAEBHwAABIsF8gAFAA+4AAorALgAAi+4AAQvMDEBIREjESEEi/y0IANsBdH6LwXyAAIAj/7kBkoF8gAHABYAHbgACisAuAAIL7gADC+4ABMvugAAAAgAExESOTAxJSERIREDDwEBIxEhESMRMz8BExEhETMBVgRE/QxISkkEfyH6hyGaz0VIAzWQEQXA/LL+3pRK/mEBDv7yAS3RiwEbA2r6HwAAAQEf//IE0wXyAAsACkADAQEDAC8/MDEFIREhFSERIRUhESEE0/xMA7T8bANM/LQDlA4GACH9VCH9DQAAAQBM//gGjQXuABMADUAFDgEBAQoALz8/MDEJAScJATcBETMRARcJAQcBBxEjEQLf/YUYAnv9hRgC+CEC+Bj9hQJ7GP2FfSEDRPy0EwNPAnsZ/QYC7v0SAvoZ/YX8sRMDTH39OQLHAAABAFD/8gScBfIAJgAKQAMEAR4ALz8wMQEPAiMvATcfATM/AjUvAiE1IT8BNS8BIwUnJTMfARUPAR8CBJxKlt3b3dcQ19HT0YlGRonR/uMBG89ERM3T/uQJASHb4ktLv7qWSgFjlpNISI8dkEVFjImHiYxFIYmJiIVFRyBISpmYlYE+k5YAAAAAAQEfAAAFKwXiAAkADUAFBAEAAQkALz8/MDEhIxEBIxEzEQEzBSsh/DgjIAPJIwWs+lQF4vpUBawAAAAAAgEfAAAFKwdUAAsAFQANQAUQAQwBCwAvPz8wMQEPASMvATcfATM/ARMjEQEjETMRATMEUEqVmJVKGEaJh4pF9CH8OCMgA8kjBzxKSkpKGEVGRkX4rAWs+lQF4vpUBawAAQEf//gFJwXuAAsACkADCQEFAC8/MDEhIxEzEQEXCQEHCQEBPyAgA88Z/YUCexn9hf6sBeL8OwPRGf2F/LETA0z+rAABAFD/9AScBfIADQAKQAMHAQ0ALz8wMSEjESERDwInPwIRIQScIf0MSkuSEI1ERQM2BdH7SpVMRhtHRIkEzwAAAQEfAAAFugXiAAsADUAFBgEAAQsALz8/MDEhIxEJAREjETMJATMFuiD90/3SICMCKwIqIwWg++wEFPpgBeL77wQRAAABAR8AAAUrBeIACwANQAUJAQABBwAvPz8wMSEjETMRIREzESMRIQE/ICADyyEh/DUF4v1DAr36HgMEAAACANf/8gVzBfIAEwAnAApAAwUBDwAvPzAxAQ8DIS8DET8DIR8DAxEvAyEPAxEfAyE/AgVzSkiTlv7ZlZRHSkpHlJUBJ5aTSEohRkeMif7qiotIRUVIi4oBFomMRwI825STSEiTlNsBatuUk0pKk5Tb/poBYtOLjEVFjIvT/p7Ti4xFRYyLAAAAAQEfAAAFKwXyAAcADUAFBQEAAQcALz8/MDEhIxEhESMRIQUrIfw1IAQMBdH6LwXyAAAAAAIBHwAABSsF8gAJABUACkADEAESAC8/MDEBIT8CNS8CIQEPAiERIxEhHwIBPwJz0UJFRULR/Y0D7EpO3f2JIAKX3U5KAt5FRInPiURF/heWS0r9QwXySkuWAAAAAQDX//IFKQXyACMACkADBAEOAC8/MDEBDwIhLwMRPwMhHwIHLwIhDwMRHwMhPwIFKUiTlv7ZlZRHSkpHlJUBJ5aTSB1HjIn+6oqLSEVFSIuKARaJjEcBX5KTSEiTlNsBatuUk0pKk5IQjYxFRYyL0/6e04uMRUWMjQAAAAEAWAAABEQF8gAHAApAAwEBBQAvPzAxISMRITUhFSECXiH+GwPs/hoF0SEhAAAAAAEASv/yBFIF6AANAApAAwkBBAAvPzAxCQE3CQEXAQ8BIzUzPwECO/4PHAHoAecd/cJLlkxEiUQBHwS9DPtiBJ4M+qpMSB9FRAAAAAADANcAAAaRBeIACwAXADMACkADGQEnAC8/MDEBETM/AxEvAwMRIw8DER8EIzUjLwMRPwMzNTMVMx8DEQ8DIwPFfdKMi0ZGi4zSnn3Ti4xFRYyL054hgduUk0pKk5TbgSGB25OUSUmUk9uBBUL7pkVIi4oBFomMR0b7pgRaRkeMif7qiotIRejHSkeUlQEnlpNISn9/SkiTlv7ZlZRHSgAAAQBK//oEUgXqAAsADUAFAwEBAQkALz8/MDElBwkBJwkBNwkBFwEEUh3+Gf4YHAHv/hEcAegB5x3+EAkPAtn9Jw8C5wLpEf0lAtsR/RcAAAABAR/+5AW6BeIACwAJQAIBCQAvLzAxASMRIREzESERMxEzBbog+4UgA8shj/7kAQ4F8PovBdH6LwAAAAABANcAAATjBeIADwAKQAMPAQ0ALz8wMQEhLwIRMxEfAiERMxEjBMP9id1OSiFFQtECcyAgAi1KTt0CQP3E0UFGA5T6HgAAAAABAR//8gchBeIACwAKQAMBAQsALz8wMQUhETMRIREzESERMwch+f4gAvQhAqwhDgXw+i8F0fovBdEAAAABAR/+5AewBeIADwAJQAIBDQAvLzAxASMRIREzESERMxEhETMRMwewIfmQIAL0IQKsIY/+5AEOBfD6LwXR+i8F0fovAAIAWP/yBXMF8gAJABcACkADDgESAC8/MDEBESE/AhEvAgEPAiERITUhESEfAgGHAriKQ0ZGQ4oBNEpMlf0e/vIBLwLBlUxKA0z8xUVEiQEXiURF/c+VTEgF3yH9e0pMlQAAAAADAR//8gW6BeIAAwANABkAD0AHEgEUAAAJBCsALz8wMSEjETMBESE/AhEvAgEPAiERMxEhHwIFuiAg+4UCcYlERkZEiQEzSUyW/WcgAnmWTEkF4v1q/MVFRIkBF4lERf3PlUxIBfD9i0pMlQACAR//8gUrBeIACQAVAApAAw4BEAAvPzAxAREhPwIRLwIBDwIhETMRIR8CAT8CuYlERUVEiQEzSkuW/R8gAsGWS0oDTPzFRUSJAReJREX9z5VMSAXw/YtKTJUAAAEAk//yBJwF8gAjAApAAwUBHwAvPzAxAQ8DIS8BNx8BIT8DNSE1ITUvAyEPASc/ASEfAwScSkiTlv7ZlZIZjYoBFomMR0b9QwK9RkeMif7qio0ZkpUBJ5aTSEoCPNuUk0hIkRmORUWMi9PEIX3Ti4xFRY4ZkUpKk5TbAAACAR//8gaRBfIAFwAnAA9ABxIBCiAAAgQrAC8/MDEhIxEzESE1Ez8BIR8BExEDDwEhLwEDNSEFEQMvASEPAQMREx8BIT8BAT8gIAFGSpOWASeVlElJlJX+2ZaTSv66BTJGi4n+6YmLRkaLiQEXiYsF4v1DgQEj3UxM3f7d/pb+3d1KSt0BI8jEAWIBG9FDQ9H+5f6e/uXRQ0PRAAACAI//+gScBfIACQAZAApAAwsBFgAvPzAxAREhDwIVHwMBJwEjLwI1PwIhESMRBHv9jdFBRkZB0Zb+EB0B5nPdTkpKTt0CmCEDJQKsRUSJh4pDRiH89g8C+0pMlZiWS0r6DgMEAAAAAAIA1//yBFQD/AANAB8ACkADEQEZAC8/MDEBLwEjDwIVHwIzPwEVDwEjLwI1PwIzHwE1MxEjBDOJic+JjEVFjInPiYl1ld+Wk0pKk5bflXUhIQMPh0ZGidGL0YpFRYgtd0hIld2U3ZZJSXew/BQAAAACAR//8gScBfAADgAnAApAAxMBGwAvPzAxAREfAjM/AjUvAiMHAQ8CIy8CET8BJTcXBwUPARE/ATMfAgE/RkSJz4mLRkaLic+JAtNKlJXflkxJS5YBZo4Qkf6ZiUR1lt+VlEoDD/4UiURFRYrRi9GJRkb+Ft2VSEhMlQNkmExHRh1JSESH/sV3SUmW3QAAAAADAR//8gScBfIACQAYACwACkADHQEkAC8/MDEBPwMvASMPAQEPAREfAjM/AjUvAgEPAiMvAhE/ATMfAQ8BMx8CAT91ktNBQ0DNiUIBE4mKRkSJz4mLRkaLiQF7SpSV35ZMSU6V4VBMTqiglZRKAzx3R32UhUFFQP6QRof+FIlERUWK0YvRiUb90N2VSEhMlQQ9UEpOmaxjSZbdAAABANf/8gQOA/wAIQAKQAMPASAALz8wMQEPAQUPARUfATM/ARcPASMvATU/ASU/AS8BIw8BJz8BMxcEDk2W/pqKQ0PN081GHEni2+FMTJUBZ4lBQc3TzUUdSuHb4gMVnExHRIc/hkVFihGVSEiZUJhMR0SDgUZGiRCWSUkAAgDX/fwEVAP8AA0AKQAKQAMSAyUALz8wMSURLwEjDwIVHwIzNxcPAiMnNxczPwIRDwEjLwI1PwIzHwE1MwQziYnPiYxFRYyJz4mqSkyV35QRi8+JREV1ld+Wk0pKk5bflXUh3gIxh0ZGidGL0YpFReXdTkpKHUZGQdEBPHdISJXdlN2WSUl3sAAAAAACANf/8gRUA/wACAAgAApAAxUBHQAvPzAxEyE1LwIjDwEFIRUfAjM/ARcPASMvAjU/AjMfAv4DNUVEic+JjAMX/KRFjInPiY0ZkpXflpNKSpOW35VMSgJOe4lERkaJ4HzRikVFjhmRSEiV3ZTdlklJTJYAAAEATP/4Bf4D+AATAA1ABQ4BAQEKAC8/PzAxCQEnCQE3AREzEQEXCQEHAQcRIxECTv4WGAHr/lwZAmghAmkY/lwB7Bn+F8chAiX90xMCMwGiGP2WAl79ogJqGP5e/c0TAi3E/p8BYQAAAQBS//IDfwP8ACAACkADBAEaAC8/MDEBDwIhJzcXIT8CLwIjNTM/AS8BIwcnNzMfAQ8BHwEDf0xMlf7b2wzTARmJRENDRInT04dBQc3T0wzb2+FOTnZ0TAEfmUxIRiBHRUSFhURFIUSDgUZIIUdJnpw7OksAAAAAAQEf//IEVAPsABEACkADAwEPAC8/MDElDwEjLwERMxEfATM/AREzESMEM7yW35pJIEaFz4nRISH4vkhK4QLP/TXNQ0XPAsf8FAAAAAIBH//yBFQFFwALAB0ACkADDwELAC8/MDEBDwEjLwE3HwEzPwETDwEjLwERMxEfATM/AREzESMECEqVmJVKGUWKh4lGQ7yW35pJIEaFz4nRISEE/klKSkkZRkVFRvvhvkhK4QLP/TXNQ0XPAsf8FAABAR//+ARQA/gACwAKQAMJAQUALz8wMSEjETMRARcJAQcJAQE/ICACsRj+XAHsGf4X/vED7P1aArIY/l79zRMCLf70AAEA5//yBAwD7AANAApAAwcBDQAvPzAxISMRIREPASM1Mz8BESEEDCD+ckqZlIyFRQHPA8z9UeFKH0PNAssAAAABAR8AAAUrA+wACwANQAUGAQABCwAvPz8wMSEjEQkBESMRMwkBMwUrIf4b/hogIwHjAeMjA7X9BAL8/EsD7P0KAvYAAAEBHwAABFQD7AALAA1ABQkBAAEHAC8/PzAxISMRMxEhETMRIxEhAT8gIAL0ISH9DAPs/hsB5fwUAeYAAAIA1//yBJwD/AAPAB8ACkADBAEMAC8/MDEBDwIjLwI1PwIzHwIHNS8CIw8CFR8CMz8BBJxKlJXflpNKSpOW35WUSiFGi4nPiYxFRYyJz4mLAazdlUhIld2U3ZZJSZbdj4vRiUZGidGL0YpFRYoAAAABAR8AAARUA/wAEQANQAULAQABBwAvPz8wMSEjETMVPwEzHwERIxEvASMPAQE/ICC9leCXTCFDiM6K0QPs+L9JS5j85wMRh0RGzwAAAgEf/g0EnAP8AA0AHwAKQAMPAxUALz8wMQERHwEzPwI1LwIjBwMjETMVPwEzHwIVDwIjLwEBP4qJz4mLRkaLic+JiiAgdZbflZRKSpSV35Z1Aw/9z4hFRYrRi9GJRkb6dwXfsHdJSZbdlN2VSEh3AAEA1//yBFAD/AAbAApAAwMBCwAvPzAxJQ8BIy8CNT8CMx8BBy8BIw8CFR8CMz8BBFCSld+Wk0pKk5bflZIZjYnPiYxFRYyJz4mNy5FISJXdlN2WSUmSGI1GRonRi9GKRUWOAAABAR8AAAbZA/wAHgAQQAcYAQ8BAAEMAC8/Pz8wMSEjETMVPwEzHwE/ATMfAREjES8BIw8BESMRLwEjDwEBPyAgvZWYmj/HlZiZSiFFhYiJ0SBGhYeK0QPs+L9JS8XHSUvi/TECy81ERs/9OQLLzURGzwAAAAEAEP38A8MD8gAOAApAAwUDDgAvPzAxCQEDDwEjNTM/ARMBNwkBA8P+UY+TlkxEiYuM/lYcAaABoAPm/Bb+3ZNKIUaLARID5gz8NwPJAAAAAwDX/g0FcwP8AAkAEwAnAApAAxUDHwAvPzAxAREzPwI1LwIDESMPAhUfAhMjESMvAjU/AiEfAhUPAiMDNcOJi0ZGi4nkwomMRUWMieMhypaTSkqTlgG2lpNKSpOWywPc/DVFitGL0YlG/DUDy0aJ0YvRikX9/AHlSJXdlN2WSUmW3ZTdlUgAAAEATP/4A3kD9gALABtADQcHCQYGCgkKAwMBAQEAPz8rENAvENAvMDElBwkBJwkBNwkBFwEDeRn+g/6BGAGB/n8YAX0Bfxn+fwsTAeT+HBMB6wHsFP4bAeUU/hQAAQEf/ysE4wPsABUAEUAHDxMNFREVAysQ0AAvLzAxJQ8BIy8BETMRHwEzPwERMxEzFSM1IwQzvJbfmkkgRoXPidEhjyCQ+L5ISuECz/01zUNFzwLH/CXmxwAAAAABANcAAAQMA+wAEQAKQAMRAQ8ALz8wMQEPASMvAREzER8BMz8BETMRIwPsvZXgmUohRYbOitEgIAJfv0pM4QFp/pzNREbPAWD8FAAAAQEf//IG2QPsAB4ADUAFHQECARcALz8/MDEBDwEjLwERMxEfATM/AREzER8BMz8BETMRIzUPASMnA/bHlZiaSSBGhYeK0SBGhYeJ0SEhvJaXmgEAxkhK4QLP/TXNQ0XPAsf9Nc1DRc8Cx/wU+L5ISgAAAAABAR//KwdoA+wAIgARQAcXGxUdGR0DKxDQAC8vMDEBDwEjLwERMxEfATM/AREzER8BMz8BETMRMxUjNSMRDwEjJwP2x5WYmkkgRoWHitEgRoWHidEhjyCQvJaXmgEAxkhK4QLP/TXNQ0XPAsf9Nc1DRc8Cx/wl5scBBr5ISgAAAAIAWP/yBFQD/AANACEACkADHwETAC8/MDEBER8BIT8CNS8CIQcDIxEjNTMRPwEhHwIVDwIhLwEBP0KJAReJREVFRIn+6YlCIMfnLpUBJ5VMSkpMlf7ZlS4COP5eQEVFRImHikNGRv2JA9wg/mkvSkpMlZiVTEhILwAAAAADAR//8gTjA+wAAwARACMACkADIQEVAC8/MDEhIxEzAREfASE/AjUvAiEHAyMRMxE/ASEfAhUPAiEvAQTjICD8XEKJAReJREVFRIn+6YlCICAulQEnlUxKSkyV/tmVLgPs/kz+XkBFRUSJh4pDRkb9iQPs/nkvSkpMlZiVTEhILwAAAAACAR//8gRUA+wADQAfAApAAx0BEQAvPzAxAREfASE/AjUvAiEHAyMRMxE/ASEfAhUPAiEvAQE/QokBF4lERUVEif7piUIgIC6VASeVTEpKTJX+2ZUuAjj+XkBFRUSJh4pDRkb9iQPs/nkvSkpMlZiVTEhILwAAAAABAJP/8gQMA/wAHwAKQAMEARwALz8wMQEPAiMvATcfATM/AjUhNSE1LwIjDwEnPwEzHwIEDEmUleCVkhmNis6Ki0b+YgGeRouKzoqNGZKV4JWUSQGs3ZVISJEZjkVFitE1ITXRiUZGjRiSSUmW3QAAAgEf//IGAgP8ABcAJwAKQAMSAQoALz8wMSEjETMRITU/AjMfAhUPAiMvAjUhBTUvAiMPAhUfAjM/AQE/ICABRkqTlpeWk0pKk5aXlpNK/roEokWMiYeJi0ZGi4mHiYwD7P4bOd2WSUmW3ZTdlUhIld06NYvRiUZGidGL0YpFRYoAAAAAAgDX//gDxQP8AAkAGAAKQAMLARUALz8wMQERIQ8CFR8DAScBLwI1PwIhESMRA6T+ZolERUVEiQT+5hkBE4FMSkpMlQHDIQF3AmVGRIk/ikNGIf6iEwFWP0yVUJZMSfwEAVYAAAMA1//yBWIF8gARABsAJwATQAkBASQNCgoAFgQrENAALz8wMQUjLwERIzUzETMRIRUhER8BMwEhPwIRLwIhAQ8CIREjESEfAgViS5hMf38hAQ7+8kSHQ/uWAVKJREVFRIn+rgKFSkyV/qYhAXuVTEoOSpcDCSAB5v4aIP0AiEMCPUZDigFeiURF/YeVTEr90wXySkuWAAAAAwDX//wEnAWgAAkAEwArAApAAx8BKwAvPzAxCQEnIw8CFR8BCQEXMz8CNS8BEwcfAhUPAiMnByc3LwI1PwIzFzcB5QGMUM+JjEVFjAHE/nVQz4mLRkaLYG4ilEpKlJXfVHEdbyOTSkqTlt9UcQEdA28nRonRi9GKA1D8kidFitGL0YkBJ/oQlt2U3ZVKK/YL+RGV3ZTdlkkr+AAAAgEf//IEnAQCAAQACQAKQAMBAQMALz8wMQUhEQkBAxEJAREEnPyDAb4BvyH+Yv5iDgJSAb7+Qv3NAicBnf5j/dkAAAABAIgEWAKFB2oAHQAZuAAKKwC4AAUvuAAPL7oADQAPAAUREjkwMRMjNT8CMx8CFQ8BASEVIScBPwE1LwIjDwIVwyAmKE6XTSgnJkn+tAHO/hEOAWFGIiEhQYhBISEGpihOJycnJ05QTG3+tCEhAWFpQ0BCICEhIEIgAAAAAwDH/gsE0wXhABgAIwAuABO4AAorALgACy+4AAAvuAAXLzAxAREzHwIVDwIjESMRIy8CNT8CMxEzAyMPAhUfAjMRMyMRMz8CNS8CAtw73ZRLS5TdOyA63ZVJSZXdOiAgNdGJRkaJ0TVVNTXRikVFitEF4f4bSpXdld2VSf4bAeVJld2V3ZVKAeX9+kaK0IrRikYDy/w1RorRitCKRgAAAAIAOP/wBNIF5wAGAAoAI7gACisAuAAAL7gAAy+6AAgAAwAAERI5ugAJAAMAABESOTAxATMBByEnARcBIQECdh4CPg/7hRACPg/92wRL/doF5/ofFhYF4TT6XgWiAAAAAAMAx/4LBNMF4QAKACMALgAPuAAKKwC4ABUvuAAhLzAxAScjETM/AjUvAQEjLwI1PwIzETMRMx8CFQ8CIxEjESUfATMRIw8CFRcD4tE1NdGKRUWK/to63ZVJSZXdOiA73ZRLS5TdOyD+cYnRNTXRiUZGA5VG/DVGitGK0Ir8W0mV3ZXdlUoB5f4bSpXdld2VSf4bAeXwikYDy0aK0IrRAAABAIj+dwKFAYkAHQAZuAAKKwC4AAYvuAAQL7oADgAQAAYREjkwMTcVIzU/AjMfAhUPAQEhFSEnAT8BNS8CIw8CxCEnJ06XTicnJkr+tQHO/hEOAWFGISAgQohBISDlIChOJycnJ05QS27+tCEhAWFpRD9CICEhIEIAAAAAAQDG/s8GcQcRAC4AD7gACisAuAAPL7gAGy8wMQERMxEzPwIXDwIjESEVIREjLwMRPwMhHwIHLwIhDwMRHwMzAwQie4mLRx1Jk5WCA0v8k4OVlEhKSkiUlQEnlZNJHUeLif7oiotGR0dGi4p7AS8Dk/xtRIyNDpKUSv3jIgI/SpST2gFs25KUS0uUkQ+Oi0VFi4zV/p/TjIxEAAAAAgEO/s8GcQcRABIAIQAPuAAKKwC4AAMvuAAPLzAxAREjESEfAhUPAiMRIRUhESElMz8CNS8CIREhNTMVAS8hApndTEtLTN2BA0v8k/4rAfd80ENFRUPQ/Y0B1SID2v1EBfNKTZXelkxL+xciBQsiRUSJz4pDRv0MxsYAAAEAPv/vBeEF6gAHAB24AAorALgAAi+4AAAvuAAGL7oABAAAAAIREjkwMRcnARcBIRUhURMDWBz8swV8+nARIgXZEfo4IgAAAAMBHwEPBikD/AAEAAkADgAnuAAKKwC6AAIACgANK7gAAhC6AAcAAAANK7gABxC4AAAQuAAD0DAxATUhFSEBITUhFREhNSEVAR8FCvr2BQr69gUK+vYFCgJ1ISEBZyAg/TMhIQAEAQ7+zwZxBxEAFwAcACcANgAZuAAKKwC4AAEvuAAFL7oADQABAAUREjkwMQEVIREhESEfAhUPAh8CFQ8CIxEhAREhESkBETM/AjUvAiM1Mz8CNS8CIREhNTMVBnH8k/4KApndTEtLTKysTEtLTN2BA0v6vgHV/isB93zQQ0VFQ9B8fNBDRUVD0P2NAdUi/vEiAj8GA0pNlZeWTDk5TJbelk1J/eMFMv0MAvT9DEVEidCJQ0YgRkOKh4pDRv1Tf38AAAAAAQEO/tEGKgcQABQAD7gACisAuAAEL7gAEi8wMQEhESMRIRUhESE1MxUzFSMRIRUhEQK9/nIhA7X8bAGOIICAA038kwQj/PwF8SD9VH9/IfrPIQVSAAAAAAEBDv7QBrkGyAAWADG4AAorALgACi+4AAEvuAARL7oABQAKAAEREjm6AA4ACgABERI5ugATAAoAARESOTAxCQEzESMRASMRIRUhESMBESMRMwERMxEDbQIHNyL96gYDTPyTBv3qIjkCBSEBeAVQ+lcFiPqF/cUhAlwFe/p4Ban6sANL/LUAAAABAOD/XwTkBdMAFwAAJTM3CQEhFwcnIQcJASMVIzUjJzcXMzUzAv/S5vwpAQYB+PsY8P4h5QPX/vrfI/b8GPDqIxHlA9cBBvoY8ub8Kf77kpL5GPEIAAAAAQDg/1EE5APwABcAACUhNychCQEhFSEHFyEJASEVIzUhNSE1MwKKAUfm5v4V/voBBgLn/SXl5QHsAQb++v6sKf6VAWspGeXmAQYBBiHl5v76/vuoqCAhAAIA5v/xBN4HbAAPABcAAAUhJREBIRUhBxEXIREjNSEDByEnNxczNwTe/Qj/AAEAAuf9JevrAsvmAQdU/P7+/Bnv6u8P/wPjAQAg7Pw16wLAIQRi+voY8fEAAAAAAwDm/gUE3gVkAA4AFQAbAAAFASEnNxchNzUhJREBIQEDESchBxEXCQI3FzcE3v8A/gj8GPAB3+z9Kf8AAQAB+AEAIez+IevrAe3+/v7+GOrp+/8A+hny7N//AfgBAP8A/SkCy+vr/iDrBTv/AAEAGOvrAAACAT7/8QMqBr0ACwAPAAAFITUzESM1IRUjETMDFSM1Ayr+FObmAezm5uYhDyAFoiAg+l4GrJycAAAAFAD2AAEAAAAAAAAAAAAAAAEAAAAAAAEACAAAAAEAAAAAAAIABwBHAAEAAAAAAAMAFQAAAAEAAAAAAAQACAAAAAEAAAAAAAUALAAVAAEAAAAAAAYACAAAAAEAAAAAAAcAAABBAAEAAAAAABAABgBBAAEAAAAAABEABwBHAAMAAQQJAAAAAgCKAAMAAQQJAAEAEABOAAMAAQQJAAIADgDgAAMAAQQJAAMAKgBOAAMAAQQJAAQAEABOAAMAAQQJAAUAWAB4AAMAAQQJAAYAEABOAAMAAQQJAAcAAADQAAMAAQQJABAAEADQAAMAAQQJABEADgDgVF9ST01BTlM6VmVyc2lvbiAxLjAwVmVyc2lvbiAxLjAwIEF1Z3VzdCA5LCAyMDA1LCBpbml0aWFsIHJlbGVhc2VSb21hblNSZWd1bGFyAFQAXwBSAE8ATQBBAE4AUwA6AFYAZQByAHMAaQBvAG4AIAAxAC4AMAAwAFYAZQByAHMAaQBvAG4AIAAxAC4AMAAwACAAQQB1AGcAdQBzAHQAIAA5ACwAIAAyADAAMAA1ACwAIABpAG4AaQB0AGkAYQBsACAAcgBlAGwAZQBhAHMAZQBUAF8AUgBvAG0AYQBuAFMAUgBlAGcAdQBsAGEAcgACAAAAAAAA/3sAFAAAAAAAAAAAAAAAAAAAAAAAAAAAATUAAACUAJcAuwDXAAQABQAGAAcACAAJAAoACwAMAA0ADgAPABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwBAAEEAQgBDAEQARQBGAEcASABJAEoASwBMAE0ATgBPAFAAUQBSAFMAVABVAFYAVwBYAFkAWgBbAFwAXQBeAF8AYABhAKMAhACFAJYAhgCdAKkAgwCTAJ4AqgCiAK0AyQDHAK4AYgBjAJAAZADLAGUAyADKAM8AzADNAM4AZgDTANAA0QCvAGcAkQDWANQA1QBoAIkAagBpAGsAbQBsAG4AoABvAHEAcAByAHMAdQB0AHYAdwB4AHoAeQB7AH0AfAC4AKEAfwB+AIAAgQC6AQIAEACSAKcAjwADAOIA4wDkAOUA5gCfAP8BAADvAQMA/gD9AOcBBAEFAQYA9QD0APYA6QDrAO0A6gDsAO4BBwEIAQkBCgELAQwBDQEOAQ8BEAERARIBEwEUARUBFgEXARgBGQEaARsBHAEdAR4BHwEgASEBIgEjASQBJQEmAScBKAEpASoBKwEsAS0BLgEvATABMQEyATMBNAE1ATYBNwE4ATkBOgE7ATwBPQE+AT8BQAFBAUIBQwFEAUUBRgFHAUgBSQFKAUsBTAFNAU4BTwFQAVEBUgFTAVQBVQFWAVcBWAFZAVoBWwFcAV0BXgFfAWABYQFiAWMBZADyAWUAqAFmAWcBaAFpAWoBawFsAW0BbgD7APwA+AD5AW8Db2htB0FvZ29uZWsLaHlwaGVubWludXMHdW5pMjBBQwRjMTQxB2FvZ29uZWsGRGNhcm9uBmRjYXJvbgdFb2dvbmVrB2VvZ29uZWsGRWNhcm9uBmVjYXJvbgZOYWN1dGUGbmFjdXRlBk5jYXJvbgZuY2Fyb24JT2RibGFjdXRlCW9kYmxhY3V0ZQZSY2Fyb24GcmNhcm9uBlNhY3V0ZQZzYWN1dGUGVGNhcm9uBnRjYXJvbgVVcmluZwV1cmluZwlVZGJsYWN1dGUJdWRibGFjdXRlBlphY3V0ZQZ6YWN1dGUEWmRvdAR6ZG90BkFjeXJpbAJCZQJWZQJHZQJEZQJJZQNaaGUCWmUCSWkHSWlicmV2ZQJLYQJFbAJFbQJFbgZPY3lyaWwHUGVjeXJpbAJFcgJFcwJUZQZVY3lyaWwCRWYDS2hhA1RzZQNDaGUDU2hhBVNoY2hhBEhhcmQEWWVyaQRTb2Z0CUVjeXJpbHJldgJJdQJJYQZhY3lyaWwCYmUCdmUCZ2UCZGUCaWUDemhlAnplAmlpB2lpYnJldmUCa2ECZWwCZW0CZW4Gb2N5cmlsB3BlY3lyaWwCZXICZXMCdGUGdWN5cmlsAmVmA2toYQN0c2UDY2hlA3NoYQVzaGNoYQRoYXJkBHllcmkEc29mdAllY3lyaWxyZXYCaXUCaWEHcGVzZXRhcwhlbXB0eXNldAVob3VzZQhwaGlsYXRpbgNwaGkLdHdvaW5mZXJpb3ICQ0wMcHJvcGVydHlsaW5lBWFuZ2xlC2VxdWl2YWxlbmNlDGJvdW5kYXJ5bGluZQhmbG93bGluZQxtb251bWVudGxpbmUB3QAAAAMACAAAABAAAP//AAAAAQAAAAAAAAAAAAAAQAAAAAAAACAgICAgICAgICAgICAgICAAAAAAAAAAACAgICAgIAAAAAAAAA==) format('truetype');}"+
+      "@font-face{font-family:'AYB_BCad';font-display:swap;src:url(data:font/ttf;base64,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UgBpAGcAaAB0AHMAIABSAGUAcwBlAHIAdgBlAGQALgAgAKkAIAAyADAAMAA1ACAAQgBNAFUASAAuAEwAVABEAFMAVABJACwAIABJAG4AYwAuACAAQQBsAGwAIABSAGkAZwBoAHQAcwAgAFIAZQBzAGUAcgB2AGUAZAAuAFIAZQBnAHUAbABhAHIAQgBfAEMAQQBEADoAVgBlAHIAcwBpAG8AbgAgADEALgAwADAAVgBlAHIAcwBpAG8AbgAgADEALgAwADAAIABTAGUAcAB0AGUAbQBiAGUAcgAgADEAMQAsACAAMgAwADEANQAsACAAaQBuAGkAdABpAGEAbAAgAHIAZQBsAGUAYQBzAGUAQgBfAEMAQQBEACAAaQBzACAAYQAgAHQAcgBhAGQAZQBtAGEAcgBrACAAbwBmACAAQgBNAFUASAAgAEwAVABEACAAUwBUAEkALgBUAGgAaQBzACAAZgBvAG4AdAAgAGkAcwAgAG0AYQBkAGUAIAB3AGkAdABoACAAdABoAGUAIABoAG8AbQBlACAAZQBkAGkAdABpAG8AbgAgAG8AZgAgAEYAbwBuAHQAQwByAGUAYQB0AG8AcgAuACAAWQBvAHUAIABtAGEAeQAgAG4AbwB0ACAAdQBzAGUAIAB0AGgAaQBzACAAZgBvAG4AdAAgAGYAbwByACAAYwBvAG0AbQBlAHIAYwBpAGEAbAAgAHAAdQByAHAAbwBzAGUAcwAuAGgAdAB0AHAAOgAvAC8AdwB3AHcALgBoAGkAZwBoAC0AbABvAGcAaQBjAC4AYwBvAG0ALwBmAG8AbgB0AGMAcgBlAGEAdABvAHIALwBmAG8AbgB0AGwAaQBjAGUAbgBzAGUALgBoAHQAbQBsAAACAAAAAAAA/zgAZAAAAAAAAAAAAAAAAAAAAAAAAAAAADMBAgEDAQQBBQADAQYBBwEIAQkBCgELAQwBDQEOAQ8BEAERARIBEwEUARUBFgEXARgBGQEaARsBHAEdAR4BHwEgASEBIgEjASQBJQEmAScBKAEpASoBKwEsAS0BLgEvATABMQEyAEkCXzAHTEVEWUVOSQdDSVZBTUVWBkxFRE1FVg1GTE9SQVNBTkxBTUJBEENJVkFCVUhBUkxJTEFNQkESU09EWVVNQlVIQVJMSUxBTUJBBVlfQVlEBUJfQVlEBUlfQVlEBFlfT0cETV9PRwRCX09HBVlBX09HBElfT0cGWUFfQk9YBU1fQk9YBVlfQk9YBUlfQk9YBllBX0FZRAVNX0FZRARZX0FHBE1fQUcEQl9BRwVZQV9BRwRJX0FHC1lBX0FHX0tBRkVTCk1fQUdfS0FGRVMKQl9BR19LQUZFUwpZX0FHX0tBRkVTCklfQUdfS0FGRVMKVE9QUkFLTEFNQQZjcm9zczUKTV9PR19LQUZFUwpCX09HX0tBRkVTCklfT0dfS0FGRVMKWV9PR19LQUZFUwtZQV9PR19LQUZFUwZBX0tPTFUCeDcFQl9CT1gHTV9LT0ZSRQdZX0tPRlJFEElTTF9UT1BSQUtMQU1BU0kHQl9LT0ZSRQdJX0tPRlJFCFlBX0tPRlJFA180NwlTT0RZVU1NRVYAAAAAAAH//wAA) format('truetype');}"+
+      ".ayb-cad-text{white-space:nowrap;}";
+    (d.head||d.documentElement).appendChild(st);
+  }
+
+  /* --- ACI (AutoCAD renk indeksi) -> RGB --- */
+  var ACI={1:'#ff3b30',2:'#ffe000',3:'#34e04a',4:'#00e5ff',5:'#2b8cff',6:'#ff45c8',7:'#ffffff',8:'#c8c8c8',9:'#ffe000',
+    10:'#ff3b30',12:'#ff6a4d',30:'#ff9500',32:'#ff5a3c',40:'#ffb300',50:'#eaff00',
+    60:'#9dff00',70:'#34e04a',90:'#00ff9d',130:'#00d0ff',140:'#00b3ff',150:'#00d0ff',
+    160:'#7c5cff',170:'#c04cff',190:'#ff5ecb',200:'#ff3b8e',
+    250:'#d0d0d0',251:'#dcdcdc',252:'#e6e6e6',253:'#efefef',254:'#f6f6f6',255:'#ffffff'};
+  function aci(n){ n=parseInt(n,10); if(!isFinite(n)) return null; if(ACI[n]) return ACI[n]; if(n<1) return null; var h=(n*47)%360; return 'hsl('+h+',95%,62%)'; }
+
+  /* --- DXF parser (renk okuyan sürüm) — orijinal aybCadToLatLng kullanır --- */
+  function parseDxfColor(text,meridian){
+    var raw=String(text||'').replace(/\r/g,'').split('\n');
+    var pairs=[]; for(var i=0;i<raw.length-1;i+=2){ pairs.push({code:raw[i].trim(), value:(raw[i+1]||'').trim()}); }
+    var features=[], layerColors={}, curPoly=null, blocks={}, inBlock=null, styleFonts={};
+    var num=function(v){ var n=parseFloat(String(v||'').replace(',','.')); return isFinite(n)?n:0; };
+    function cleanTxt(s){ s=String(s==null?'':s);
+      s=s.replace(/\\P/g,' ').replace(/\\~/g,' ');
+      s=s.replace(/\\[A-Za-z][^;\\]*;/g,'');   /* \fArial|..; \H2.5x; \A1; vb. */
+      s=s.replace(/[{}]/g,'');
+      s=s.replace(/%%[dD]/g,'°').replace(/%%[cC]/g,'Ø').replace(/%%[pP]/g,'±').replace(/%%%/g,'%').replace(/%%\d+/g,'');
+      s=s.replace(/\s+/g,' ').trim();
+      s=s.replace(/^\?+/,'').replace(/\?+$/,'').trim();   /* dışa aktarımda kaybolan özel karakterin yerine gelen '?' artıklarını temizle */
+      return s;
+    }
+    function readEntity(start){ var type=pairs[start].value, arr=[], j=start+1; while(j<pairs.length && pairs[j].code!=='0'){ arr.push(pairs[j]); j++; } return {type:type,arr:arr,next:j}; }
+    function first(arr,code){ for(var k=0;k<arr.length;k++){ if(arr[k].code===String(code)) return arr[k].value; } return ''; }
+    function imarRenk(){ try{ var el=document.getElementById('cadColor'); if(el&&el.value) return el.value; }catch(e){} return '#2b6bff'; }
+    function isDrawing(nm){ var kw=['DIREK','TRAFO','HAT_','LAMBA','ETIKET','REGLAJ','EUD','KOFRE','SDK','PANO','AYDINLAT','KULLANICI']; for(var q=0;q<kw.length;q++){ if(nm.indexOf(kw[q])>=0) return true; } return false; }
+    function colorOf(arr,layer){
+      var nm=String(layer||'').toLocaleUpperCase('tr');
+      if(!isDrawing(nm)) return imarRenk();     /* imar -> tek renk (arka plan) */
+      var e=parseInt(first(arr,62),10);
+      var acv=(isFinite(e)&&e>0)?e:layerColors[layer];
+      return aci(acv) || '#ffe000';             /* çizim -> ORİJİNAL ACI rengi (AutoCAD gibi) */
+    }
+    function LW(arr){ var pts=[], lastX=null; arr.forEach(function(p){ if(p.code==='10') lastX=num(p.value); if(p.code==='20'&&lastX!=null){ pts.push(window.aybCadToLatLng(lastX,num(p.value),meridian)); lastX=null; } }); return pts; }
+    function circle(cx,cy,r,sd,ed){ var pts=[], s=(sd||0)*Math.PI/180, e=(ed==null?360:ed)*Math.PI/180; if(e<s)e+=Math.PI*2; var steps=Math.max(18,Math.ceil(Math.abs(e-s)/(Math.PI*2)*72)); for(var k=0;k<=steps;k++){ var a=s+(e-s)*k/steps; pts.push(window.aybCadToLatLng(cx+Math.cos(a)*r,cy+Math.sin(a)*r,meridian)); } return pts; }
+    function finalize(){ if(curPoly && curPoly.points && curPoly.points.length>=2) features.push(curPoly); curPoly=null; }
+    function cadPtsOf(type,arr){
+      if(type==='LINE'){ return {type:'LINE', cad:[[num(first(arr,10)),num(first(arr,20))],[num(first(arr,11)),num(first(arr,21))]]}; }
+      if(type==='LWPOLYLINE'){ var pts=[], lx=null; arr.forEach(function(p){ if(p.code==='10') lx=num(p.value); else if(p.code==='20'&&lx!=null){ pts.push([lx,num(p.value)]); lx=null; } }); if((num(first(arr,70))&1)&&pts.length>2)pts.push(pts[0]); return {type:'LWPOLYLINE', cad:pts}; }
+      if(type==='CIRCLE'){ var cx=num(first(arr,10)),cy=num(first(arr,20)),r=num(first(arr,40)),cd=[]; for(var k=0;k<=36;k++){ var a=k/36*2*Math.PI; cd.push([cx+Math.cos(a)*r,cy+Math.sin(a)*r]); } return {type:'CIRCLE', cad:cd}; }
+      if(type==='ARC'){ var ax=num(first(arr,10)),ay=num(first(arr,20)),ar=num(first(arr,40)),s=num(first(arr,50))*Math.PI/180,e=num(first(arr,51))*Math.PI/180; if(e<s)e+=2*Math.PI; var st=Math.max(8,Math.ceil((e-s)/(2*Math.PI)*36)),cd=[]; for(var k=0;k<=st;k++){ var a=s+(e-s)*k/st; cd.push([ax+Math.cos(a)*ar,ay+Math.sin(a)*ar]); } return {type:'ARC', cad:cd}; }
+      if(type==='SOLID'||type==='3DFACE'){ var p0=[num(first(arr,10)),num(first(arr,20))],p1=[num(first(arr,11)),num(first(arr,21))],p2=[num(first(arr,12)),num(first(arr,22))],p3f=first(arr,13),p3=(p3f!=='')?[num(p3f),num(first(arr,23))]:p2; return {type:'SOLID', cad:[p0,p1,p3,p2,p0]}; }
+      return null;
+    }
+    function toLL(cad){ return cad.map(function(p){ return window.aybCadToLatLng(p[0],p[1],meridian); }); }
+    var i2=0;
+    while(i2<pairs.length){
+      if(pairs[i2].code!=='0'){ i2++; continue; }
+      var ent=readEntity(i2), type=String(ent.type||'').toUpperCase(), arr=ent.arr; i2=ent.next;
+      if(type==='EOF'){ finalize(); break; }
+      if(type==='LAYER'){ var ln=first(arr,2), lc=parseInt(first(arr,62),10); if(ln) layerColors[ln]=isFinite(lc)?Math.abs(lc):null; continue; }
+      if(type==='STYLE'){ var sn=first(arr,2), sf=first(arr,3); if(sn) styleFonts[String(sn).toLocaleUpperCase('tr')]=String(sf||'').toLocaleUpperCase('tr'); continue; }
+      var lay=first(arr,8)||'';
+      if(type==='BLOCK'){ inBlock=first(arr,2)||('blk'+i2); blocks[inBlock]={base:[num(first(arr,10)),num(first(arr,20))], ents:[]}; continue; }
+      if(type==='ENDBLK'){ inBlock=null; continue; }
+      if(inBlock){ var cp0=cadPtsOf(type,arr); if(cp0 && cp0.cad && cp0.cad.length>=2) blocks[inBlock].ents.push(cp0); continue; }
+      if(type==='INSERT'){
+        var bn=first(arr,2), bd=blocks[bn]; if(!bd) continue;
+        var ix=num(first(arr,10)), iy=num(first(arr,20)), sx=num(first(arr,41))||1, sy=num(first(arr,42))||1, ro=num(first(arr,50))*Math.PI/180, cs=Math.cos(ro), sn=Math.sin(ro), col=colorOf(arr,lay);
+        bd.ents.forEach(function(e){
+          var wp=e.cad.map(function(pt){ var x=(pt[0]-bd.base[0])*sx, y=(pt[1]-bd.base[1])*sy; return window.aybCadToLatLng(ix+(x*cs-y*sn), iy+(x*sn+y*cs), meridian); });
+          if(wp.length>=2) features.push({type:e.type,layer:lay,color:col,points:wp});
+        });
+        continue;
+      }
+      if(type==='POLYLINE'){ finalize(); curPoly={type:'POLYLINE',layer:lay,color:colorOf(arr,lay),points:[]}; continue; }
+      if(type==='VERTEX' && curPoly){ var vx=first(arr,10), vy=first(arr,20); if(vx!==''&&vy!=='') curPoly.points.push(window.aybCadToLatLng(num(vx),num(vy),meridian)); continue; }
+      if(type==='SEQEND'){ finalize(); continue; }
+      if(type==='LINE'){ var x1=first(arr,10),y1=first(arr,20),x2=first(arr,11),y2=first(arr,21); if(x1!==''&&y1!==''&&x2!==''&&y2!=='') features.push({type:'LINE',layer:lay,color:colorOf(arr,lay),points:[window.aybCadToLatLng(num(x1),num(y1),meridian),window.aybCadToLatLng(num(x2),num(y2),meridian)]}); }
+      else if(type==='LWPOLYLINE'){ var pts=LW(arr); var flags=num(first(arr,70)); if((flags&1)&&pts.length>2)pts.push(pts[0]); if(pts.length>=2) features.push({type:'LWPOLYLINE',layer:lay,color:colorOf(arr,lay),points:pts}); }
+      else if(type==='CIRCLE'){ var cx=first(arr,10),cy=first(arr,20),r=first(arr,40); if(cx!==''&&cy!==''&&r!=='') features.push({type:'CIRCLE',layer:lay,color:colorOf(arr,lay),points:circle(num(cx),num(cy),num(r),0,360)}); }
+      else if(type==='ARC'){ var ax=first(arr,10),ay=first(arr,20),ar=first(arr,40),as=first(arr,50),ae=first(arr,51); if(ax!==''&&ay!==''&&ar!=='') features.push({type:'ARC',layer:lay,color:colorOf(arr,lay),points:circle(num(ax),num(ay),num(ar),num(as||0),num(ae||360))}); }
+      else if(type==='POINT'){ var ppx=first(arr,10),ppy=first(arr,20); if(ppx!==''&&ppy!==''){ var pcx=num(ppx),pcy=num(ppy),pr=1.1,pcp=[]; for(var pk=0;pk<=8;pk++){ var pa=pk/8*2*Math.PI; pcp.push(window.aybCadToLatLng(pcx+Math.cos(pa)*pr,pcy+Math.sin(pa)*pr,meridian)); } features.push({type:'LWPOLYLINE',layer:lay,color:colorOf(arr,lay),points:pcp}); } }
+      else if(type==='SOLID'||type==='3DFACE'){ var cs2=cadPtsOf(type,arr); if(cs2){ var sp=toLL(cs2.cad); if(sp.length>=3) features.push({type:'LWPOLYLINE',layer:lay,color:colorOf(arr,lay),points:sp}); } }
+      else if(type==='TEXT'||type==='MTEXT'){
+        var tx=first(arr,10),ty=first(arr,20);
+        var hj=parseInt(first(arr,72),10)||0, vj=parseInt(first(arr,73),10)||0;
+        var ax=first(arr,11), ay=first(arr,21);
+        var useA=((hj!==0||vj!==0)&&ax!==''&&ay!=='');
+        var fx=useA?num(ax):num(tx), fy=useA?num(ay):num(ty);
+        var raw3=''; for(var k3=0;k3<arr.length;k3++){ if(arr[k3].code==='3') raw3+=arr[k3].value; }
+        var txt=raw3+(first(arr,1)||'');
+        var th=parseFloat(String(first(arr,40)).replace(',','.'))||0;
+        var tr=parseFloat(String(first(arr,50)).replace(',','.'))||0;
+        txt=cleanTxt(txt);
+        var stName=String(first(arr,7)||'STANDARD').toLocaleUpperCase('tr');
+        var sfont=styleFonts[stName]||'';
+        var fkind = (sfont.indexOf('B_CAD')>=0||sfont.indexOf('BCAD')>=0||stName.indexOf('DIREK')>=0||stName.indexOf('SEMBOL')>=0) ? 'bcad'
+                  : (sfont.indexOf('ROMANS')>=0 ? 'romans' : 'normal');
+        if(txt && (useA || (tx!==''&&ty!=='')) ) features.push({type:type,layer:lay,color:colorOf(arr,lay),point:window.aybCadToLatLng(fx,fy,meridian),text:txt,h:th,rot:tr,font:fkind,hj:hj,vj:vj});
+      }
+    }
+    finalize();
+    return features;
+  }
+  /* override: renk okuyan parser */
+  try{ if(typeof window.aybParseDxfFeatures==='function'){ window.aybParseDxfFeatures=parseDxfColor; } }catch(e){}
+
+  /* Not: renderCadLayers override KALDIRILDI — uygulamanın kendi (test edilmiş) render'ı kullanılıyor.
+     Orijinal renkler için içe-aktarma sonrası katman renge göre bölünür (aşağıdaki kanca). */
+  function boot(){ fonts(); try{ if(window.project && window.renderAll) window.renderAll(); }catch(e){} }
+  if(d.readyState!=="loading") boot(); else d.addEventListener("DOMContentLoaded", boot);
+  setTimeout(boot,1500);
+})();
+
+
+/* DXF içe alınca DOĞRU yere zoom: aybCadBounds'u uç-nokta elemeli (robust) yap */
+(function(){
+  "use strict";
+  function pct(arr,q){ return arr[Math.max(0,Math.min(arr.length-1,Math.floor(arr.length*q)))]; }
+  function robustBounds(features){
+    if(typeof L==="undefined") return null;
+    var pts=[];
+    (features||[]).forEach(function(f){
+      if(Array.isArray(f.points)) f.points.forEach(function(p){ pts.push(p); });
+      if(f.point) pts.push(f.point);
+    });
+    pts=pts.filter(function(p){ return p && isFinite(p[0]) && isFinite(p[1]) && Math.abs(p[0])<=85 && Math.abs(p[1])<=180 && !(p[0]===0&&p[1]===0); });
+    if(!pts.length) return null;
+    var lats=pts.map(function(p){return p[0];}).sort(function(a,b){return a-b;});
+    var lngs=pts.map(function(p){return p[1];}).sort(function(a,b){return a-b;});
+    var la1=pct(lats,0.02), la2=pct(lats,0.98), ln1=pct(lngs,0.02), ln2=pct(lngs,0.98);
+    if(!(isFinite(la1)&&isFinite(la2)&&isFinite(ln1)&&isFinite(ln2))) return null;
+    var pLa=(la2-la1)*0.06||0.0006, pLn=(ln2-ln1)*0.06||0.0006;
+    try{ return L.latLngBounds([[la1-pLa,ln1-pLn],[la2+pLa,ln2+pLn]]); }catch(e){ return null; }
+  }
+  function install(){ try{ if(typeof window.aybCadBounds==="function" && !window.__aybCadBoundsOvr){ window.aybCadBounds=robustBounds; window.__aybCadBoundsOvr=true; } }catch(e){} }
+  window.aybZoomToCad=function(){
+    try{
+      var mp=window.__aybMap||window.map;
+      if(!window.project||!Array.isArray(window.project.cadLayers)||!mp||typeof mp.fitBounds!=='function') return;
+      var all=[]; window.project.cadLayers.forEach(function(l){ (l.features||[]).forEach(function(f){ all.push(f); }); });
+      var b=robustBounds(all); if(b) mp.fitBounds(b,{padding:[40,40]});
+    }catch(e){}
+  };
+  var t=0, iv=setInterval(function(){ install(); if(window.__aybCadBoundsOvr || ++t>40) clearInterval(iv); },500);
+})();
+
+/* "İçeri Al" (#btnCadImport) sonrası DXF'e otomatik zoom (yedek) */
+(function(){
+  "use strict";
+  document.addEventListener("click", function(e){
+    var t=e.target; while(t && t!==document){ if(t.id==="btnCadImport"){ hook(); return; } t=t.parentNode; }
+  }, false);
+  function splitByColor(){
+    try{
+      var p=window.project; if(!p||!Array.isArray(p.cadLayers)) return;
+      var out=[];
+      p.cadLayers.forEach(function(layer){
+        if(layer.__split){ out.push(layer); return; }
+        var groups={}, order=[];
+        (layer.features||[]).forEach(function(f){
+          var c=(f && f.color) ? f.color : (layer.color||'#0055ff');
+          if(!groups[c]){ groups[c]=[]; order.push(c); }
+          groups[c].push(f);
+        });
+        if(order.length<=1){ layer.color=order[0]||layer.color; layer.__split=true; out.push(layer); return; }
+        order.forEach(function(c,i){
+          var w=layer.weight;
+          if(String(c).toLowerCase()==='#ffe000'){ w=(Number(layer.weight||1.4)*1.5); } /* çizim (sarı) daha belirgin */
+          out.push({ id:layer.id+'_c'+i, name:layer.name, color:c, weight:w, opacity:layer.opacity, hidden:layer.hidden, features:groups[c], __split:true });
+        });
+      });
+      p.cadLayers=out;
+    }catch(e){}
+  }
+  function hook(){
+    var before=(window.project&&window.project.cadLayers)?window.project.cadLayers.length:0, tries=0;
+    var iv=setInterval(function(){
+      var now=(window.project&&window.project.cadLayers)?window.project.cadLayers.length:0;
+      if(now>before){ clearInterval(iv); setTimeout(function(){ try{ splitByColor(); if(window.saveProject) window.saveProject(); if(window.renderAll) window.renderAll(); if(window.aybZoomToCad) window.aybZoomToCad(); }catch(e){} },350); }
+      if(++tries>40) clearInterval(iv);
+    },500);
+  }
+})();
+
+/* ===================== DXF YAZI: gerçek boyut (m) + açı + CAD font ===================== */
+(function(){
+  "use strict";
+  function esc2(s){ return String(s==null?'':s).replace(/[&<>]/g,function(x){return x==='&'?'&amp;':x==='<'?'&lt;':'&gt;';}); }
+  function mppFn(map){ try{ var c=map.getCenter(), p=map.latLngToContainerPoint(c), l2=map.containerPointToLatLng(L.point(p.x+80,p.y)); var m=map.distance(c,l2)/80; return (m>0)?m:1; }catch(e){ return 1; } }
+  function render(){
+    var map=window.__aybMap||window.map, project=window.project;
+    if(!map||typeof map.getZoom!=='function'||!project||!Array.isArray(project.cadLayers)||typeof L==='undefined') return;
+    if(!window.__aybCadTextMarkers) window.__aybCadTextMarkers=[];
+    for(var i=0;i<window.__aybCadTextMarkers.length;i++){ try{ map.removeLayer(window.__aybCadTextMarkers[i]); }catch(e){} }
+    window.__aybCadTextMarkers=[];
+    var z=map.getZoom(); if(z<16) return;
+    var mpp=mppFn(map);
+    var b=map.getBounds().pad(0.25), shown=0, LIMIT=1500;
+    var hasPane=false; try{ hasPane=!!(map.getPane&&map.getPane('aybCadPane')); }catch(e){}
+    /* iki geçiş: önce ÇİZİM (imar-mavi olmayan) yazılar, sonra imar */
+    function draw(onlyDrawing){
+      for(var li=0; li<project.cadLayers.length && shown<LIMIT; li++){
+        var layer=project.cadLayers[li]; if(layer.hidden) continue;
+        var isImarLayer=(String(layer.color||'').toLowerCase()==='#2b6bff');
+        if(onlyDrawing && isImarLayer) continue;
+        if(!onlyDrawing && !isImarLayer) continue;
+        var feats=layer.features||[];
+        for(var fi=0; fi<feats.length && shown<LIMIT; fi++){
+          var f=feats[fi];
+          if((f.type==='TEXT'||f.type==='MTEXT') && f.point && f.text){
+            var ll=L.latLng(f.point[0],f.point[1]); if(!b.contains(ll)) continue;
+            var hm=(f.h && f.h>0)?f.h:2.5;
+            var px=hm/mpp;
+            var minpx=isImarLayer?9:5;   /* imar yazısı sadece yeterince büyükse; çizim yazısı erken */
+            if(px<minpx) continue; if(px>60) px=60;
+            var col=f.color||layer.color||'#ffe000';
+            var rot=-(f.rot||0);
+            var fam=(f.font==='bcad') ? "'AYB_BCad','B_Cad',monospace" : (f.font==='romans' ? "'AYB_TRomans','T_Romans',Arial,sans-serif" : "Arial,'Segoe UI',sans-serif");
+            var hj=f.hj||0, vj=f.vj||0;
+            var ox=(hj===1||hj===4)?'50%':(hj===2?'100%':'0%');
+            var oy=(vj===2||vj===4)?'50%':(vj===3?'0%':'100%');
+            var shx=(hj===1||hj===4)?'-50%':(hj===2?'-100%':'0');
+            var shy=(vj===2||vj===4)?'-50%':(vj===3?'0':'-100%');
+            var html='<div class="ayb-cad-text" style="font-family:'+fam+';color:'+esc2(col)+';font-size:'+px.toFixed(1)+'px;line-height:1;transform:translate('+shx+','+shy+') rotate('+rot+'deg);transform-origin:'+ox+' '+oy+';white-space:nowrap;text-shadow:0 0 2px rgba(0,0,0,.9),0 0 2px rgba(0,0,0,.9);">'+esc2(f.text)+'</div>';
+            var opt={interactive:false,icon:L.divIcon({className:'',html:html,iconSize:[1,1],iconAnchor:[0,0]})};
+            if(hasPane) opt.pane='aybCadPane';
+            try{ var mk=L.marker(ll,opt).addTo(map); window.__aybCadTextMarkers.push(mk); if(window.cadDisplayLayers) window.cadDisplayLayers.push(mk); shown++; }catch(e){}
+          }
+        }
+      }
+    }
+    draw(true); draw(false);
+  }
+  function install(){ if(window.__aybCadTextOvr2) return; window.__aybCadTextOvr2=true; window.aybRenderCadTexts=render;
+    var t=0, iv=setInterval(function(){ var m=window.__aybMap||window.map; if(m && typeof m.on==='function' && !window.__aybCadTextBound2){ window.__aybCadTextBound2=true; try{ m.on('zoomend moveend', render); }catch(e){} } if(window.__aybCadTextBound2 || ++t>60) clearInterval(iv); },500);
+  }
+  install();
+})();
+
+/* ===================== UYDU AÇ/KAPAT KESİN ÇÖZÜM (tile katmanını sıfırdan kur) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap||window.map||null; }
+  var URLS={
+    sat:'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    hybrid:'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    esri:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    osm:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    topo:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
+  };
+  function removeAllBase(map){
+    var L=window.L;
+    try{ var bl=window.baseLayers; if(bl){ Object.keys(bl).forEach(function(k){ try{ if(bl[k]&&map.hasLayer(bl[k])) map.removeLayer(bl[k]); }catch(e){} }); } }catch(e){}
+    try{ if(window.__aybBaseLayer && map.hasLayer(window.__aybBaseLayer)) map.removeLayer(window.__aybBaseLayer); }catch(e){}
+    try{ map.eachLayer(function(l){ if(L&&l instanceof L.TileLayer && l._url && /google\.com|arcgisonline|openstreetmap|opentopomap/i.test(l._url)){ try{ map.removeLayer(l); }catch(e){} } }); }catch(e){}
+  }
+  function createBase(mode,map){
+    var L=window.L; if(!L) return null;
+    var goog=(mode==='sat'||mode==='hybrid');
+    var opts={ maxZoom:24, maxNativeZoom: goog?21:19, keepBuffer:6, crossOrigin:true, updateWhenIdle:false, attribution: goog?'Google':'' };
+    if(goog) opts.subdomains=['0','1','2','3'];
+    else if(mode==='osm'||mode==='topo') opts.subdomains=['a','b','c'];
+    else opts.subdomains=[];
+    var nb=L.tileLayer(URLS[mode]||URLS.sat, opts);
+    try{ nb.addTo(map); }catch(e){ return null; }
+    window.__aybBaseLayer=nb;
+    try{ if(window.baseLayers) window.baseLayers[mode]=nb; }catch(e){}
+    try{ if(window.aybGetBaseMapOpacity && nb.setOpacity) nb.setOpacity(window.aybGetBaseMapOpacity()); }catch(e){}
+    return nb;
+  }
+  function aybSetBase(mode){
+    var map=M(); if(!map||!window.L||typeof map.addLayer!=='function') return;
+    mode=mode||'sat';
+    try{ localStorage.setItem('ayb_base_map_mode_v1',mode); }catch(e){}
+    removeAllBase(map);
+    var s=d.getElementById('baseMapSelect'); if(s) s.value=mode;
+    if(mode==='none'){ d.body.classList.add('ayb-base-map-off'); }
+    else{
+      d.body.classList.remove('ayb-base-map-off');
+      createBase(mode,map);
+      setTimeout(function(){ try{ map.invalidateSize(false); }catch(e){} },120);
+      setTimeout(function(){ try{ map.invalidateSize(false); if(window.__aybBaseLayer&&window.__aybBaseLayer.redraw) window.__aybBaseLayer.redraw(); }catch(e){} },500);
+    }
+    try{ if(window.aybSyncBaseToggleButton) window.aybSyncBaseToggleButton(); }catch(e){}
+  }
+  window.aybSetBase=aybSetBase;
+  /* dropdown (switchBase) da sağlam sürümü kullansın */
+  try{ window.switchBase=function(v){ aybSetBase(v||'sat'); }; }catch(e){}
+
+  function toggleBtn(){
+    var s=d.getElementById('baseMapSelect');
+    var cur=s?s.value:(localStorage.getItem('ayb_base_map_mode_v1')||'sat');
+    if(cur==='none'){ var last=localStorage.getItem('ayb_last_real_base_map_v1')||'sat'; if(last==='none')last='sat'; aybSetBase(last); }
+    else{ try{ localStorage.setItem('ayb_last_real_base_map_v1',cur); }catch(e){} aybSetBase('none'); }
+  }
+  /* "Uydu Kapat/Aç" düğmesini yakalama-fazında ele al (uygulamanın kendi onclick'ini geç) */
+  d.addEventListener('click', function(e){
+    var t=e.target; while(t && t!==d){ if(t.id==='btnBaseOffToggle'){ try{ e.preventDefault(); e.stopPropagation(); if(e.stopImmediatePropagation) e.stopImmediatePropagation(); }catch(_){} toggleBtn(); return; } t=t.parentNode; }
+  }, true);
+  /* dropdown değişimini de sağlam sürüme bağla */
+  var t0=0, iv=setInterval(function(){ var s=d.getElementById('baseMapSelect'); if(s && !s.__aybBound){ s.__aybBound=true; s.addEventListener('change', function(){ aybSetBase(s.value||'sat'); }); } if((s&&s.__aybBound)|| ++t0>60) clearInterval(iv); },500);
+})();
+
+/* ===================== TRAFO BUL (imar/DXF trafo etiketi ara -> zoom -> Google Maps navigasyon) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap||window.map||null; }
+  var hl=null, lastHit=null;
+
+  function openMaps(lat,lng){
+    var url='https://www.google.com/maps/dir/?api=1&destination='+lat+','+lng+'&travelmode=driving';
+    try{ if(window.aybPC && window.aybPC.openUrl){ window.aybPC.openUrl(url); return; } }catch(e){}
+    try{ if(window.AYBNative && window.AYBNative.openUrl){ window.AYBNative.openUrl(url); return; } }catch(e){}
+    try{ var w=window.open(url,'_blank'); if(w) return; }catch(e){}
+    try{ location.href=url; }catch(e){}
+  }
+  function highlight(o){
+    var map=M(), L=window.L; if(!map||!L||typeof map.getZoom!=='function') return;
+    try{ if(hl){ map.removeLayer(hl); hl=null; } }catch(e){}
+    var c=L.circleMarker([o.lat,o.lng],{radius:22,color:'#ff2d55',weight:4,fill:false,opacity:1}).addTo(map); hl=c;
+    var r=22,grow=true,n=0;
+    var iv=setInterval(function(){ r+=grow?3:-3; if(r>36)grow=false; if(r<16)grow=true; try{c.setRadius(r);}catch(e){} if(++n>60){clearInterval(iv); try{map.removeLayer(c);}catch(e){} if(hl===c)hl=null;} },80);
+  }
+  function search(q){
+    q=String(q||'').trim().toLocaleUpperCase('tr'); if(!q) return [];
+    var p=window.project; if(!p||!Array.isArray(p.cadLayers)) return [];
+    var out=[];
+    for(var li=0; li<p.cadLayers.length; li++){
+      var feats=p.cadLayers[li].features||[];
+      for(var fi=0; fi<feats.length; fi++){
+        var f=feats[fi];
+        if(f && f.text && f.point){
+          var tt=String(f.text).toLocaleUpperCase('tr').replace(/\s+/g,'');
+          if(tt.indexOf(q.replace(/\s+/g,''))>=0){ out.push({text:f.text, lat:f.point[0], lng:f.point[1]}); if(out.length>=50) return out; }
+        }
+      }
+    }
+    return out;
+  }
+  function flyTo(o){ var map=M(); if(!map||typeof map.setView!=='function') return; try{ map.setView([o.lat,o.lng], Math.max((map.getZoom&&map.getZoom())||0,18), {animate:true}); }catch(e){} highlight(o); lastHit=o; syncGo(); }
+
+  function panel(){
+    if(d.getElementById('aybTfPanel')) return d.getElementById('aybTfPanel');
+    var el=d.createElement('div'); el.id='aybTfPanel';
+    el.style.cssText="position:fixed;top:100px;left:10px;z-index:2147481200;width:320px;max-width:92vw;background:#fff;border:1px solid #c7d0de;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.35);font:13px system-ui,Arial;display:none;overflow:hidden;";
+    el.innerHTML=
+      '<div style="display:flex;align-items:center;gap:8px;background:#0e7490;color:#fff;padding:9px 12px;">'
+        +'<span style="font-weight:800;">⚡ Trafo Bul</span><span style="flex:1;"></span>'
+        +'<button id="aybTfClose" style="border:none;background:#ef4444;color:#fff;border-radius:6px;width:24px;height:24px;font-size:15px;cursor:pointer;">×</button>'
+      +'</div>'
+      +'<div style="padding:9px 10px;">'
+        +'<input id="aybTfInput" type="text" placeholder="Trafo adı yaz (örn: TFB837)" style="width:100%;height:34px;padding:4px 10px;border:1px solid #c7d0de;border-radius:8px;box-sizing:border-box;text-transform:uppercase;">'
+        +'<button id="aybTfGo" disabled style="margin-top:8px;width:100%;height:38px;border:none;border-radius:8px;background:#16a34a;color:#fff;font-weight:800;font-size:14px;cursor:pointer;opacity:.5;">🧭 Bu Trafoya Git (Google Maps)</button>'
+      +'</div>'
+      +'<div id="aybTfList" style="max-height:46vh;overflow:auto;border-top:1px solid #eef1f6;"></div>';
+    d.body.appendChild(el);
+    d.getElementById('aybTfClose').onclick=function(){ el.style.display='none'; };
+    var inp=d.getElementById('aybTfInput');
+    var tmr=null;
+    inp.addEventListener('input', function(){ clearTimeout(tmr); tmr=setTimeout(function(){ render(inp.value); }, 250); });
+    inp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ var rs=search(inp.value); if(rs.length){ flyTo(rs[0]); render(inp.value); } } });
+    d.getElementById('aybTfGo').onclick=function(){ if(lastHit) openMaps(lastHit.lat,lastHit.lng); };
+    return el;
+  }
+  function syncGo(){ var b=d.getElementById('aybTfGo'); if(b){ b.disabled=!lastHit; b.style.opacity=lastHit?'1':'.5'; b.style.cursor=lastHit?'pointer':'default'; } }
+  function render(q){
+    var box=d.getElementById('aybTfList'); if(!box) return;
+    var rs=search(q);
+    if(!rs.length){ box.innerHTML='<div style="padding:12px;color:#7a8699;">Sonuç yok. Trafo adının tamamını/başını yaz.</div>'; return; }
+    box._rs=rs;
+    box.innerHTML=rs.map(function(r,i){ return '<div class="aybTfRow" data-i="'+i+'" style="padding:9px 12px;border-bottom:1px solid #eef1f6;cursor:pointer;display:flex;align-items:center;gap:8px;"><span style="font-size:15px;">⚡</span><b style="color:#0e7490;">'+String(r.text)+'</b><span style="flex:1;"></span><span style="color:#16a34a;font-size:12px;">Git ›</span></div>'; }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.aybTfRow'), function(row){ row.addEventListener('click', function(){ var r=box._rs[+row.getAttribute('data-i')]; if(r) flyTo(r); }); });
+  }
+  function open(){ var el=panel(); el.style.display='block'; lastHit=null; syncGo(); var inp=d.getElementById('aybTfInput'); setTimeout(function(){ try{inp.focus();}catch(e){} },60); render(''); }
+  window.aybOpenTrafoBul=open;
+
+  function injectBtn(){
+    if(d.getElementById('aybTfBtn')) return true;
+    var cad=d.getElementById('btnCadTop'); if(!cad || !cad.parentNode) return false;
+    var b=d.createElement('button'); b.id='aybTfBtn'; b.type='button'; b.className=cad.className; b.title='Trafo Bul - ada/isim ile trafo bul, Google Maps ile git';
+    b.innerHTML='<div class="ayb-pro-ico" style="color:#0e7490;">⚡</div><small>Trafo Bul</small>';
+    b.addEventListener('click', function(e){ try{e.preventDefault();e.stopPropagation();}catch(_){} open(); });
+    cad.parentNode.insertBefore(b, cad.nextSibling);
+    return true;
+  }
+  var t=0, iv=setInterval(function(){ if(injectBtn()|| ++t>60) clearInterval(iv); },500);
+})();
+
+/* "Düzenle" sekmesinin adını GPS yap (işlev aynı) */
+(function(){
+  "use strict";
+  var d=document;
+  function rename(){
+    var b=d.querySelector('.ayb-ribbon-tab[data-section="edit"]');
+    if(!b) return false;
+    var sm=b.textContent||'';
+    if(sm.indexOf('GPS')>=0) return true;
+    b.innerHTML='<span>📍</span>GPS';
+    b.title='GPS / Düzenle';
+    return true;
+  }
+  var t=0, iv=setInterval(function(){ rename(); if(++t>80) clearInterval(iv); },500);
+})();
+
+/* ===================== DXF TÜRKÇE KODLAMA DÜZELTME (windows-1254) ===================== */
+(function(){
+  "use strict";
+  try{
+    if(window.FileReader && FileReader.prototype && !FileReader.prototype.__aybEncPatched){
+      var orig=FileReader.prototype.readAsText;
+      FileReader.prototype.readAsText=function(blob, enc){
+        try{ if(blob && blob.name && /\.(dxf|mif|mid)$/i.test(blob.name)){ enc='windows-1254'; } }catch(e){}
+        return orig.call(this, blob, enc);
+      };
+      FileReader.prototype.__aybEncPatched=true;
+    }
+  }catch(e){}
+  /* Blob.text() de DXF için 1254 olsun (bazı yollar bunu kullanır) */
+  try{
+    if(window.Blob && Blob.prototype && Blob.prototype.text && !Blob.prototype.__aybEncPatched){
+      var origText=Blob.prototype.text;
+      Blob.prototype.text=function(){
+        try{
+          if(this && this.name && /\.(dxf|mif|mid)$/i.test(this.name)){
+            var self=this;
+            return self.arrayBuffer().then(function(buf){ try{ return new TextDecoder('windows-1254').decode(buf); }catch(e){ return origText.call(self); } });
+          }
+        }catch(e){}
+        return origText.call(this);
+      };
+      Blob.prototype.__aybEncPatched=true;
+    }
+  }catch(e){}
+})();
+
+/* ===================== BÜYÜK DXF: cadLayers'ı IndexedDB'ye taşı (localStorage kota hatasını çöz) ===================== */
+(function(){
+  "use strict";
+  function idb(){ return new Promise(function(res,rej){ var r=indexedDB.open('aybCadStore',1); r.onupgradeneeded=function(){ try{ r.result.createObjectStore('cad'); }catch(e){} }; r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; }); }
+  function idbSet(k,v){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('cad','readwrite'); tx.objectStore('cad').put(v,k); tx.oncomplete=function(){res();}; tx.onerror=function(){rej(tx.error);}; }); }); }
+  function idbGet(k){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('cad','readonly'); var rq=tx.objectStore('cad').get(k); rq.onsuccess=function(){res(rq.result);}; rq.onerror=function(){rej(rq.error);}; }); }); }
+  window.aybCadIdbSet=idbSet; window.aybCadIdbGet=idbGet;
+
+  var origSet=localStorage.setItem.bind(localStorage);
+  function pid(p){ try{ return String((p&&(p.id||p.projectId||p.name))||'active'); }catch(e){ return 'active'; } }
+  function offload(key,val){
+    /* val içinde cadLayers varsa: IndexedDB'ye kaydet, localStorage'a cadLayers'sız (slim) kaydet */
+    var obj=JSON.parse(val);
+    var p=obj.project||obj;
+    if(!p || !Array.isArray(p.cadLayers) || !p.cadLayers.length) return false;
+    var id=pid(p);
+    try{ idbSet('cad::'+id, JSON.stringify(p.cadLayers)).catch(function(){}); }catch(e){}
+    var savedCad=p.cadLayers; delete p.cadLayers; p.__cadInIdb=id;
+    var ok=false;
+    try{ origSet(key, JSON.stringify(obj)); ok=true; }catch(e){}
+    p.cadLayers=savedCad; /* bellekte geri koy (harita bozulmasın) */
+    return ok;
+  }
+  localStorage.setItem=function(key,val){
+    try{
+      if(typeof val==='string' && val.length>1500000 && val.indexOf('"cadLayers"')>=0){
+        if(offload(key,val)) return;
+      }
+    }catch(e){}
+    try{ return origSet(key,val); }
+    catch(err){
+      try{ if(typeof val==='string' && val.indexOf('"cadLayers"')>=0 && offload(key,val)) return; }catch(e2){}
+      throw err;
+    }
+  };
+
+  /* boot: proje IndexedDB işaretliyse cadLayers'ı geri yükle */
+  var tries=0, iv=setInterval(function(){
+    try{
+      var p=window.project;
+      if(p && p.__cadInIdb && (!Array.isArray(p.cadLayers)||!p.cadLayers.length) && !p.__cadRestoring){
+        p.__cadRestoring=true;
+        idbGet('cad::'+p.__cadInIdb).then(function(txt){
+          try{ if(txt){ p.cadLayers=JSON.parse(txt); if(window.renderAll) window.renderAll(); if(window.aybZoomToCad) window.aybZoomToCad(); } }catch(e){}
+        }).catch(function(){});
+      }
+    }catch(e){}
+    if(++tries>60) clearInterval(iv);
+  }, 700);
+})();
+
+/* ===================== DXF KATMAN LİSTESİNE RENK SEÇİCİ ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function findLayer(id){ try{ var ls=(window.project&&window.project.cadLayers)||[]; for(var i=0;i<ls.length;i++){ if(String(ls[i].id)===String(id)) return ls[i]; } }catch(e){} return null; }
+  function inject(){
+    var rows=d.querySelectorAll('.ayb-cad-row[data-id]');
+    Array.prototype.forEach.call(rows, function(row){
+      if(row.__aybColorAdded) return;
+      var id=row.getAttribute('data-id'); var layer=findLayer(id); if(!layer) return;
+      row.__aybColorAdded=true;
+      var ci=d.createElement('input'); ci.type='color';
+      ci.value=(layer.color&&/^#[0-9a-f]{6}$/i.test(layer.color))?layer.color:'#2b6bff';
+      ci.title='Bu katmanın rengini değiştir';
+      ci.style.cssText='width:32px;height:26px;min-width:32px;border:1px solid #c7d0de;border-radius:6px;padding:0;cursor:pointer;background:transparent;';
+      ci.addEventListener('input', function(){
+        try{
+          var c=ci.value; layer.color=c; layer.original=false;
+          var fs=layer.features||[]; for(var k=0;k<fs.length;k++){ fs[k].color=c; }
+          if(window.renderAll) window.renderAll();
+          try{ if(window.saveProject) window.saveProject(); }catch(_){}
+        }catch(e){}
+      });
+      var zoomBtn=row.querySelector('[data-cad-zoom]');
+      if(zoomBtn && zoomBtn.parentNode===row) row.insertBefore(ci, zoomBtn); else row.appendChild(ci);
+    });
+  }
+  setInterval(inject, 700);
+})();
+
+/* ===================== OTOMATİK TRAFO BÖLGESİ ÇİZ (besleme bölgesi, kalın kesik çizgi) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap||window.map||null; }
+  var grp=null, shown=false;
+
+  function convexHull(pts){
+    if(pts.length<3) return pts.slice();
+    pts=pts.slice().sort(function(a,b){ return a[0]-b[0]||a[1]-b[1]; });
+    function cr(o,a,b){ return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]); }
+    var lo=[],i; for(i=0;i<pts.length;i++){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],pts[i])<=0) lo.pop(); lo.push(pts[i]); }
+    var up=[]; for(i=pts.length-1;i>=0;i--){ while(up.length>=2&&cr(up[up.length-2],up[up.length-1],pts[i])<=0) up.pop(); up.push(pts[i]); }
+    lo.pop(); up.pop(); return lo.concat(up);
+  }
+  function buffer(hull,m){
+    if(hull.length<3) return hull;
+    var cx=0,cy=0; hull.forEach(function(p){cx+=p[0];cy+=p[1];}); cx/=hull.length; cy/=hull.length;
+    var latm=m/111320, lngm=m/((111320*Math.cos(cy*Math.PI/180))||1);
+    return hull.map(function(p){ var dx=p[0]-cx,dy=p[1]-cy,l=Math.sqrt(dx*dx+dy*dy)||1; return [p[0]+dx/l*lngm, p[1]+dy/l*latm]; });
+  }
+  function compute(){
+    var p=window.project; if(!p) return [];
+    var objs=Array.isArray(p.objects)?p.objects:[], lines=Array.isArray(p.lines)?p.lines:[];
+    var byId={}; objs.forEach(function(o){ byId[o.id]=o; });
+    var adj={}; objs.forEach(function(o){ adj[o.id]=[]; });
+    lines.forEach(function(l){ if(adj[l.start]&&adj[l.end]){ adj[l.start].push(l.end); adj[l.end].push(l.start); } });
+    var trafos=objs.filter(function(o){ return String(o.type||'').toLowerCase()==='trafo'; });
+    if(!trafos.length) return [];
+    var owner={}, q=[];
+    trafos.forEach(function(t){ owner[t.id]=t.id; q.push(t.id); });
+    while(q.length){ var id=q.shift(); (adj[id]||[]).forEach(function(n){ if(owner[n]===undefined){ owner[n]=owner[id]; q.push(n); } }); }
+    var groups={};
+    objs.forEach(function(o){ var ow=owner[o.id]; if(ow!==undefined && o.lat!=null && o.lng!=null){ (groups[ow]=groups[ow]||[]).push(o); } });
+    var regions=[];
+    Object.keys(groups).forEach(function(ow){
+      var members=groups[ow]; var pts=members.map(function(o){ return [o.lng,o.lat]; });
+      if(pts.length<3) return;
+      var hull=buffer(convexHull(pts),22);
+      regions.push({ trafo:byId[ow], hull:hull.map(function(pt){ return [pt[1],pt[0]]; }), count:members.length });
+    });
+    return regions;
+  }
+  var palette=['#1d4ed8','#e11d48','#059669','#d97706','#7c3aed','#0891b2','#be185d','#4d7c0f','#0369a1','#b91c1c'];
+  function draw(){
+    var map=M(), L=window.L; if(!map||!L){ return; }
+    if(!grp) grp=L.layerGroup().addTo(map); grp.clearLayers();
+    var regions=compute();
+    if(!regions.length){ try{ if(window.toast) toast('Trafo veya trafoya bağlı hat/direk bulunamadı. Önce trafo koy, hatlarla direklere bağla.'); }catch(e){} return; }
+    regions.forEach(function(r,i){
+      var col=palette[i%palette.length];
+      var poly=L.polygon(r.hull,{color:col,weight:5,opacity:0.95,dashArray:'16 10',fill:true,fillColor:col,fillOpacity:0.05,interactive:false});
+      grp.addLayer(poly);
+      try{
+        var tno=(r.trafo&&r.trafo.props&&(r.trafo.props.trafo_no||r.trafo.props.no))||(r.trafo&&window.getObjectNo?window.getObjectNo(r.trafo):'')||'Trafo';
+        var c=poly.getBounds().getCenter();
+        grp.addLayer(L.marker(c,{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:'+col+';color:#fff;font:700 12px system-ui;padding:2px 9px;border-radius:11px;white-space:nowrap;box-shadow:0 1px 5px rgba(0,0,0,.45);">⬡ '+tno+' bölgesi</div>',iconSize:[0,0]})}));
+      }catch(e){}
+    });
+    shown=true;
+    try{ if(window.toast) toast(regions.length+' trafo bölgesi otomatik çizildi.'); }catch(e){}
+  }
+  function clear(){ if(grp) grp.clearLayers(); shown=false; try{ if(window.toast) toast('Trafo bölgeleri kaldırıldı.'); }catch(e){} }
+  function toggle(){ if(shown) clear(); else draw(); }
+  window.aybTrafoBolgeCiz=draw; window.aybTrafoBolgeToggle=toggle;
+
+  function injectBtn(){
+    if(d.getElementById('aybTbBtn')) return true;
+    var anchor=d.getElementById('aybTfBtn')||d.getElementById('btnCadTop'); if(!anchor||!anchor.parentNode) return false;
+    var b=d.createElement('button'); b.id='aybTbBtn'; b.type='button'; b.className=anchor.className;
+    b.title='Trafo Bölgesi Çiz - her trafonun beslediği bölgeyi otomatik kalın kesik çizgiyle kapatır (tekrar bas: kaldır)';
+    b.innerHTML='<div class="ayb-pro-ico" style="color:#1d4ed8;">⬡</div><small>Trafo Bölgesi</small>';
+    b.addEventListener('click', function(e){ try{e.preventDefault();e.stopPropagation();}catch(_){} toggle(); });
+    anchor.parentNode.insertBefore(b, anchor.nextSibling);
+    return true;
+  }
+  var t=0, iv=setInterval(function(){ if(injectBtn()|| ++t>60) clearInterval(iv); },500);
 })();
