@@ -1938,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v66";
+  var SURUM="v67";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -3732,26 +3732,38 @@
   var t=0, iv=setInterval(function(){ if(injectBtn()|| ++t>60) clearInterval(iv); },500);
 })();
 
-/* ===================== WhatsApp/başka uygulamadan gelen DXF'i içeri al ===================== */
+/* ===================== WhatsApp/başka uygulamadan gelen DXF/KML/KMZ/MİF'i içeri al ===================== */
 (function(){
   "use strict";
+  var d=document;
   function b64ToU8(b64){ try{ var bin=atob(b64); var a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }catch(e){ return new Uint8Array(0); } }
+  function setCadAndChange(file){
+    var tries=0;(function a(){ var inp=d.getElementById('cadFile'); if(inp){ try{ var dt=new DataTransfer(); dt.items.add(file); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){} return; } if(++tries<25) setTimeout(a,400); })();
+  }
+  function routeViaButton(inputId, btnId, accept, file){
+    var inp=d.getElementById(inputId);
+    if(!inp){ inp=d.createElement('input'); inp.type='file'; inp.id=inputId; inp.accept=accept; inp.style.display='none'; d.body.appendChild(inp); }
+    var dt=new DataTransfer(); dt.items.add(file);
+    try{ Object.defineProperty(inp,'files',{configurable:true,get:function(){return dt.files;}}); }catch(e){ try{ inp.files=dt.files; }catch(_){} }
+    inp.click=function(){ setTimeout(function(){ try{ if(typeof inp.onchange==='function') inp.onchange({target:inp}); }catch(e){} try{ inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){} },10); };
+    var btn=d.getElementById(btnId);
+    if(btn){ try{ btn.click(); }catch(e){ inp.click(); } } else { inp.click(); }
+    setTimeout(function(){ try{ delete inp.click; }catch(e){} },4000);
+  }
   window.aybImportIncomingDxf=function(b64, name){
     try{
       name=name||'gelen.dxf';
-      if(!/\.(dxf|mif|kml|kmz)$/i.test(name)) name=name+'.dxf';
+      var ext=(String(name).split('.').pop()||'').toLowerCase();
       var bytes=b64ToU8(b64);
       var file=new File([bytes], name);
       var tries=0;
-      (function attempt(){
-        var inp=document.getElementById('cadFile');
-        if(inp){
-          try{ var dt=new DataTransfer(); dt.items.add(file); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){}
-          try{ if(window.toast) toast('DXF içeri alınıyor: '+name); }catch(e){}
-          return;
-        }
-        if(++tries<25) setTimeout(attempt,400);
+      (function wait(){
+        if(!window.project){ if(++tries<40){ setTimeout(wait,500); return; } }
+        if(ext==='kml'||ext==='kmz'){ routeViaButton('aybKmzInput','btnKMZImport','.kml,.kmz',file); try{ if(window.toast) toast('KML/KMZ içeri alınıyor: '+name); }catch(e){} }
+        else if(ext==='mif'){ routeViaButton('aybMifInput','btnMIFImport','.mif,.txt',file); try{ if(window.toast) toast('MİF içeri alınıyor: '+name); }catch(e){} }
+        else { setCadAndChange(file); try{ if(window.toast) toast('DXF içeri alınıyor: '+name); }catch(e){} }
       })();
-    }catch(e){ try{ if(window.toast) toast('DXF alınamadı: '+(e&&e.message?e.message:e)); }catch(_){} }
+    }catch(e){ try{ if(window.toast) toast('Dosya alınamadı: '+(e&&e.message?e.message:e)); }catch(_){} }
   };
+  window.aybImportIncomingFile=window.aybImportIncomingDxf;
 })();
