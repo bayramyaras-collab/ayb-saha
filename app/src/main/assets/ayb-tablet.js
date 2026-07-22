@@ -1938,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v69";
+  var SURUM="v70";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -3755,7 +3755,16 @@
   function b64ToU8(b64){ try{ var bin=atob(b64); var a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }catch(e){ return new Uint8Array(0); } }
   function ready(){ var map=window.__aybMap||window.map; return !!(map && typeof map.getZoom==='function' && d.getElementById('cadFile')); }
   function setCadAndChange(file){
-    var tries=0;(function a(){ var inp=d.getElementById('cadFile'); if(inp){ try{ var dt=new DataTransfer(); dt.items.add(file); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){} return; } if(++tries<25) setTimeout(a,400); })();
+    var tries=0;(function a(){
+      var inp=d.getElementById('cadFile'); var btn=d.getElementById('btnCadImport');
+      if(inp && btn){
+        try{ var dt=new DataTransfer(); dt.items.add(file); try{ inp.files=dt.files; }catch(e){} try{ Object.defineProperty(inp,'files',{configurable:true,get:function(){return dt.files;}}); }catch(e){} }catch(e){}
+        try{ inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){}
+        try{ btn.click(); }catch(e){}
+        return;
+      }
+      if(++tries<25) setTimeout(a,400);
+    })();
   }
   function routeViaButton(inputId, btnId, accept, file){
     var inp=d.getElementById(inputId);
@@ -3773,7 +3782,7 @@
       var file=new File([b64ToU8(b64)], name);
       if(ext==='kml'||ext==='kmz'){ routeViaButton('aybKmzInput','btnKMZImport','.kml,.kmz',file); try{ if(window.toast) toast('KML/KMZ içeri alınıyor: '+name); }catch(e){} }
       else if(ext==='mif'){ routeViaButton('aybMifInput','btnMIFImport','.mif,.txt',file); try{ if(window.toast) toast('MİF içeri alınıyor: '+name); }catch(e){} }
-      else { setCadAndChange(file); try{ if(window.toast) toast('DXF içeri alınıyor: '+name); }catch(e){} }
+      else { var dn=/\.dxf$/i.test(name)?name:(String(name).replace(/\.[^.]*$/,'')+'.dxf'); var df=new File([b64ToU8(b64)], dn); setCadAndChange(df); try{ if(window.toast) toast('DXF içeri alınıyor: '+dn); }catch(e){} }
     }catch(e){ try{ if(window.toast) toast('Dosya alınamadı: '+(e&&e.message?e.message:e)); }catch(_){} }
   }
   function startPoll(){
