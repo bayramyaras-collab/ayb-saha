@@ -1938,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v67";
+  var SURUM="v69";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -3646,8 +3646,23 @@
           try{ if(window.saveProject) window.saveProject(); }catch(_){}
         }catch(e){}
       });
+      /* göz (aç/kapat) düğmesi */
+      var eye=d.createElement('button'); eye.type='button';
+      eye.style.cssText='width:34px;height:26px;min-width:34px;border:1px solid #c7d0de;border-radius:6px;cursor:pointer;background:#fff;font-size:15px;line-height:1;padding:0;';
+      function paintEye(){ eye.textContent=layer.hidden?'🚫':'👁'; eye.title=layer.hidden?'Katman kapalı - açmak için bas':'Katmanı gizle/kapat'; eye.style.background=layer.hidden?'#fee2e2':'#fff'; }
+      paintEye();
+      eye.addEventListener('click', function(ev){
+        try{ ev.preventDefault(); ev.stopPropagation(); }catch(_){}
+        try{
+          if(!layer.hidden){ layer._savedOpacity=(layer.opacity==null?0.9:layer.opacity); layer.hidden=true; layer.opacity=0; }
+          else { layer.hidden=false; layer.opacity=(layer._savedOpacity==null?0.9:layer._savedOpacity); }
+          paintEye();
+          if(window.renderAll) window.renderAll();
+          try{ if(window.saveProject) window.saveProject(); }catch(_){}
+        }catch(e){}
+      });
       var zoomBtn=row.querySelector('[data-cad-zoom]');
-      if(zoomBtn && zoomBtn.parentNode===row) row.insertBefore(ci, zoomBtn); else row.appendChild(ci);
+      if(zoomBtn && zoomBtn.parentNode===row){ row.insertBefore(ci, zoomBtn); row.insertBefore(eye, zoomBtn); } else { row.appendChild(ci); row.appendChild(eye); }
     });
   }
   setInterval(inject, 700);
@@ -3736,7 +3751,9 @@
 (function(){
   "use strict";
   var d=document;
+  var pending=null;
   function b64ToU8(b64){ try{ var bin=atob(b64); var a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }catch(e){ return new Uint8Array(0); } }
+  function ready(){ var map=window.__aybMap||window.map; return !!(map && typeof map.getZoom==='function' && d.getElementById('cadFile')); }
   function setCadAndChange(file){
     var tries=0;(function a(){ var inp=d.getElementById('cadFile'); if(inp){ try{ var dt=new DataTransfer(); dt.items.add(file); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){} return; } if(++tries<25) setTimeout(a,400); })();
   }
@@ -3750,20 +3767,28 @@
     if(btn){ try{ btn.click(); }catch(e){ inp.click(); } } else { inp.click(); }
     setTimeout(function(){ try{ delete inp.click; }catch(e){} },4000);
   }
-  window.aybImportIncomingDxf=function(b64, name){
+  function doImport(b64,name){
     try{
-      name=name||'gelen.dxf';
       var ext=(String(name).split('.').pop()||'').toLowerCase();
-      var bytes=b64ToU8(b64);
-      var file=new File([bytes], name);
-      var tries=0;
-      (function wait(){
-        if(!window.project){ if(++tries<40){ setTimeout(wait,500); return; } }
-        if(ext==='kml'||ext==='kmz'){ routeViaButton('aybKmzInput','btnKMZImport','.kml,.kmz',file); try{ if(window.toast) toast('KML/KMZ içeri alınıyor: '+name); }catch(e){} }
-        else if(ext==='mif'){ routeViaButton('aybMifInput','btnMIFImport','.mif,.txt',file); try{ if(window.toast) toast('MİF içeri alınıyor: '+name); }catch(e){} }
-        else { setCadAndChange(file); try{ if(window.toast) toast('DXF içeri alınıyor: '+name); }catch(e){} }
-      })();
+      var file=new File([b64ToU8(b64)], name);
+      if(ext==='kml'||ext==='kmz'){ routeViaButton('aybKmzInput','btnKMZImport','.kml,.kmz',file); try{ if(window.toast) toast('KML/KMZ içeri alınıyor: '+name); }catch(e){} }
+      else if(ext==='mif'){ routeViaButton('aybMifInput','btnMIFImport','.mif,.txt',file); try{ if(window.toast) toast('MİF içeri alınıyor: '+name); }catch(e){} }
+      else { setCadAndChange(file); try{ if(window.toast) toast('DXF içeri alınıyor: '+name); }catch(e){} }
     }catch(e){ try{ if(window.toast) toast('Dosya alınamadı: '+(e&&e.message?e.message:e)); }catch(_){} }
+  }
+  function startPoll(){
+    if(window.__aybIncPolling) return; window.__aybIncPolling=true;
+    var n=0;
+    var iv=setInterval(function(){
+      if(!pending){ clearInterval(iv); window.__aybIncPolling=false; return; }
+      if(ready()){ var p=pending; pending=null; clearInterval(iv); window.__aybIncPolling=false; setTimeout(function(){ doImport(p.b64,p.name); }, 600); }
+      else if(++n>1200){ clearInterval(iv); window.__aybIncPolling=false; }  /* ~10 dk bekle */
+    }, 500);
+  }
+  window.aybImportIncomingDxf=function(b64, name){
+    pending={ b64:b64, name:name||'gelen.dxf' };
+    try{ if(window.toast) toast(ready()?'Dosya alındı, içeri alınıyor...':'Dosya alındı. Giriş yapıp proje açınca otomatik gelecek.'); }catch(e){}
+    startPoll();
   };
   window.aybImportIncomingFile=window.aybImportIncomingDxf;
 })();
