@@ -30,11 +30,18 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import android.util.Base64;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
 
     private WebView web;
+    private String pendingImportB64 = null;
+    private String pendingImportName = null;
     private ValueCallback<Uri[]> filePathCallback;
     private Uri cameraOutputUri;
     private static final int REQ_PERM = 1001;
@@ -86,6 +93,8 @@ public class MainActivity extends Activity {
                   "(function(){if(document.getElementById('ayb-tablet-loader'))return;" +
                   "var s=document.createElement('script');s.id='ayb-tablet-loader';" +
                   "s.src='file:///android_asset/ayb-tablet.js';document.body.appendChild(s);})();", null);
+                // WhatsApp vb. uygulamadan gelen DXF varsa programa aktar
+                maybeInjectIncoming();
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -204,6 +213,81 @@ public class MainActivity extends Activity {
         });
 
         web.loadUrl("file:///android_asset/AYB_Saha_Harita.html");
+        readIncoming(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        readIncoming(intent);
+        maybeInjectIncoming();
+    }
+
+    /** WhatsApp vb. uygulamadan gelen DXF/MİF/KML dosyasını oku ve beklet. */
+    private void readIncoming(Intent intent) {
+        if (intent == null) return;
+        try {
+            String action = intent.getAction();
+            Uri uri = null;
+            if (Intent.ACTION_VIEW.equals(action)) {
+                uri = intent.getData();
+            } else if (Intent.ACTION_SEND.equals(action)) {
+                Object ex = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if (ex instanceof Uri) uri = (Uri) ex;
+            }
+            if (uri == null) return;
+            String name = queryName(uri);
+            if (name == null) name = "gelen.dxf";
+            // sadece harita altlık türleri
+            String low = name.toLowerCase();
+            InputStream in = getContentResolver().openInputStream(uri);
+            if (in == null) return;
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[65536]; int n;
+            while ((n = in.read(buf)) != -1) bos.write(buf, 0, n);
+            in.close();
+            byte[] data = bos.toByteArray();
+            pendingImportB64 = Base64.encodeToString(data, Base64.NO_WRAP);
+            pendingImportName = name;
+        } catch (Exception e) {
+            pendingImportB64 = null; pendingImportName = null;
+        }
+    }
+
+    private String queryName(Uri uri) {
+        String result = null;
+        try {
+            if ("content".equals(uri.getScheme())) {
+                Cursor c = getContentResolver().query(uri, null, null, null, null);
+                if (c != null) {
+                    int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (c.moveToFirst() && idx >= 0) result = c.getString(idx);
+                    c.close();
+                }
+            }
+            if (result == null) {
+                result = uri.getLastPathSegment();
+            }
+        } catch (Exception e) {}
+        return result;
+    }
+
+    /** Beklenen gelen dosyayı programa aktar (sayfa yüklendikten sonra). */
+    private void maybeInjectIncoming() {
+        if (pendingImportB64 == null || web == null) return;
+        final String b64 = pendingImportB64;
+        final String nm = (pendingImportName == null ? "gelen.dxf" : pendingImportName).replace("'", "");
+        pendingImportB64 = null; pendingImportName = null;
+        web.postDelayed(new Runnable() {
+            @Override public void run() {
+                try {
+                    web.evaluateJavascript(
+                      "(function(){var t=0;function go(){if(window.aybImportIncomingDxf){window.aybImportIncomingDxf('" +
+                      b64 + "','" + nm + "');}else if(++t<30){setTimeout(go,500);}}go();})();", null);
+                } catch (Exception e) {}
+            }
+        }, 1500);
     }
 
     // ---- JS'ten cagrilan yedekleme koprusu ----
