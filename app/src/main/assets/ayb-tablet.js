@@ -1938,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v65";
+  var SURUM="v66";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -3730,4 +3730,28 @@
     return true;
   }
   var t=0, iv=setInterval(function(){ if(injectBtn()|| ++t>60) clearInterval(iv); },500);
+})();
+
+/* ===================== WhatsApp/başka uygulamadan gelen DXF'i içeri al ===================== */
+(function(){
+  "use strict";
+  function b64ToU8(b64){ try{ var bin=atob(b64); var a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }catch(e){ return new Uint8Array(0); } }
+  window.aybImportIncomingDxf=function(b64, name){
+    try{
+      name=name||'gelen.dxf';
+      if(!/\.(dxf|mif|kml|kmz)$/i.test(name)) name=name+'.dxf';
+      var bytes=b64ToU8(b64);
+      var file=new File([bytes], name);
+      var tries=0;
+      (function attempt(){
+        var inp=document.getElementById('cadFile');
+        if(inp){
+          try{ var dt=new DataTransfer(); dt.items.add(file); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){}
+          try{ if(window.toast) toast('DXF içeri alınıyor: '+name); }catch(e){}
+          return;
+        }
+        if(++tries<25) setTimeout(attempt,400);
+      })();
+    }catch(e){ try{ if(window.toast) toast('DXF alınamadı: '+(e&&e.message?e.message:e)); }catch(_){} }
+  };
 })();
