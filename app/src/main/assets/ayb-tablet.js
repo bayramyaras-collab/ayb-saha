@@ -1938,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v70";
+  var SURUM="v73";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -2264,7 +2264,7 @@
   var n=0, iv=setInterval(function(){ if(injectBtn()||++n>60) clearInterval(iv); }, 500);
   setTimeout(injectBtn, 1200);
   /* arka planda otomatik takip (lamba ekledikçe bugüne yazsın) */
-  setInterval(function(){ try{ track(); }catch(e){} }, 6000);
+  setInterval(function(){ try{ track(); }catch(e){} }, 20000);
   window.aybGunOzeti=show;
 })();
 
@@ -3665,7 +3665,7 @@
       if(zoomBtn && zoomBtn.parentNode===row){ row.insertBefore(ci, zoomBtn); row.insertBefore(eye, zoomBtn); } else { row.appendChild(ci); row.appendChild(eye); }
     });
   }
-  setInterval(inject, 700);
+  setInterval(function(){ try{ var b=document.getElementById('cadLayerList'); if(b && b.offsetParent!==null) inject(); }catch(e){} }, 1200);
 })();
 
 /* ===================== OTOMATİK TRAFO BÖLGESİ ÇİZ (besleme bölgesi, kalın kesik çizgi) ===================== */
@@ -3800,4 +3800,291 @@
     startPoll();
   };
   window.aybImportIncomingFile=window.aybImportIncomingDxf;
+})();
+
+/* ===================== HIZLI SAHA MODU (direk/trafo ekleme hızlandırma) =====================
+   Sorun: her obje eklemede (1) TÜM DXF yeniden çiziliyor, (2) 60 MB proje tümüyle kaydediliyor.
+   Çözüm: (1) DXF değişmediyse çizimi yeniden yapma (önbellek), (2) kayıtta DXF'i hariç tut. */
+(function(){
+  "use strict";
+  function M(){ return window.__aybMap||window.map||null; }
+  function cadSig(){
+    var p=window.project; if(!p||!Array.isArray(p.cadLayers)) return 'yok';
+    var s=p.cadLayers.length+'#';
+    for(var i=0;i<p.cadLayers.length;i++){
+      var l=p.cadLayers[i]||{};
+      s+=(l.id||i)+':'+((l.features&&l.features.length)||0)+':'+(l.color||'')+':'+(l.hidden?1:0)+':'+(l.opacity==null?'':l.opacity)+':'+(l.weight==null?'':l.weight)+';';
+    }
+    return s;
+  }
+  window.aybCadSig=cadSig;
+
+  /* ---------- 1) DXF çizim önbelleği: değişmediyse yeniden çizme ---------- */
+  var origCad=null, lastSig=null, cache=[];
+  function installCad(){
+    var cur=window.renderCadLayers;
+    if(typeof cur!=='function' || cur.__aybFast) return;
+    origCad=cur;
+    var fast=function(){
+      var map=M(), L=window.L;
+      if(!map||!L||typeof map.addLayer!=='function') return origCad.apply(this,arguments);
+      var s=cadSig();
+      if(s===lastSig && cache.length){
+        for(var i=0;i<cache.length;i++){ try{ if(!map.hasLayer(cache[i])) map.addLayer(cache[i]); }catch(e){} }
+        try{ if(typeof window.aybRenderCadTexts==='function') window.aybRenderCadTexts(); }catch(e){}
+        return;
+      }
+      for(var j=0;j<cache.length;j++){ try{ map.removeLayer(cache[j]); }catch(e){} }
+      cache=[];
+      var captured=[], origAdd=map.addLayer;
+      try{
+        map.addLayer=function(l){ try{ captured.push(l); }catch(e){} return origAdd.call(this,l); };
+        origCad.apply(this,arguments);
+      } finally { map.addLayer=origAdd; }
+      try{ cache=captured.filter(function(l){ return L.Path && (l instanceof L.Path); }); }catch(e){ cache=[]; }
+      lastSig=s;
+    };
+    fast.__aybFast=true;
+    window.renderCadLayers=fast;
+  }
+
+  /* ---------- 2) Kayıt: DXF katmanlarını hariç tut (60 MB yerine küçük kayıt) ---------- */
+  var origSave=null, lastCadSaved=null;
+  function installSave(){
+    var cur=window.saveProject;
+    if(typeof cur!=='function' || cur.__aybFast) return;
+    origSave=cur;
+    var fast=function(){
+      var p=window.project;
+      if(!p || !Array.isArray(p.cadLayers) || !p.cadLayers.length) return origSave.apply(this,arguments);
+      var keep=p.cadLayers, id=String(p.id||p.name||'active'), s=cadSig(), r;
+      p.cadLayers=[]; p.__cadInIdb=id;
+      try{ r=origSave.apply(this,arguments); }
+      finally{ p.cadLayers=keep; }
+      if(s!==lastCadSaved){
+        lastCadSaved=s;
+        setTimeout(function(){
+          try{ if(window.aybCadIdbSet) window.aybCadIdbSet('cad::'+id, JSON.stringify(keep)).catch(function(){}); }catch(e){}
+        }, 400);
+      }
+      return r;
+    };
+    fast.__aybFast=true;
+    window.saveProject=fast;
+  }
+
+  /* ---------- 3) DXF yazıları: aynı görünümde tekrar çizme + gecikmeli topla ---------- */
+  var txtInner=null, txtWrap=null, txtTmr=null, txtKey='';
+  function installTxt(){
+    var cur=window.aybRenderCadTexts;
+    if(typeof cur!=='function' || cur===txtWrap) return;
+    txtInner=cur;
+    txtWrap=function(){
+      if(txtTmr) clearTimeout(txtTmr);
+      txtTmr=setTimeout(function(){
+        txtTmr=null;
+        var map=M();
+        if(!map||typeof map.getZoom!=='function'){ try{ txtInner(); }catch(e){} return; }
+        var c, key;
+        try{ c=map.getCenter(); key=map.getZoom()+'|'+c.lat.toFixed(5)+'|'+c.lng.toFixed(5)+'|'+cadSig(); }catch(e){ key=Math.random()+''; }
+        var have=(window.__aybCadTextMarkers&&window.__aybCadTextMarkers.length)||0;
+        if(key===txtKey && have) return;
+        txtKey=key;
+        try{ txtInner(); }catch(e){}
+      }, 130);
+    };
+    txtWrap.__aybFast=true;
+    window.aybRenderCadTexts=txtWrap;
+  }
+
+  function installAll(){ try{ installCad(); }catch(e){} try{ installSave(); }catch(e){} try{ installTxt(); }catch(e){} }
+  installAll();
+  var _t=0, _i=setInterval(function(){
+    installAll();
+    var done=(window.renderCadLayers&&window.renderCadLayers.__aybFast)&&(window.saveProject&&window.saveProject.__aybFast)&&(window.aybRenderCadTexts&&window.aybRenderCadTexts.__aybFast);
+    if(done || ++_t>60) clearInterval(_i);
+  }, 700);
+})();
+
+/* ===================== HIZLI VERİ GİRİŞİ: ARTIMLI ÇİZİM =====================
+   Sorun: her direk/hat eklemede TÜM objeler+hatlar silinip yeniden çiziliyordu (obje arttıkça katlanarak yavaşlar).
+   Çözüm: sadece YENİ eklenenleri çiz. Bir şey silinir/düzenlenirse otomatik tam çizime döner (güvenli). */
+(function(){
+  "use strict";
+  var origAll=null, prev=null, busy=false;
+
+  function visObjs(){ var p=window.project, a=(p&&p.objects)||[]; try{ return (typeof window.aybViewObjectVisible==='function')?a.filter(window.aybViewObjectVisible):a; }catch(e){ return a; } }
+  function visLines(){ var p=window.project, a=(p&&p.lines)||[]; try{ return (typeof window.aybViewLineVisible==='function')?a.filter(window.aybViewLineVisible):a; }catch(e){ return a; } }
+
+  function objSig(o){
+    var no='',tip='',lbl='',sid='';
+    try{ no=window.getObjectNo?window.getObjectNo(o):''; }catch(e){}
+    try{ tip=window.getObjectTip?window.getObjectTip(o):''; }catch(e){}
+    try{ lbl=window.getObjectLabelHTML?window.getObjectLabelHTML(o,no,tip):''; }catch(e){}
+    try{ var sy=window.getObjectSymbol?window.getObjectSymbol(o):null; sid=(o.props&&o.props.symbol_id)||(sy&&sy.id)||''; }catch(e){}
+    return o.id+'|'+o.lat+','+o.lng+'|'+o.type+'|'+sid+'|'+lbl;
+  }
+  function lineSig(l){ try{ return JSON.stringify(l); }catch(e){ return String(l&&l.id); } }
+  function otherSig(){
+    var p=window.project||{}, s='';
+    try{ s=JSON.stringify(p.areas||[])+'#'+JSON.stringify(p.freeLines||[])+'#'+JSON.stringify(p.channels||[])+'#'+JSON.stringify(p.rasters||[]); }
+    catch(e){ s=((p.areas||[]).length)+'/'+((p.freeLines||[]).length)+'/'+((p.channels||[]).length)+'/'+((p.rasters||[]).length); }
+    try{ s+='#'+JSON.stringify(p.aybImportLayers||[]); }catch(e){}
+    try{ s+='#'+(window.aybCadSig?window.aybCadSig():''); }catch(e){}
+    try{ s+='#'+(window.aybEnergyHoverMode?1:0); }catch(e){}
+    return s;
+  }
+
+  function fast(){
+    var p=window.project, map=window.__aybMap||window.map;
+    if(!p||!map||typeof origAll!=='function'){ return origAll?origAll.apply(this,arguments):undefined; }
+    var ov,lv,os,ls,ot;
+    try{ ov=visObjs(); lv=visLines(); os=ov.map(objSig); ls=lv.map(lineSig); ot=otherSig(); }
+    catch(e){ prev=null; return origAll.apply(this,arguments); }
+
+    var anyHidden=false;
+    try{ var il=p.aybImportLayers||[]; for(var h=0;h<il.length;h++){ if(il[h] && il[h].mode==='project' && il[h].visible===false){ anyHidden=true; break; } } }catch(e){ anyHidden=true; }
+    if(!anyHidden && prev && prev.ot===ot && os.length>=prev.objs.length && ls.length>=prev.lines.length &&
+       typeof window.renderObject==='function' && typeof window.renderLine==='function'){
+      var ok=true, i;
+      for(i=0;i<prev.objs.length;i++){ if(prev.objs[i]!==os[i]){ ok=false; break; } }
+      if(ok) for(i=0;i<prev.lines.length;i++){ if(prev.lines[i]!==ls[i]){ ok=false; break; } }
+      var addO=os.length-prev.objs.length, addL=ls.length-prev.lines.length;
+      if(ok && (addO+addL)>0 && (addO+addL)<=30){
+        try{
+          for(i=prev.objs.length;i<os.length;i++) window.renderObject(ov[i]);
+          for(i=prev.lines.length;i<ls.length;i++) window.renderLine(lv[i]);
+          try{ if(window.updateSummary) window.updateSummary(); }catch(e){}
+          try{ if(window.repositionPointLabels) window.repositionPointLabels(); }catch(e){}
+          prev={objs:os,lines:ls,ot:ot};
+          return;
+        }catch(e){ /* sorun olursa tam çizime düş */ }
+      }
+      if(ok && addO===0 && addL===0){ prev={objs:os,lines:ls,ot:ot}; return; }  /* hiçbir şey değişmedi */
+    }
+    if(busy) return;
+    busy=true; prev=null;
+    try{ origAll.apply(this,arguments); } finally { busy=false; }
+    prev={objs:os,lines:ls,ot:ot};
+  }
+
+  var installed=false;
+  function install(){
+    if(installed) return;
+    var cur=window.renderAll;
+    if(typeof cur!=='function') return;
+    if(cur.__aybInc){ installed=true; return; }
+    origAll=cur;
+    /* programın kendi sarmalayıcı bayraklarını taşı -> tekrar tekrar sarmasın (sonsuz iç içe sarma önlenir) */
+    try{ for(var k in cur){ try{ if(Object.prototype.hasOwnProperty.call(cur,k) && !(k in fast)) fast[k]=cur[k]; }catch(e){} } }catch(e){}
+    fast.__aybInc=true;
+    window.renderAll=fast;
+    installed=true;
+  }
+  install();
+  var _n=0, _iv=setInterval(function(){ install(); if(installed || ++_n>60) clearInterval(_iv); }, 500);
+  window.aybForceFullRender=function(){ prev=null; try{ if(origAll) origAll(); }catch(e){} };
+})();
+
+/* ===================== HAT ÇİZERKEN AKICILIK: yakalama taraması sınırlandır =====================
+   Sorun: hat çizerken her fare/parmak hareketinde TÜM objeler taranıyordu (obje çoksa takılma). */
+(function(){
+  "use strict";
+  var inner=null, wrap=null, last=0, pend=null, tmr=null;
+  function run(){ tmr=null; last=Date.now(); try{ if(inner) inner(pend); }catch(e){} }
+  function install(){
+    var cur=window.updateSnap;
+    if(typeof cur!=='function' || cur===wrap) return;
+    inner=cur;
+    wrap=function(ll){
+      pend=ll;
+      var now=Date.now(), gap=now-last;
+      if(gap>=45){ run(); return; }
+      if(!tmr) tmr=setTimeout(run, 45-gap);
+    };
+    window.updateSnap=wrap;
+  }
+  install();
+  var n=0, iv=setInterval(function(){ install(); if((window.updateSnap===wrap) || ++n>60) clearInterval(iv); }, 500);
+})();
+
+/* ===================== VERİ KAYBI ÖNLEME: HER KAYITTA IndexedDB YEDEĞİ + AÇILIŞTA KURTARMA =====================
+   Sorun: tarayıcı kayıt alanı (localStorage ~5MB) dolunca program SESSİZCE kaydedemiyordu -> direkler kayboluyordu. */
+(function(){
+  "use strict";
+  function idb(){ return new Promise(function(res,rej){ var r=indexedDB.open('aybCadStore',1); r.onupgradeneeded=function(){ try{ r.result.createObjectStore('cad'); }catch(e){} }; r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; }); }
+  function idbSet(k,v){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('cad','readwrite'); tx.objectStore('cad').put(v,k); tx.oncomplete=function(){res(true);}; tx.onerror=function(){rej(tx.error);}; }); }); }
+  function idbGet(k){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('cad','readonly'); var rq=tx.objectStore('cad').get(k); rq.onsuccess=function(){res(rq.result);}; rq.onerror=function(){rej(rq.error);}; }); }); }
+
+  function slim(p){
+    var o={};
+    ['id','name','stage','user','created','updated','meta','settings'].forEach(function(k){ if(p[k]!==undefined) o[k]=p[k]; });
+    ['objects','lines','areas','freeLines','channels','rasters','aybNotes','aybImportLayers'].forEach(function(k){ if(Array.isArray(p[k])) o[k]=p[k]; });
+    return o;
+  }
+  var tmr=null, warned=false;
+  function backupNow(){
+    tmr=null;
+    var p=window.project; if(!p||!p.id) return;
+    try{ idbSet('proj::'+p.id, JSON.stringify(slim(p))).catch(function(){}); }catch(e){}
+  }
+  function queueBackup(){ if(tmr) clearTimeout(tmr); tmr=setTimeout(backupNow, 700); }
+  window.aybYedekle=backupNow;
+
+  /* kaydetmeye ek olarak yedek al; kayıt başarısızsa KULLANICIYI UYAR */
+  var installed=false;
+  function install(){
+    if(installed) return;
+    var cur=window.saveProject;
+    if(typeof cur!=='function') return;
+    if(cur.__aybBkp){ installed=true; return; }
+    var inner=cur;
+    var w=function(){
+      var r=inner.apply(this,arguments);
+      queueBackup();
+      if(r===false && !warned){
+        warned=true;
+        try{ if(window.toast) toast('DİKKAT: Cihaz kayıt alanı dolu! Veriler yedeğe alınıyor, DXF altlıklarını silip tekrar deneyin.'); }catch(e){}
+        setTimeout(function(){ warned=false; }, 20000);
+        backupNow();
+      }
+      return r;
+    };
+    try{ for(var k in inner){ try{ if(Object.prototype.hasOwnProperty.call(inner,k) && !(k in w)) w[k]=inner[k]; }catch(e){} } }catch(e){}
+    w.__aybBkp=true;
+    window.saveProject=w;
+    installed=true;
+  }
+  install();
+  var n=0, iv=setInterval(function(){ install(); if(installed || ++n>60) clearInterval(iv); }, 500);
+
+  /* uygulama arka plana alınırken/kapanırken hemen yedekle */
+  try{
+    document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') backupNow(); });
+    window.addEventListener('pagehide', backupNow);
+    window.addEventListener('blur', function(){ queueBackup(); });
+  }catch(e){}
+
+  /* AÇILIŞTA KURTARMA: yedek, kayıtlı projeden DAHA YENİ ise (yani son kayıt yapılamamışsa) geri yükle */
+  var checked={}, t=0;
+  var boot=setInterval(function(){
+    var p=window.project;
+    if(p && p.id && !checked[p.id]){
+      checked[p.id]=true;
+      idbGet('proj::'+p.id).then(function(txt){
+        if(!txt) return;
+        var b; try{ b=JSON.parse(txt); }catch(e){ return; }
+        if(!b || !b.updated) return;
+        var tb=new Date(b.updated).getTime()||0, tp=new Date(p.updated||0).getTime()||0;
+        if(tb<=tp) return;                       /* yedek eski/aynı -> dokunma */
+        var addO=((b.objects||[]).length)-((p.objects||[]).length);
+        var addL=((b.lines||[]).length)-((p.lines||[]).length);
+        ['objects','lines','areas','freeLines','channels','rasters','aybNotes','aybImportLayers'].forEach(function(k){ if(Array.isArray(b[k])) p[k]=b[k]; });
+        p.updated=b.updated;
+        try{ if(window.renderAll) window.renderAll(); }catch(e){}
+        try{ if(window.toast) toast('Kaydedilemeyen veriler yedekten kurtarıldı'+(addO>0?(' (+'+addO+' obje'+(addL>0?', +'+addL+' hat':'')+')'):'')); }catch(e){}
+      }).catch(function(){});
+    }
+    if(++t>90) clearInterval(boot);
+  }, 800);
 })();
