@@ -1938,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v75";
+  var SURUM="v77";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -3612,6 +3612,12 @@
   var tries=0, iv=setInterval(function(){
     try{
       var p=window.project;
+      if(p && p.__rastInIdb && !p.__rastRestoring && Array.isArray(p.rasters) && p.rasters.some(function(x){ return x && x.__urlInIdb && !x.url; })){
+        p.__rastRestoring=true;
+        idbGet('rast::'+p.__rastInIdb).then(function(txt){
+          try{ if(txt){ p.rasters=JSON.parse(txt); if(window.renderAll) window.renderAll(); } }catch(e){}
+        }).catch(function(){});
+      }
       if(p && p.__cadInIdb && (!Array.isArray(p.cadLayers)||!p.cadLayers.length) && !p.__cadRestoring){
         p.__cadRestoring=true;
         idbGet('cad::'+p.__cadInIdb).then(function(txt){
@@ -3854,18 +3860,27 @@
     var cur=window.saveProject;
     if(typeof cur!=='function' || cur.__aybFast) return;
     origSave=cur;
+    var lastRastSaved=null;
+    function rastSig(){ try{ var rr=window.project.rasters||[]; return rr.length+':'+rr.map(function(x){ return (x.id||'')+','+((x.url||'').length)+','+(x.opacity||'')+','+(x.hidden?1:0); }).join('|'); }catch(e){ return 'x'; } }
+    function agir(p){ try{ var rr=p.rasters||[]; for(var i=0;i<rr.length;i++){ if(rr[i] && typeof rr[i].url==='string' && rr[i].url.length>200000) return true; } }catch(e){} return false; }
     var fast=function(){
       var p=window.project;
-      if(!p || !Array.isArray(p.cadLayers) || !p.cadLayers.length) return origSave.apply(this,arguments);
-      var keep=p.cadLayers, id=String(p.id||p.name||'active'), s=cadSig(), r;
-      p.cadLayers=[]; p.__cadInIdb=id;
+      if(!p) return origSave.apply(this,arguments);
+      var hasCad=Array.isArray(p.cadLayers)&&p.cadLayers.length, hasRast=agir(p);
+      if(!hasCad && !hasRast) return origSave.apply(this,arguments);
+      var id=String(p.id||p.name||'active'), r;
+      var keepCad=null, keepRast=null, sCad=null, sRast=null;
+      if(hasCad){ keepCad=p.cadLayers; sCad=cadSig(); p.cadLayers=[]; p.__cadInIdb=id; }
+      if(hasRast){ keepRast=p.rasters; sRast=rastSig(); p.rasters=keepRast.map(function(x){ var c={}; for(var k in x){ if(k!=='url') c[k]=x[k]; } c.__urlInIdb=true; return c; }); p.__rastInIdb=id; }
       try{ r=origSave.apply(this,arguments); }
-      finally{ p.cadLayers=keep; }
-      if(s!==lastCadSaved){
-        lastCadSaved=s;
-        setTimeout(function(){
-          try{ if(window.aybCadIdbSet) window.aybCadIdbSet('cad::'+id, JSON.stringify(keep)).catch(function(){}); }catch(e){}
-        }, 400);
+      finally{ if(hasCad) p.cadLayers=keepCad; if(hasRast) p.rasters=keepRast; }
+      if(hasCad && sCad!==lastCadSaved){
+        lastCadSaved=sCad;
+        setTimeout(function(){ try{ if(window.aybCadIdbSet) window.aybCadIdbSet('cad::'+id, JSON.stringify(keepCad)).catch(function(){}); }catch(e){} }, 400);
+      }
+      if(hasRast && sRast!==lastRastSaved){
+        lastRastSaved=sRast;
+        setTimeout(function(){ try{ if(window.aybCadIdbSet) window.aybCadIdbSet('rast::'+id, JSON.stringify(keepRast)).catch(function(){}); }catch(e){} }, 900);
       }
       return r;
     };
@@ -3925,9 +3940,10 @@
     return o.id+'|'+o.lat+','+o.lng+'|'+o.type+'|'+sid+'|'+lbl;
   }
   function lineSig(l){ try{ return JSON.stringify(l); }catch(e){ return String(l&&l.id); } }
+  function kisa(k,v){ return (typeof v==='string' && v.length>400) ? ('#'+v.length) : v; }   /* base64 gibi dev metinleri imzada kullanma */
   function otherSig(){
     var p=window.project||{}, s='';
-    try{ s=JSON.stringify(p.areas||[])+'#'+JSON.stringify(p.freeLines||[])+'#'+JSON.stringify(p.channels||[])+'#'+JSON.stringify(p.rasters||[]); }
+    try{ s=JSON.stringify(p.areas||[],kisa)+'#'+JSON.stringify(p.freeLines||[],kisa)+'#'+JSON.stringify(p.channels||[],kisa)+'#'+JSON.stringify(p.rasters||[],kisa); }
     catch(e){ s=((p.areas||[]).length)+'/'+((p.freeLines||[]).length)+'/'+((p.channels||[]).length)+'/'+((p.rasters||[]).length); }
     try{ s+='#'+JSON.stringify(p.aybImportLayers||[]); }catch(e){}
     try{ s+='#'+(window.aybCadSig?window.aybCadSig():''); }catch(e){}
@@ -4019,7 +4035,8 @@
   function slim(p){
     var o={};
     ['id','name','stage','user','created','updated','meta','settings'].forEach(function(k){ if(p[k]!==undefined) o[k]=p[k]; });
-    ['objects','lines','areas','freeLines','channels','rasters','aybNotes','aybImportLayers'].forEach(function(k){ if(Array.isArray(p[k])) o[k]=p[k]; });
+    ['objects','lines','areas','freeLines','channels','aybNotes','aybImportLayers'].forEach(function(k){ if(Array.isArray(p[k])) o[k]=p[k]; });
+    try{ o.rasters=(p.rasters||[]).map(function(x){ var c={}; for(var k in x){ if(k!=='url') c[k]=x[k]; } return c; }); }catch(e){}
     return o;
   }
   var tmr=null, warned=false;
@@ -4212,7 +4229,7 @@
         var re=/<img[^>]+src\s*=\s*["']?([^"'>\s]+)/gi, m;
         while((m=re.exec(desc))){
           var bn=base(m[1]);
-          if(imgs[bn]){ found.push({name:nm||('Fotoğraf '+(found.length+1)), lat:lat, lng:lng, file:bn, key:imgs[bn]}); used[bn]=true; }
+          if(imgs[bn]){ found.push({name:nm||('Fotoğraf '+(found.length+1)), lat:lat, lng:lng, file:bn, key:imgs[bn], fromDesc:true}); used[bn]=true; }
         }
       }
     }
@@ -4224,7 +4241,9 @@
         try{ found[j].url=URL.createObjectURL(found[j].blob); }catch(e){ found[j].url=''; }
       }catch(e){ found[j].bad=true; }
     }
-    return found.filter(function(f){ return !f.bad; });
+    var okList=found.filter(function(f){ return !f.bad; });
+    var real=okList.filter(function(f){ return f.fromDesc || (f.blob && f.blob.size>=20000); });   /* <20 KB = büyük ihtimalle simge/ikon */
+    return real.length ? real : okList;
   }
 
   window.aybKmzFotoTara=async function(src, nameHint){
@@ -4306,8 +4325,15 @@
     if(!photos.length) return;
     cur=Math.max(0,Math.min(photos.length-1,i));
     var el=lb(), f=photos[cur];
-    el.querySelector('#aybFotoImg').src=f.url||'';
-    el.querySelector('#aybFotoAd').textContent=(f.name||'Fotoğraf')+'  ('+f.file+')';
+    var imgEl=el.querySelector('#aybFotoImg');
+    imgEl.src=f.url||'';
+    var adEl=el.querySelector('#aybFotoAd');
+    function bilgi(){
+      var kb=f.blob?Math.round(f.blob.size/1024):0;
+      var boyut=(imgEl.naturalWidth?(imgEl.naturalWidth+'×'+imgEl.naturalHeight+' piksel'):'');
+      adEl.textContent=(f.name||'Fotoğraf')+'  ('+f.file+(boyut?' • '+boyut:'')+(kb?' • '+kb+' KB':'')+')';
+    }
+    imgEl.onload=bilgi; bilgi();
     el.querySelector('#aybFotoNo').textContent=(cur+1)+' / '+photos.length;
     el.querySelector('#aybFotoGo').style.display=(f.lat==null?'none':'');
     el.style.display='flex';
@@ -4322,7 +4348,7 @@
     grp.clearLayers();
     photos.forEach(function(f,i){
       if(f.lat==null||f.lng==null) return;
-      var mk=L.marker([f.lat,f.lng],{icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],
+      var mk=L.marker([f.lat,f.lng],{zIndexOffset:1200,icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],
         html:'<div style="width:28px;height:28px;border-radius:8px;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:15px;">📷</div>'})});
       mk.on('click', function(e){ try{ if(e&&e.originalEvent&&window.L) L.DomEvent.stopPropagation(e.originalEvent); }catch(_){} open(i); });
       grp.addLayer(mk);
@@ -4340,9 +4366,22 @@
     }
     el.innerHTML='<div style="display:flex;align-items:center;gap:8px;background:#f59e0b;color:#111;padding:9px 12px;position:sticky;top:0;">'
       +'<b style="flex:1;">📷 KMZ Fotoğrafları ('+photos.length+')</b>'
+      +'<button id="aybFotoAll" title="Tüm fotoğrafları indir" style="border:none;background:#16a34a;color:#fff;border-radius:6px;height:24px;padding:0 8px;font:700 11px system-ui;cursor:pointer;margin-right:4px;">⤓ Tümü</button>'
       +'<button id="aybFotoPX" style="border:none;background:#ef4444;color:#fff;border-radius:6px;width:24px;height:24px;font-size:15px;cursor:pointer;">×</button></div>'
       +'<div id="aybFotoGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;"></div>';
     el.querySelector('#aybFotoPX').onclick=function(){ el.style.display='none'; };
+    el.querySelector('#aybFotoAll').onclick=function(){
+      photos.forEach(function(f,i){
+        setTimeout(function(){
+          try{
+            var nm=(String(f.name||'foto').replace(/[^\wğüşıöçĞÜŞİÖÇ .-]/g,'_').slice(0,40))+'_'+f.file;
+            var a=d.createElement('a'); a.href=f.url; a.download=nm; d.body.appendChild(a); a.click();
+            setTimeout(function(){ a.remove(); },800);
+          }catch(e){}
+        }, i*350);
+      });
+      try{ if(window.toast) toast(photos.length+' fotoğraf indiriliyor...'); }catch(e){}
+    };
     var g=el.querySelector('#aybFotoGrid');
     photos.forEach(function(f,i){
       var c=d.createElement('div');
