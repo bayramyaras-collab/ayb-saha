@@ -1938,7 +1938,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="v63";
+  var SURUM="v77";
   var TARIH="16.07.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -2264,7 +2264,7 @@
   var n=0, iv=setInterval(function(){ if(injectBtn()||++n>60) clearInterval(iv); }, 500);
   setTimeout(injectBtn, 1200);
   /* arka planda otomatik takip (lamba ekledikçe bugüne yazsın) */
-  setInterval(function(){ try{ track(); }catch(e){} }, 6000);
+  setInterval(function(){ try{ track(); }catch(e){} }, 20000);
   window.aybGunOzeti=show;
 })();
 
@@ -3612,6 +3612,12 @@
   var tries=0, iv=setInterval(function(){
     try{
       var p=window.project;
+      if(p && p.__rastInIdb && !p.__rastRestoring && Array.isArray(p.rasters) && p.rasters.some(function(x){ return x && x.__urlInIdb && !x.url; })){
+        p.__rastRestoring=true;
+        idbGet('rast::'+p.__rastInIdb).then(function(txt){
+          try{ if(txt){ p.rasters=JSON.parse(txt); if(window.renderAll) window.renderAll(); } }catch(e){}
+        }).catch(function(){});
+      }
       if(p && p.__cadInIdb && (!Array.isArray(p.cadLayers)||!p.cadLayers.length) && !p.__cadRestoring){
         p.__cadRestoring=true;
         idbGet('cad::'+p.__cadInIdb).then(function(txt){
@@ -3646,9 +3652,790 @@
           try{ if(window.saveProject) window.saveProject(); }catch(_){}
         }catch(e){}
       });
+      /* göz (aç/kapat) düğmesi */
+      var eye=d.createElement('button'); eye.type='button';
+      eye.style.cssText='width:34px;height:26px;min-width:34px;border:1px solid #c7d0de;border-radius:6px;cursor:pointer;background:#fff;font-size:15px;line-height:1;padding:0;';
+      function paintEye(){ eye.textContent=layer.hidden?'🚫':'👁'; eye.title=layer.hidden?'Katman kapalı - açmak için bas':'Katmanı gizle/kapat'; eye.style.background=layer.hidden?'#fee2e2':'#fff'; }
+      paintEye();
+      eye.addEventListener('click', function(ev){
+        try{ ev.preventDefault(); ev.stopPropagation(); }catch(_){}
+        try{
+          if(!layer.hidden){ layer._savedOpacity=(layer.opacity==null?0.9:layer.opacity); layer.hidden=true; layer.opacity=0; }
+          else { layer.hidden=false; layer.opacity=(layer._savedOpacity==null?0.9:layer._savedOpacity); }
+          paintEye();
+          if(window.renderAll) window.renderAll();
+          try{ if(window.saveProject) window.saveProject(); }catch(_){}
+        }catch(e){}
+      });
       var zoomBtn=row.querySelector('[data-cad-zoom]');
-      if(zoomBtn && zoomBtn.parentNode===row) row.insertBefore(ci, zoomBtn); else row.appendChild(ci);
+      if(zoomBtn && zoomBtn.parentNode===row){ row.insertBefore(ci, zoomBtn); row.insertBefore(eye, zoomBtn); } else { row.appendChild(ci); row.appendChild(eye); }
     });
   }
-  setInterval(inject, 700);
+  setInterval(function(){ try{ var b=document.getElementById('cadLayerList'); if(b && b.offsetParent!==null) inject(); }catch(e){} }, 1200);
+})();
+
+/* ===================== OTOMATİK TRAFO BÖLGESİ ÇİZ (besleme bölgesi, kalın kesik çizgi) ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap||window.map||null; }
+  var grp=null, shown=false;
+
+  function convexHull(pts){
+    if(pts.length<3) return pts.slice();
+    pts=pts.slice().sort(function(a,b){ return a[0]-b[0]||a[1]-b[1]; });
+    function cr(o,a,b){ return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]); }
+    var lo=[],i; for(i=0;i<pts.length;i++){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],pts[i])<=0) lo.pop(); lo.push(pts[i]); }
+    var up=[]; for(i=pts.length-1;i>=0;i--){ while(up.length>=2&&cr(up[up.length-2],up[up.length-1],pts[i])<=0) up.pop(); up.push(pts[i]); }
+    lo.pop(); up.pop(); return lo.concat(up);
+  }
+  function buffer(hull,m){
+    if(hull.length<3) return hull;
+    var cx=0,cy=0; hull.forEach(function(p){cx+=p[0];cy+=p[1];}); cx/=hull.length; cy/=hull.length;
+    var latm=m/111320, lngm=m/((111320*Math.cos(cy*Math.PI/180))||1);
+    return hull.map(function(p){ var dx=p[0]-cx,dy=p[1]-cy,l=Math.sqrt(dx*dx+dy*dy)||1; return [p[0]+dx/l*lngm, p[1]+dy/l*latm]; });
+  }
+  function compute(){
+    var p=window.project; if(!p) return [];
+    var objs=Array.isArray(p.objects)?p.objects:[], lines=Array.isArray(p.lines)?p.lines:[];
+    var byId={}; objs.forEach(function(o){ byId[o.id]=o; });
+    var adj={}; objs.forEach(function(o){ adj[o.id]=[]; });
+    lines.forEach(function(l){ if(adj[l.start]&&adj[l.end]){ adj[l.start].push(l.end); adj[l.end].push(l.start); } });
+    var trafos=objs.filter(function(o){ return String(o.type||'').toLowerCase()==='trafo'; });
+    if(!trafos.length) return [];
+    var owner={}, q=[];
+    trafos.forEach(function(t){ owner[t.id]=t.id; q.push(t.id); });
+    while(q.length){ var id=q.shift(); (adj[id]||[]).forEach(function(n){ if(owner[n]===undefined){ owner[n]=owner[id]; q.push(n); } }); }
+    var groups={};
+    objs.forEach(function(o){ var ow=owner[o.id]; if(ow!==undefined && o.lat!=null && o.lng!=null){ (groups[ow]=groups[ow]||[]).push(o); } });
+    var regions=[];
+    Object.keys(groups).forEach(function(ow){
+      var members=groups[ow]; var pts=members.map(function(o){ return [o.lng,o.lat]; });
+      if(pts.length<3) return;
+      var hull=buffer(convexHull(pts),22);
+      regions.push({ trafo:byId[ow], hull:hull.map(function(pt){ return [pt[1],pt[0]]; }), count:members.length });
+    });
+    return regions;
+  }
+  var palette=['#1d4ed8','#e11d48','#059669','#d97706','#7c3aed','#0891b2','#be185d','#4d7c0f','#0369a1','#b91c1c'];
+  function draw(){
+    var map=M(), L=window.L; if(!map||!L){ return; }
+    if(!grp) grp=L.layerGroup().addTo(map); grp.clearLayers();
+    var regions=compute();
+    if(!regions.length){ try{ if(window.toast) toast('Trafo veya trafoya bağlı hat/direk bulunamadı. Önce trafo koy, hatlarla direklere bağla.'); }catch(e){} return; }
+    regions.forEach(function(r,i){
+      var col=palette[i%palette.length];
+      var poly=L.polygon(r.hull,{color:col,weight:5,opacity:0.95,dashArray:'16 10',fill:true,fillColor:col,fillOpacity:0.05,interactive:false});
+      grp.addLayer(poly);
+      try{
+        var tno=(r.trafo&&r.trafo.props&&(r.trafo.props.trafo_no||r.trafo.props.no))||(r.trafo&&window.getObjectNo?window.getObjectNo(r.trafo):'')||'Trafo';
+        var c=poly.getBounds().getCenter();
+        grp.addLayer(L.marker(c,{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:'+col+';color:#fff;font:700 12px system-ui;padding:2px 9px;border-radius:11px;white-space:nowrap;box-shadow:0 1px 5px rgba(0,0,0,.45);">⬡ '+tno+' bölgesi</div>',iconSize:[0,0]})}));
+      }catch(e){}
+    });
+    shown=true;
+    try{ if(window.toast) toast(regions.length+' trafo bölgesi otomatik çizildi.'); }catch(e){}
+  }
+  function clear(){ if(grp) grp.clearLayers(); shown=false; try{ if(window.toast) toast('Trafo bölgeleri kaldırıldı.'); }catch(e){} }
+  function toggle(){ if(shown) clear(); else draw(); }
+  window.aybTrafoBolgeCiz=draw; window.aybTrafoBolgeToggle=toggle;
+
+  function injectBtn(){
+    if(d.getElementById('aybTbBtn')) return true;
+    var anchor=d.getElementById('aybTfBtn')||d.getElementById('btnCadTop'); if(!anchor||!anchor.parentNode) return false;
+    var b=d.createElement('button'); b.id='aybTbBtn'; b.type='button'; b.className=anchor.className;
+    b.title='Trafo Bölgesi Çiz - her trafonun beslediği bölgeyi otomatik kalın kesik çizgiyle kapatır (tekrar bas: kaldır)';
+    b.innerHTML='<div class="ayb-pro-ico" style="color:#1d4ed8;">⬡</div><small>Trafo Bölgesi</small>';
+    b.addEventListener('click', function(e){ try{e.preventDefault();e.stopPropagation();}catch(_){} toggle(); });
+    anchor.parentNode.insertBefore(b, anchor.nextSibling);
+    return true;
+  }
+  var t=0, iv=setInterval(function(){ if(injectBtn()|| ++t>60) clearInterval(iv); },500);
+})();
+
+/* ===================== WhatsApp/başka uygulamadan gelen DXF/KML/KMZ/MİF'i içeri al ===================== */
+(function(){
+  "use strict";
+  var d=document;
+  var pending=null;
+  function b64ToU8(b64){ try{ var bin=atob(b64); var a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }catch(e){ return new Uint8Array(0); } }
+  function ready(){ var map=window.__aybMap||window.map; return !!(map && typeof map.getZoom==='function' && d.getElementById('cadFile')); }
+  function setCadAndChange(file){
+    var tries=0;(function a(){
+      var inp=d.getElementById('cadFile'); var btn=d.getElementById('btnCadImport');
+      if(inp && btn){
+        try{ var dt=new DataTransfer(); dt.items.add(file); try{ inp.files=dt.files; }catch(e){} try{ Object.defineProperty(inp,'files',{configurable:true,get:function(){return dt.files;}}); }catch(e){} }catch(e){}
+        try{ inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){}
+        try{ btn.click(); }catch(e){}
+        return;
+      }
+      if(++tries<25) setTimeout(a,400);
+    })();
+  }
+  function routeViaButton(inputId, btnId, accept, file){
+    var inp=d.getElementById(inputId);
+    if(!inp){ inp=d.createElement('input'); inp.type='file'; inp.id=inputId; inp.accept=accept; inp.style.display='none'; d.body.appendChild(inp); }
+    var dt=new DataTransfer(); dt.items.add(file);
+    try{ Object.defineProperty(inp,'files',{configurable:true,get:function(){return dt.files;}}); }catch(e){ try{ inp.files=dt.files; }catch(_){} }
+    inp.click=function(){ setTimeout(function(){ try{ if(typeof inp.onchange==='function') inp.onchange({target:inp}); }catch(e){} try{ inp.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){} },10); };
+    var btn=d.getElementById(btnId);
+    if(btn){ try{ btn.click(); }catch(e){ inp.click(); } } else { inp.click(); }
+    setTimeout(function(){ try{ delete inp.click; }catch(e){} },4000);
+  }
+  function doImport(b64,name){
+    try{
+      var ext=(String(name).split('.').pop()||'').toLowerCase();
+      var file=new File([b64ToU8(b64)], name);
+      if(ext==='kml'||ext==='kmz'){ routeViaButton('aybKmzInput','btnKMZImport','.kml,.kmz',file); try{ if(window.toast) toast('KML/KMZ içeri alınıyor: '+name); }catch(e){} }
+      else if(ext==='mif'){ routeViaButton('aybMifInput','btnMIFImport','.mif,.txt',file); try{ if(window.toast) toast('MİF içeri alınıyor: '+name); }catch(e){} }
+      else { var dn=/\.dxf$/i.test(name)?name:(String(name).replace(/\.[^.]*$/,'')+'.dxf'); var df=new File([b64ToU8(b64)], dn); setCadAndChange(df); try{ if(window.toast) toast('DXF içeri alınıyor: '+dn); }catch(e){} }
+    }catch(e){ try{ if(window.toast) toast('Dosya alınamadı: '+(e&&e.message?e.message:e)); }catch(_){} }
+  }
+  function startPoll(){
+    if(window.__aybIncPolling) return; window.__aybIncPolling=true;
+    var n=0;
+    var iv=setInterval(function(){
+      if(!pending){ clearInterval(iv); window.__aybIncPolling=false; return; }
+      if(ready()){ var p=pending; pending=null; clearInterval(iv); window.__aybIncPolling=false; setTimeout(function(){ doImport(p.b64,p.name); }, 600); }
+      else if(++n>1200){ clearInterval(iv); window.__aybIncPolling=false; }  /* ~10 dk bekle */
+    }, 500);
+  }
+  window.aybImportIncomingDxf=function(b64, name){
+    pending={ b64:b64, name:name||'gelen.dxf' };
+    try{ if(window.toast) toast(ready()?'Dosya alındı, içeri alınıyor...':'Dosya alındı. Giriş yapıp proje açınca otomatik gelecek.'); }catch(e){}
+    startPoll();
+  };
+  window.aybImportIncomingFile=window.aybImportIncomingDxf;
+})();
+
+/* ===================== HIZLI SAHA MODU (direk/trafo ekleme hızlandırma) =====================
+   Sorun: her obje eklemede (1) TÜM DXF yeniden çiziliyor, (2) 60 MB proje tümüyle kaydediliyor.
+   Çözüm: (1) DXF değişmediyse çizimi yeniden yapma (önbellek), (2) kayıtta DXF'i hariç tut. */
+(function(){
+  "use strict";
+  function M(){ return window.__aybMap||window.map||null; }
+  function cadSig(){
+    var p=window.project; if(!p||!Array.isArray(p.cadLayers)) return 'yok';
+    var s=p.cadLayers.length+'#';
+    for(var i=0;i<p.cadLayers.length;i++){
+      var l=p.cadLayers[i]||{};
+      s+=(l.id||i)+':'+((l.features&&l.features.length)||0)+':'+(l.color||'')+':'+(l.hidden?1:0)+':'+(l.opacity==null?'':l.opacity)+':'+(l.weight==null?'':l.weight)+';';
+    }
+    return s;
+  }
+  window.aybCadSig=cadSig;
+
+  /* ---------- 1) DXF çizim önbelleği: değişmediyse yeniden çizme ---------- */
+  var origCad=null, lastSig=null, cache=[];
+  function installCad(){
+    var cur=window.renderCadLayers;
+    if(typeof cur!=='function' || cur.__aybFast) return;
+    origCad=cur;
+    var fast=function(){
+      var map=M(), L=window.L;
+      if(!map||!L||typeof map.addLayer!=='function') return origCad.apply(this,arguments);
+      var s=cadSig();
+      if(s===lastSig && cache.length){
+        for(var i=0;i<cache.length;i++){ try{ if(!map.hasLayer(cache[i])) map.addLayer(cache[i]); }catch(e){} }
+        try{ if(typeof window.aybRenderCadTexts==='function') window.aybRenderCadTexts(); }catch(e){}
+        return;
+      }
+      for(var j=0;j<cache.length;j++){ try{ map.removeLayer(cache[j]); }catch(e){} }
+      cache=[];
+      var captured=[], origAdd=map.addLayer;
+      try{
+        map.addLayer=function(l){ try{ captured.push(l); }catch(e){} return origAdd.call(this,l); };
+        origCad.apply(this,arguments);
+      } finally { map.addLayer=origAdd; }
+      try{ cache=captured.filter(function(l){ return L.Path && (l instanceof L.Path); }); }catch(e){ cache=[]; }
+      lastSig=s;
+    };
+    fast.__aybFast=true;
+    window.renderCadLayers=fast;
+  }
+
+  /* ---------- 2) Kayıt: DXF katmanlarını hariç tut (60 MB yerine küçük kayıt) ---------- */
+  var origSave=null, lastCadSaved=null;
+  function installSave(){
+    var cur=window.saveProject;
+    if(typeof cur!=='function' || cur.__aybFast) return;
+    origSave=cur;
+    var lastRastSaved=null;
+    function rastSig(){ try{ var rr=window.project.rasters||[]; return rr.length+':'+rr.map(function(x){ return (x.id||'')+','+((x.url||'').length)+','+(x.opacity||'')+','+(x.hidden?1:0); }).join('|'); }catch(e){ return 'x'; } }
+    function agir(p){ try{ var rr=p.rasters||[]; for(var i=0;i<rr.length;i++){ if(rr[i] && typeof rr[i].url==='string' && rr[i].url.length>200000) return true; } }catch(e){} return false; }
+    var fast=function(){
+      var p=window.project;
+      if(!p) return origSave.apply(this,arguments);
+      var hasCad=Array.isArray(p.cadLayers)&&p.cadLayers.length, hasRast=agir(p);
+      if(!hasCad && !hasRast) return origSave.apply(this,arguments);
+      var id=String(p.id||p.name||'active'), r;
+      var keepCad=null, keepRast=null, sCad=null, sRast=null;
+      if(hasCad){ keepCad=p.cadLayers; sCad=cadSig(); p.cadLayers=[]; p.__cadInIdb=id; }
+      if(hasRast){ keepRast=p.rasters; sRast=rastSig(); p.rasters=keepRast.map(function(x){ var c={}; for(var k in x){ if(k!=='url') c[k]=x[k]; } c.__urlInIdb=true; return c; }); p.__rastInIdb=id; }
+      try{ r=origSave.apply(this,arguments); }
+      finally{ if(hasCad) p.cadLayers=keepCad; if(hasRast) p.rasters=keepRast; }
+      if(hasCad && sCad!==lastCadSaved){
+        lastCadSaved=sCad;
+        setTimeout(function(){ try{ if(window.aybCadIdbSet) window.aybCadIdbSet('cad::'+id, JSON.stringify(keepCad)).catch(function(){}); }catch(e){} }, 400);
+      }
+      if(hasRast && sRast!==lastRastSaved){
+        lastRastSaved=sRast;
+        setTimeout(function(){ try{ if(window.aybCadIdbSet) window.aybCadIdbSet('rast::'+id, JSON.stringify(keepRast)).catch(function(){}); }catch(e){} }, 900);
+      }
+      return r;
+    };
+    fast.__aybFast=true;
+    window.saveProject=fast;
+  }
+
+  /* ---------- 3) DXF yazıları: aynı görünümde tekrar çizme + gecikmeli topla ---------- */
+  var txtInner=null, txtWrap=null, txtTmr=null, txtKey='';
+  function installTxt(){
+    var cur=window.aybRenderCadTexts;
+    if(typeof cur!=='function' || cur===txtWrap) return;
+    txtInner=cur;
+    txtWrap=function(){
+      if(txtTmr) clearTimeout(txtTmr);
+      txtTmr=setTimeout(function(){
+        txtTmr=null;
+        var map=M();
+        if(!map||typeof map.getZoom!=='function'){ try{ txtInner(); }catch(e){} return; }
+        var c, key;
+        try{ c=map.getCenter(); key=map.getZoom()+'|'+c.lat.toFixed(5)+'|'+c.lng.toFixed(5)+'|'+cadSig(); }catch(e){ key=Math.random()+''; }
+        var have=(window.__aybCadTextMarkers&&window.__aybCadTextMarkers.length)||0;
+        if(key===txtKey && have) return;
+        txtKey=key;
+        try{ txtInner(); }catch(e){}
+      }, 130);
+    };
+    txtWrap.__aybFast=true;
+    window.aybRenderCadTexts=txtWrap;
+  }
+
+  function installAll(){ try{ installCad(); }catch(e){} try{ installSave(); }catch(e){} try{ installTxt(); }catch(e){} }
+  installAll();
+  var _t=0, _i=setInterval(function(){
+    installAll();
+    var done=(window.renderCadLayers&&window.renderCadLayers.__aybFast)&&(window.saveProject&&window.saveProject.__aybFast)&&(window.aybRenderCadTexts&&window.aybRenderCadTexts.__aybFast);
+    if(done || ++_t>60) clearInterval(_i);
+  }, 700);
+})();
+
+/* ===================== HIZLI VERİ GİRİŞİ: ARTIMLI ÇİZİM =====================
+   Sorun: her direk/hat eklemede TÜM objeler+hatlar silinip yeniden çiziliyordu (obje arttıkça katlanarak yavaşlar).
+   Çözüm: sadece YENİ eklenenleri çiz. Bir şey silinir/düzenlenirse otomatik tam çizime döner (güvenli). */
+(function(){
+  "use strict";
+  var origAll=null, prev=null, busy=false;
+
+  function visObjs(){ var p=window.project, a=(p&&p.objects)||[]; try{ return (typeof window.aybViewObjectVisible==='function')?a.filter(window.aybViewObjectVisible):a; }catch(e){ return a; } }
+  function visLines(){ var p=window.project, a=(p&&p.lines)||[]; try{ return (typeof window.aybViewLineVisible==='function')?a.filter(window.aybViewLineVisible):a; }catch(e){ return a; } }
+
+  function objSig(o){
+    var no='',tip='',lbl='',sid='';
+    try{ no=window.getObjectNo?window.getObjectNo(o):''; }catch(e){}
+    try{ tip=window.getObjectTip?window.getObjectTip(o):''; }catch(e){}
+    try{ lbl=window.getObjectLabelHTML?window.getObjectLabelHTML(o,no,tip):''; }catch(e){}
+    try{ var sy=window.getObjectSymbol?window.getObjectSymbol(o):null; sid=(o.props&&o.props.symbol_id)||(sy&&sy.id)||''; }catch(e){}
+    return o.id+'|'+o.lat+','+o.lng+'|'+o.type+'|'+sid+'|'+lbl;
+  }
+  function lineSig(l){ try{ return JSON.stringify(l); }catch(e){ return String(l&&l.id); } }
+  function kisa(k,v){ return (typeof v==='string' && v.length>400) ? ('#'+v.length) : v; }   /* base64 gibi dev metinleri imzada kullanma */
+  function otherSig(){
+    var p=window.project||{}, s='';
+    try{ s=JSON.stringify(p.areas||[],kisa)+'#'+JSON.stringify(p.freeLines||[],kisa)+'#'+JSON.stringify(p.channels||[],kisa)+'#'+JSON.stringify(p.rasters||[],kisa); }
+    catch(e){ s=((p.areas||[]).length)+'/'+((p.freeLines||[]).length)+'/'+((p.channels||[]).length)+'/'+((p.rasters||[]).length); }
+    try{ s+='#'+JSON.stringify(p.aybImportLayers||[]); }catch(e){}
+    try{ s+='#'+(window.aybCadSig?window.aybCadSig():''); }catch(e){}
+    try{ s+='#'+(window.aybEnergyHoverMode?1:0); }catch(e){}
+    return s;
+  }
+
+  function fast(){
+    var p=window.project, map=window.__aybMap||window.map;
+    if(!p||!map||typeof origAll!=='function'){ return origAll?origAll.apply(this,arguments):undefined; }
+    var ov,lv,os,ls,ot;
+    try{ ov=visObjs(); lv=visLines(); os=ov.map(objSig); ls=lv.map(lineSig); ot=otherSig(); }
+    catch(e){ prev=null; return origAll.apply(this,arguments); }
+
+    var anyHidden=false;
+    try{ var il=p.aybImportLayers||[]; for(var h=0;h<il.length;h++){ if(il[h] && il[h].mode==='project' && il[h].visible===false){ anyHidden=true; break; } } }catch(e){ anyHidden=true; }
+    if(!anyHidden && prev && prev.ot===ot && os.length>=prev.objs.length && ls.length>=prev.lines.length &&
+       typeof window.renderObject==='function' && typeof window.renderLine==='function'){
+      var ok=true, i;
+      for(i=0;i<prev.objs.length;i++){ if(prev.objs[i]!==os[i]){ ok=false; break; } }
+      if(ok) for(i=0;i<prev.lines.length;i++){ if(prev.lines[i]!==ls[i]){ ok=false; break; } }
+      var addO=os.length-prev.objs.length, addL=ls.length-prev.lines.length;
+      if(ok && (addO+addL)>0 && (addO+addL)<=30){
+        try{
+          for(i=prev.objs.length;i<os.length;i++) window.renderObject(ov[i]);
+          for(i=prev.lines.length;i<ls.length;i++) window.renderLine(lv[i]);
+          try{ if(window.updateSummary) window.updateSummary(); }catch(e){}
+          try{ if(window.repositionPointLabels) window.repositionPointLabels(); }catch(e){}
+          prev={objs:os,lines:ls,ot:ot};
+          return;
+        }catch(e){ /* sorun olursa tam çizime düş */ }
+      }
+      if(ok && addO===0 && addL===0){ prev={objs:os,lines:ls,ot:ot}; return; }  /* hiçbir şey değişmedi */
+    }
+    if(busy) return;
+    busy=true; prev=null;
+    try{ origAll.apply(this,arguments); } finally { busy=false; }
+    prev={objs:os,lines:ls,ot:ot};
+  }
+
+  var installed=false;
+  function install(){
+    if(installed) return;
+    var cur=window.renderAll;
+    if(typeof cur!=='function') return;
+    if(cur.__aybInc){ installed=true; return; }
+    origAll=cur;
+    /* programın kendi sarmalayıcı bayraklarını taşı -> tekrar tekrar sarmasın (sonsuz iç içe sarma önlenir) */
+    try{ for(var k in cur){ try{ if(Object.prototype.hasOwnProperty.call(cur,k) && !(k in fast)) fast[k]=cur[k]; }catch(e){} } }catch(e){}
+    fast.__aybInc=true;
+    window.renderAll=fast;
+    installed=true;
+  }
+  install();
+  var _n=0, _iv=setInterval(function(){ install(); if(installed || ++_n>60) clearInterval(_iv); }, 500);
+  window.aybForceFullRender=function(){ prev=null; try{ if(origAll) origAll(); }catch(e){} };
+})();
+
+/* ===================== HAT ÇİZERKEN AKICILIK: yakalama taraması sınırlandır =====================
+   Sorun: hat çizerken her fare/parmak hareketinde TÜM objeler taranıyordu (obje çoksa takılma). */
+(function(){
+  "use strict";
+  var inner=null, wrap=null, last=0, pend=null, tmr=null;
+  function run(){ tmr=null; last=Date.now(); try{ if(inner) inner(pend); }catch(e){} }
+  function install(){
+    var cur=window.updateSnap;
+    if(typeof cur!=='function' || cur===wrap) return;
+    inner=cur;
+    wrap=function(ll){
+      pend=ll;
+      var now=Date.now(), gap=now-last;
+      if(gap>=45){ run(); return; }
+      if(!tmr) tmr=setTimeout(run, 45-gap);
+    };
+    window.updateSnap=wrap;
+  }
+  install();
+  var n=0, iv=setInterval(function(){ install(); if((window.updateSnap===wrap) || ++n>60) clearInterval(iv); }, 500);
+})();
+
+/* ===================== VERİ KAYBI ÖNLEME: HER KAYITTA IndexedDB YEDEĞİ + AÇILIŞTA KURTARMA =====================
+   Sorun: tarayıcı kayıt alanı (localStorage ~5MB) dolunca program SESSİZCE kaydedemiyordu -> direkler kayboluyordu. */
+(function(){
+  "use strict";
+  function idb(){ return new Promise(function(res,rej){ var r=indexedDB.open('aybCadStore',1); r.onupgradeneeded=function(){ try{ r.result.createObjectStore('cad'); }catch(e){} }; r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; }); }
+  function idbSet(k,v){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('cad','readwrite'); tx.objectStore('cad').put(v,k); tx.oncomplete=function(){res(true);}; tx.onerror=function(){rej(tx.error);}; }); }); }
+  function idbGet(k){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('cad','readonly'); var rq=tx.objectStore('cad').get(k); rq.onsuccess=function(){res(rq.result);}; rq.onerror=function(){rej(rq.error);}; }); }); }
+
+  function slim(p){
+    var o={};
+    ['id','name','stage','user','created','updated','meta','settings'].forEach(function(k){ if(p[k]!==undefined) o[k]=p[k]; });
+    ['objects','lines','areas','freeLines','channels','aybNotes','aybImportLayers'].forEach(function(k){ if(Array.isArray(p[k])) o[k]=p[k]; });
+    try{ o.rasters=(p.rasters||[]).map(function(x){ var c={}; for(var k in x){ if(k!=='url') c[k]=x[k]; } return c; }); }catch(e){}
+    return o;
+  }
+  var tmr=null, warned=false;
+  function backupNow(){
+    tmr=null;
+    var p=window.project; if(!p||!p.id) return;
+    try{ idbSet('proj::'+p.id, JSON.stringify(slim(p))).catch(function(){}); }catch(e){}
+  }
+  function queueBackup(){ if(tmr) clearTimeout(tmr); tmr=setTimeout(backupNow, 700); }
+  window.aybYedekle=backupNow;
+
+  /* kaydetmeye ek olarak yedek al; kayıt başarısızsa KULLANICIYI UYAR */
+  var installed=false;
+  function install(){
+    if(installed) return;
+    var cur=window.saveProject;
+    if(typeof cur!=='function') return;
+    if(cur.__aybBkp){ installed=true; return; }
+    var inner=cur;
+    var w=function(){
+      var r=inner.apply(this,arguments);
+      queueBackup();
+      if(r===false && !warned){
+        warned=true;
+        try{ if(window.toast) toast('DİKKAT: Cihaz kayıt alanı dolu! Veriler yedeğe alınıyor, DXF altlıklarını silip tekrar deneyin.'); }catch(e){}
+        setTimeout(function(){ warned=false; }, 20000);
+        backupNow();
+      }
+      return r;
+    };
+    try{ for(var k in inner){ try{ if(Object.prototype.hasOwnProperty.call(inner,k) && !(k in w)) w[k]=inner[k]; }catch(e){} } }catch(e){}
+    w.__aybBkp=true;
+    window.saveProject=w;
+    installed=true;
+  }
+  install();
+  var n=0, iv=setInterval(function(){ install(); if(installed || ++n>60) clearInterval(iv); }, 500);
+
+  /* uygulama arka plana alınırken/kapanırken hemen yedekle */
+  try{
+    document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') backupNow(); });
+    window.addEventListener('pagehide', backupNow);
+    window.addEventListener('blur', function(){ queueBackup(); });
+  }catch(e){}
+
+  /* AÇILIŞTA KURTARMA: yedek, kayıtlı projeden DAHA YENİ ise (yani son kayıt yapılamamışsa) geri yükle */
+  var checked={}, t=0;
+  var boot=setInterval(function(){
+    var p=window.project;
+    if(p && p.id && !checked[p.id]){
+      checked[p.id]=true;
+      idbGet('proj::'+p.id).then(function(txt){
+        if(!txt) return;
+        var b; try{ b=JSON.parse(txt); }catch(e){ return; }
+        if(!b || !b.updated) return;
+        var tb=new Date(b.updated).getTime()||0, tp=new Date(p.updated||0).getTime()||0;
+        if(tb<=tp) return;                       /* yedek eski/aynı -> dokunma */
+        var addO=((b.objects||[]).length)-((p.objects||[]).length);
+        var addL=((b.lines||[]).length)-((p.lines||[]).length);
+        ['objects','lines','areas','freeLines','channels','rasters','aybNotes','aybImportLayers'].forEach(function(k){ if(Array.isArray(b[k])) p[k]=b[k]; });
+        p.updated=b.updated;
+        try{ if(window.renderAll) window.renderAll(); }catch(e){}
+        try{ if(window.toast) toast('Kaydedilemeyen veriler yedekten kurtarıldı'+(addO>0?(' (+'+addO+' obje'+(addL>0?', +'+addL+' hat':'')+')'):'')); }catch(e){}
+      }).catch(function(){});
+    }
+    if(++t>90) clearInterval(boot);
+  }, 800);
+})();
+
+/* ===================== HAYALET (ESKİ YERDE KALAN) HAT/DİREK DÜZELTMESİ =====================
+   1) updateConnectedLines programda TANIMSIZ -> direk taşınırken hatlar takip etmiyordu (hata veriyordu).
+   2) Aynı obje/hat iki kez çizilirse eskisi haritada "hayalet" olarak kalıyordu -> kendi kaydımızla temizliyoruz. */
+(function(){
+  "use strict";
+  function M(){ return window.__aybMap||window.map||null; }
+  var objLayers={}, lineLayers2={};
+
+  function capture(fnName, store, keyOf){
+    var cur=window[fnName];
+    if(typeof cur!=='function' || cur.__aybGhost) return false;
+    var inner=cur;
+    var w=function(item){
+      var map=M(), key=null;
+      try{ key=keyOf(item); }catch(e){}
+      /* aynı id tekrar çiziliyorsa, önceki katman hâlâ haritadaysa HAYALETTİR -> kaldır */
+      if(map && key && store[key]){
+        for(var i=0;i<store[key].length;i++){ try{ if(map.hasLayer(store[key][i])) map.removeLayer(store[key][i]); }catch(e){} }
+        delete store[key];
+      }
+      if(!map || typeof map.addLayer!=='function' || !key) return inner.apply(this,arguments);
+      var cap=[], oa=map.addLayer;
+      try{
+        map.addLayer=function(l){ try{ cap.push(l); }catch(e){} return oa.call(this,l); };
+        return inner.apply(this,arguments);
+      } finally { map.addLayer=oa; store[key]=cap; }
+    };
+    w.__aybGhost=true;
+    try{ for(var k in inner){ try{ if(Object.prototype.hasOwnProperty.call(inner,k) && !(k in w)) w[k]=inner[k]; }catch(e){} } }catch(e){}
+    window[fnName]=w;
+    return true;
+  }
+
+  /* direk taşınırken bağlı hatlar canlı takip etsin (marker'a dokunmadan) */
+  window.updateConnectedLines=function(objId){
+    var p=window.project; if(!p||!Array.isArray(p.lines)) return;
+    var byId={}; (p.objects||[]).forEach(function(o){ byId[o.id]=o; });
+    for(var i=0;i<p.lines.length;i++){
+      var l=p.lines[i];
+      if(!l || (l.start!==objId && l.end!==objId)) continue;
+      var a=byId[l.start], b=byId[l.end]; if(!a||!b) continue;
+      var lay=lineLayers2[l.id]; if(!lay) continue;
+      for(var j=0;j<lay.length;j++){
+        try{
+          if(lay[j].setLatLngs) lay[j].setLatLngs([[a.lat,a.lng],[b.lat,b.lng]]);
+          else if(lay[j].setLatLng) lay[j].setLatLng([(a.lat+b.lat)/2,(a.lng+b.lng)/2]);
+        }catch(e){}
+      }
+    }
+  };
+
+  var okO=false, okL=false, n=0;
+  var iv=setInterval(function(){
+    if(!okO) okO=capture('renderObject', objLayers, function(o){ return o&&o.id; });
+    if(!okL) okL=capture('renderLine', lineLayers2, function(l){ return l&&l.id; });
+    if((okO&&okL) || ++n>60) clearInterval(iv);
+  }, 400);
+  capture('renderObject', objLayers, function(o){ return o&&o.id; });
+  capture('renderLine', lineLayers2, function(l){ return l&&l.id; });
+})();
+
+/* ===================== KMZ FOTOĞRAFLARI: ÇIKAR + BÜYÜT + İNDİR/PAYLAŞ =====================
+   Program KMZ'den sadece KML alıyordu, içindeki fotoğrafları atıyordu. Artık fotoğraflar
+   çıkarılıp haritada 📷 olarak gösteriliyor; tıklayınca tam ekran büyüteç, indirme ve paylaşma var. */
+(function(){
+  "use strict";
+  var d=document;
+  function M(){ return window.__aybMap||window.map||null; }
+  var photos=[], grp=null, shown=false;
+  window.aybKmzFotolar=photos;
+
+  /* ---------- ZIP (KMZ) okuma ---------- */
+  function u16(b,o){ return b[o]|(b[o+1]<<8); }
+  function u32(b,o){ return (b[o]|(b[o+1]<<8)|(b[o+2]<<16)|(b[o+3]<<24))>>>0; }
+  async function inflateRaw(bytes){
+    if(typeof DecompressionStream==='undefined') throw new Error('sıkıştırma açılamıyor');
+    var st=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(st).arrayBuffer());
+  }
+  async function unzip(ab){
+    var b=new Uint8Array(ab), out={}, eocd=-1;
+    for(var i=b.length-22;i>=0 && i>b.length-70000;i--){ if(u32(b,i)===0x06054b50){ eocd=i; break; } }
+    if(eocd<0) throw new Error('KMZ okunamadı');
+    var n=u16(b,eocd+10), off=u32(b,eocd+16);
+    for(var k=0;k<n;k++){
+      if(u32(b,off)!==0x02014b50) break;
+      var method=u16(b,off+10), comp=u32(b,off+20), nl=u16(b,off+28), el=u16(b,off+30), cl=u16(b,off+32), lo=u32(b,off+42);
+      var name=new TextDecoder('utf-8').decode(b.slice(off+46,off+46+nl));
+      var lfn=u16(b,lo+26), lfe=u16(b,lo+28), st=lo+30+lfn+lfe;
+      out[name]={method:method, data:b.slice(st,st+comp)};
+      off+=46+nl+el+cl;
+    }
+    return out;
+  }
+  function bytesOf(e){ return e.method===0 ? Promise.resolve(e.data) : inflateRaw(e.data); }
+  function base(s){ return String(s||'').split('?')[0].split('#')[0].replace(/\\/g,'/').split('/').pop().toLowerCase(); }
+  function mimeOf(f){ return /\.png$/i.test(f)?'image/png':/\.webp$/i.test(f)?'image/webp':/\.gif$/i.test(f)?'image/gif':'image/jpeg'; }
+
+  async function extract(ab){
+    var files=await unzip(ab), keys=Object.keys(files);
+    var kmlKey=null, imgs={};
+    keys.forEach(function(k){
+      if(/\.kml$/i.test(k) && !kmlKey) kmlKey=k;
+      if(/\.(jpe?g|png|webp|gif)$/i.test(k)) imgs[base(k)]=k;
+    });
+    if(!Object.keys(imgs).length) return [];
+    var found=[], used={};
+    if(kmlKey){
+      var kml=new TextDecoder('utf-8').decode(await bytesOf(files[kmlKey]));
+      var xml=new DOMParser().parseFromString(kml,'text/xml');
+      var pms=Array.prototype.slice.call(xml.getElementsByTagName('Placemark'));
+      for(var i=0;i<pms.length;i++){
+        var pm=pms[i];
+        var nEl=pm.getElementsByTagName('name')[0];
+        var nm=nEl?String(nEl.textContent||'').trim():'';
+        var dEl=pm.getElementsByTagName('description')[0];
+        var desc=dEl?String(dEl.textContent||''):'';
+        var cEl=pm.getElementsByTagName('coordinates')[0];
+        var lat=null,lng=null;
+        if(cEl){ var p0=String(cEl.textContent||'').trim().split(/\s+/)[0]||''; var pr=p0.split(','); if(pr.length>=2){ lng=parseFloat(pr[0]); lat=parseFloat(pr[1]); } }
+        var re=/<img[^>]+src\s*=\s*["']?([^"'>\s]+)/gi, m;
+        while((m=re.exec(desc))){
+          var bn=base(m[1]);
+          if(imgs[bn]){ found.push({name:nm||('Fotoğraf '+(found.length+1)), lat:lat, lng:lng, file:bn, key:imgs[bn], fromDesc:true}); used[bn]=true; }
+        }
+      }
+    }
+    Object.keys(imgs).forEach(function(bn){ if(!used[bn]) found.push({name:bn, lat:null, lng:null, file:bn, key:imgs[bn]}); });
+    for(var j=0;j<found.length;j++){
+      try{
+        var by=await bytesOf(files[found[j].key]);
+        found[j].blob=new Blob([by],{type:mimeOf(found[j].file)});
+        try{ found[j].url=URL.createObjectURL(found[j].blob); }catch(e){ found[j].url=''; }
+      }catch(e){ found[j].bad=true; }
+    }
+    var okList=found.filter(function(f){ return !f.bad; });
+    var real=okList.filter(function(f){ return f.fromDesc || (f.blob && f.blob.size>=20000); });   /* <20 KB = büyük ihtimalle simge/ikon */
+    return real.length ? real : okList;
+  }
+
+  window.aybKmzFotoTara=async function(src, nameHint){
+    try{
+      var ab = (src && src.arrayBuffer) ? await src.arrayBuffer() : src;
+      var list=await extract(ab);
+      if(!list.length) return 0;
+      list.forEach(function(f){ photos.push(f); });
+      try{ if(window.toast) toast(list.length+' fotoğraf bulundu (📷 Fotoğraflar)'); }catch(e){}
+      try{ injectBtn(); drawMarkers(); }catch(e){}
+      return list.length;
+    }catch(e){ return 0; }
+  };
+
+  /* ---------- BÜYÜTEÇ (tam ekran görüntüleyici) ---------- */
+  var cur=-1, sc=1, tx=0, ty=0;
+  function lb(){
+    var el=d.getElementById('aybFotoLb'); if(el) return el;
+    el=d.createElement('div'); el.id='aybFotoLb';
+    el.style.cssText='position:fixed;inset:0;z-index:2147483000;background:rgba(8,12,20,.96);display:none;flex-direction:column;';
+    el.innerHTML=
+      '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
+        +'<b id="aybFotoAd" style="flex:1;min-width:120px;font:600 14px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></b>'
+        +'<button id="aybFotoOut" title="Küçült" style="width:38px;height:34px;border:none;border-radius:8px;background:#334155;color:#fff;font-size:19px;cursor:pointer;">−</button>'
+        +'<button id="aybFotoIn" title="Büyüt" style="width:38px;height:34px;border:none;border-radius:8px;background:#334155;color:#fff;font-size:19px;cursor:pointer;">+</button>'
+        +'<button id="aybFotoFit" title="Sığdır" style="height:34px;padding:0 10px;border:none;border-radius:8px;background:#334155;color:#fff;font-size:13px;cursor:pointer;">Sığdır</button>'
+        +'<button id="aybFotoDl" style="height:34px;padding:0 12px;border:none;border-radius:8px;background:#16a34a;color:#fff;font:700 13px system-ui;cursor:pointer;">⤓ İndir / Paylaş</button>'
+        +'<button id="aybFotoGo" style="height:34px;padding:0 12px;border:none;border-radius:8px;background:#0e7490;color:#fff;font:700 13px system-ui;cursor:pointer;">🧭 Haritada</button>'
+        +'<button id="aybFotoX" style="width:38px;height:34px;border:none;border-radius:8px;background:#ef4444;color:#fff;font-size:19px;cursor:pointer;">×</button>'
+      +'</div>'
+      +'<div id="aybFotoWrap" style="flex:1;overflow:hidden;position:relative;touch-action:none;display:flex;align-items:center;justify-content:center;">'
+        +'<img id="aybFotoImg" alt="" style="max-width:100%;max-height:100%;transform-origin:center center;user-select:none;-webkit-user-drag:none;">'
+      +'</div>'
+      +'<div style="display:flex;gap:8px;justify-content:center;padding:6px;background:#0f172a;">'
+        +'<button id="aybFotoPrev" style="height:34px;padding:0 14px;border:none;border-radius:8px;background:#334155;color:#fff;cursor:pointer;">‹ Önceki</button>'
+        +'<span id="aybFotoNo" style="color:#cbd5e1;font:600 13px system-ui;line-height:34px;"></span>'
+        +'<button id="aybFotoNext" style="height:34px;padding:0 14px;border:none;border-radius:8px;background:#334155;color:#fff;cursor:pointer;">Sonraki ›</button>'
+      +'</div>';
+    d.body.appendChild(el);
+    var img=el.querySelector('#aybFotoImg'), wrap=el.querySelector('#aybFotoWrap');
+    function apply(){ img.style.transform='translate('+tx+'px,'+ty+'px) scale('+sc+')'; }
+    function fit(){ sc=1; tx=0; ty=0; apply(); }
+    el.querySelector('#aybFotoX').onclick=function(){ el.style.display='none'; };
+    el.querySelector('#aybFotoIn').onclick=function(){ sc=Math.min(8,sc*1.35); apply(); };
+    el.querySelector('#aybFotoOut').onclick=function(){ sc=Math.max(0.2,sc/1.35); apply(); };
+    el.querySelector('#aybFotoFit').onclick=fit;
+    el.querySelector('#aybFotoPrev').onclick=function(){ if(photos.length) open((cur-1+photos.length)%photos.length); };
+    el.querySelector('#aybFotoNext').onclick=function(){ if(photos.length) open((cur+1)%photos.length); };
+    el.querySelector('#aybFotoDl').onclick=function(){
+      var f=photos[cur]; if(!f||!f.blob) return;
+      var nm=(String(f.name||'foto').replace(/[^\wğüşıöçĞÜŞİÖÇ .-]/g,'_').slice(0,50))+'_'+f.file;
+      if(window.aybShareFile){ try{ window.aybShareFile(nm, f.blob, f.blob.type); return; }catch(e){} }
+      try{ var a=d.createElement('a'); a.href=f.url; a.download=nm; d.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); },500); }catch(e){}
+    };
+    el.querySelector('#aybFotoGo').onclick=function(){
+      var f=photos[cur], map=M();
+      if(!f||f.lat==null||!map||typeof map.setView!=='function'){ try{ if(window.toast) toast('Bu fotoğrafın konumu yok'); }catch(e){} return; }
+      el.style.display='none';
+      try{ map.setView([f.lat,f.lng], Math.max((map.getZoom&&map.getZoom())||0,19), {animate:true}); }catch(e){}
+    };
+    /* fare tekeri + parmakla yakınlaştırma/kaydırma */
+    wrap.addEventListener('wheel', function(e){ e.preventDefault(); sc=Math.max(0.2,Math.min(8, sc*(e.deltaY<0?1.15:0.87))); apply(); }, {passive:false});
+    var drag=false, sx=0, sy=0, pinch=0, base0=1;
+    wrap.addEventListener('pointerdown', function(e){ drag=true; sx=e.clientX-tx; sy=e.clientY-ty; try{ wrap.setPointerCapture(e.pointerId); }catch(_){} });
+    wrap.addEventListener('pointermove', function(e){ if(!drag) return; tx=e.clientX-sx; ty=e.clientY-sy; apply(); });
+    wrap.addEventListener('pointerup', function(){ drag=false; });
+    wrap.addEventListener('touchstart', function(e){ if(e.touches.length===2){ pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); base0=sc; } }, {passive:true});
+    wrap.addEventListener('touchmove', function(e){
+      if(e.touches.length===2 && pinch){ e.preventDefault();
+        var dd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+        sc=Math.max(0.2,Math.min(8, base0*(dd/pinch))); apply(); }
+    }, {passive:false});
+    wrap.addEventListener('touchend', function(e){ if(e.touches.length<2) pinch=0; });
+    wrap.addEventListener('dblclick', function(){ sc = sc>1.2 ? 1 : 2.5; tx=0; ty=0; apply(); });
+    el.__fit=fit;
+    return el;
+  }
+  function open(i){
+    if(!photos.length) return;
+    cur=Math.max(0,Math.min(photos.length-1,i));
+    var el=lb(), f=photos[cur];
+    var imgEl=el.querySelector('#aybFotoImg');
+    imgEl.src=f.url||'';
+    var adEl=el.querySelector('#aybFotoAd');
+    function bilgi(){
+      var kb=f.blob?Math.round(f.blob.size/1024):0;
+      var boyut=(imgEl.naturalWidth?(imgEl.naturalWidth+'×'+imgEl.naturalHeight+' piksel'):'');
+      adEl.textContent=(f.name||'Fotoğraf')+'  ('+f.file+(boyut?' • '+boyut:'')+(kb?' • '+kb+' KB':'')+')';
+    }
+    imgEl.onload=bilgi; bilgi();
+    el.querySelector('#aybFotoNo').textContent=(cur+1)+' / '+photos.length;
+    el.querySelector('#aybFotoGo').style.display=(f.lat==null?'none':'');
+    el.style.display='flex';
+    try{ el.__fit(); }catch(e){}
+  }
+  window.aybFotoAc=open;
+
+  /* ---------- haritada 📷 işaretleri ---------- */
+  function drawMarkers(){
+    var map=M(), L=window.L; if(!map||!L) return;
+    if(!grp) grp=L.layerGroup().addTo(map);
+    grp.clearLayers();
+    photos.forEach(function(f,i){
+      if(f.lat==null||f.lng==null) return;
+      var mk=L.marker([f.lat,f.lng],{zIndexOffset:1200,icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],
+        html:'<div style="width:28px;height:28px;border-radius:8px;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:15px;">📷</div>'})});
+      mk.on('click', function(e){ try{ if(e&&e.originalEvent&&window.L) L.DomEvent.stopPropagation(e.originalEvent); }catch(_){} open(i); });
+      grp.addLayer(mk);
+    });
+    shown=true;
+  }
+
+  /* ---------- galeri paneli ---------- */
+  function panel(){
+    var el=d.getElementById('aybFotoPanel');
+    if(!el){
+      el=d.createElement('div'); el.id='aybFotoPanel';
+      el.style.cssText='position:fixed;top:100px;right:10px;z-index:2147481300;width:330px;max-width:94vw;max-height:70vh;overflow:auto;background:#fff;border:1px solid #c7d0de;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.35);font:13px system-ui;display:none;';
+      d.body.appendChild(el);
+    }
+    el.innerHTML='<div style="display:flex;align-items:center;gap:8px;background:#f59e0b;color:#111;padding:9px 12px;position:sticky;top:0;">'
+      +'<b style="flex:1;">📷 KMZ Fotoğrafları ('+photos.length+')</b>'
+      +'<button id="aybFotoAll" title="Tüm fotoğrafları indir" style="border:none;background:#16a34a;color:#fff;border-radius:6px;height:24px;padding:0 8px;font:700 11px system-ui;cursor:pointer;margin-right:4px;">⤓ Tümü</button>'
+      +'<button id="aybFotoPX" style="border:none;background:#ef4444;color:#fff;border-radius:6px;width:24px;height:24px;font-size:15px;cursor:pointer;">×</button></div>'
+      +'<div id="aybFotoGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;"></div>';
+    el.querySelector('#aybFotoPX').onclick=function(){ el.style.display='none'; };
+    el.querySelector('#aybFotoAll').onclick=function(){
+      photos.forEach(function(f,i){
+        setTimeout(function(){
+          try{
+            var nm=(String(f.name||'foto').replace(/[^\wğüşıöçĞÜŞİÖÇ .-]/g,'_').slice(0,40))+'_'+f.file;
+            var a=d.createElement('a'); a.href=f.url; a.download=nm; d.body.appendChild(a); a.click();
+            setTimeout(function(){ a.remove(); },800);
+          }catch(e){}
+        }, i*350);
+      });
+      try{ if(window.toast) toast(photos.length+' fotoğraf indiriliyor...'); }catch(e){}
+    };
+    var g=el.querySelector('#aybFotoGrid');
+    photos.forEach(function(f,i){
+      var c=d.createElement('div');
+      c.style.cssText='cursor:pointer;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc;';
+      c.innerHTML='<img src="'+(f.url||'')+'" style="width:100%;height:88px;object-fit:cover;display:block;">'
+        +'<div style="padding:4px 6px;font:600 11px system-ui;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(f.name||f.file)+'</div>';
+      c.onclick=function(){ open(i); };
+      g.appendChild(c);
+    });
+    return el;
+  }
+  function togglePanel(){ if(!photos.length){ try{ if(window.toast) toast('Henüz KMZ fotoğrafı yok. KMZ dosyası içeri alın.'); }catch(e){} return; } var el=panel(); el.style.display=(el.style.display==='none'?'block':'none'); drawMarkers(); }
+  window.aybFotoGaleri=togglePanel;
+
+  function injectBtn(){
+    if(d.getElementById('aybFotoBtn')) return true;
+    var a=d.getElementById('aybTbBtn')||d.getElementById('aybTfBtn')||d.getElementById('btnCadTop');
+    if(!a||!a.parentNode) return false;
+    var b=d.createElement('button'); b.id='aybFotoBtn'; b.type='button'; b.className=a.className;
+    b.title='KMZ Fotoğrafları - büyüt, indir, paylaş';
+    b.innerHTML='<div class="ayb-pro-ico" style="color:#f59e0b;">📷</div><small>Fotoğraflar</small>';
+    b.addEventListener('click', function(e){ try{ e.preventDefault(); e.stopPropagation(); }catch(_){} togglePanel(); });
+    a.parentNode.insertBefore(b, a.nextSibling);
+    return true;
+  }
+  try{ var t=0, iv=setInterval(function(){ if(injectBtn()|| ++t>60) clearInterval(iv); },600); }catch(e){}
+
+  /* ---------- KMZ seçilince otomatik tara ---------- */
+  try{
+    d.addEventListener('change', function(e){
+      var inp=e.target;
+      if(!inp || inp.tagName!=='INPUT' || (inp.type||'').toLowerCase()!=='file') return;
+      var fs=inp.files; if(!fs||!fs.length) return;
+      for(var i=0;i<fs.length;i++){ if(/\.kmz$/i.test(fs[i].name)) window.aybKmzFotoTara(fs[i], fs[i].name); }
+    }, true);
+  }catch(e){}
+
+  /* ---------- her resme tıklayınca büyüteç (popup içindeki fotoğraflar dahil) ---------- */
+  try{
+    d.addEventListener('click', function(e){
+      var t2=e.target;
+      if(!t2 || t2.tagName!=='IMG') return;
+      if(d.getElementById('aybFotoLb') && d.getElementById('aybFotoLb').contains(t2)) return;
+      if(d.getElementById('aybFotoPanel') && d.getElementById('aybFotoPanel').contains(t2)) return;
+      var src=t2.getAttribute('src')||'';
+      if(!src || /^data:image\/svg/i.test(src)) return;
+      if((t2.naturalWidth||t2.width||0) < 90) return;   /* ikon/simge değil, gerçek fotoğraf */
+      try{ e.preventDefault(); e.stopPropagation(); }catch(_){}
+      var idx=-1; for(var i=0;i<photos.length;i++){ if(photos[i].url===src){ idx=i; break; } }
+      if(idx>=0){ open(idx); return; }
+      fetch(src).then(function(r){ return r.blob(); }).then(function(bl){
+        photos.push({name:(t2.getAttribute('alt')||'Fotoğraf'), lat:null, lng:null, file:(src.split('/').pop()||'foto.jpg').split('?')[0], blob:bl, url:src});
+        open(photos.length-1);
+      }).catch(function(){ photos.push({name:'Fotoğraf', lat:null,lng:null,file:'foto.jpg', blob:null, url:src}); open(photos.length-1); });
+    }, true);
+  }catch(e){}
 })();
