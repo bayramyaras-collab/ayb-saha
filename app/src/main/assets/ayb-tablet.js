@@ -7118,7 +7118,7 @@
       try{
         if(document.getElementById('aybPerfBadge')) return;
         var b=document.createElement('div');
-        b.id='aybPerfBadge'; b.textContent='PERF-24.07-M';
+        b.id='aybPerfBadge'; b.textContent='PERF-24.07-N';
         b.style.cssText='position:fixed;left:4px;bottom:4px;z-index:2147483000;font:700 10px system-ui;color:#fff;background:rgba(15,23,42,.55);padding:2px 6px;border-radius:6px;pointer-events:none;';
         document.body.appendChild(b);
       }catch(e){}
