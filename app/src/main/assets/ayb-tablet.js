@@ -2757,6 +2757,10 @@
     _asRaf=(window.requestAnimationFrame||function(f){ return setTimeout(f,16); })(function(){ _asRaf=0; applyScaleNow(); });
   }
   function applyScaleNow(){
+    /* HIZLANDIRMA (Bayram YARAŞ): notlar GİZLİYKEN hiç hesap yapma (her harita
+       hareketinde yüzlerce not için dönüp duruyordu, gizliyken bile). */
+    if(_notKapaliBayrak) return;
+    if(_notOtoGizli) return;   /* 1/500 kuralıyla kapalıyken hesap yapma */
     var s=zScale(), map=M(); if(!map) return;
     var b=null; try{ b=map.getBounds().pad(0.3); }catch(e){}
     var ids=Object.keys(mkById);
@@ -2807,7 +2811,7 @@
   }
   function addMarker(n){
     var L=window.L, map=M(); if(!L||!map||!layer) return;
-    var line=L.polyline([bLL(n),aLL(n)], {color:"#b45309",weight:2,opacity:.9,dashArray:"5,4",interactive:false}).addTo(layer);
+    var line=L.polyline([bLL(n),aLL(n)], {color:"#b45309",weight:2,opacity:.9,dashArray:"5,4",interactive:false,className:"ayb-note-line"}).addTo(layer);
     var arrow=L.marker(aLL(n), {icon:L.divIcon({className:"ayb-note-arrowwrap",html:'<div class="ayb-note-arrow">▲</div>',iconSize:[20,20],iconAnchor:[10,10]}),interactive:false,keyboard:false,zIndexOffset:11000}).addTo(layer);
     var body=L.marker(bLL(n), {icon:L.divIcon({className:"ayb-note-wrap",html:noteHtml(n),iconSize:[168,72],iconAnchor:[0,0]}),interactive:true,keyboard:false,zIndexOffset:12000}).addTo(layer);
     mkById[n.id]={body:body,line:line,arrow:arrow};
@@ -2851,15 +2855,44 @@
   }
   function rebuild(){
     var L=window.L, map=M(); if(!L||!map) return;
+    /* HIZLANDIRMA (Bayram YARAŞ): notlar GİZLİYKEN yeniden çizme. Arka plandaki
+       periyodik rebuild çağrıları (watch/boot/import) notları geri getiriyordu;
+       bu yüzden "Notları Gizle" kalıcı çalışmıyordu. Artık gizliyse boşalt ve çık. */
+    if(_notKapaliBayrak){ try{ if(layer){ layer.clearLayers(); if(map.hasLayer&&map.hasLayer(layer)) map.removeLayer(layer); } }catch(e){} mkById={}; return; }
     if(!layer){ layer=L.layerGroup().addTo(map); }
     layer.clearLayers(); mkById={};
     bindZoom();
     var arr=getNotes(); if(!arr) return;
     arr.forEach(function(n){ addMarker(n); });
+    try{ notOtoUygula(); }catch(e){}
     applyScaleNow(); setTimeout(applyScaleNow,60);
   }
   function notKabi(){ try{ return layer && layer.getPane ? layer.getPane() : null; }catch(e){ return null; } }
   var _notKapaliBayrak=false;
+  /* OTOMATİK NOT GÖRÜNÜMÜ (Bayram YARAŞ): yapışkan notlar 1/500 ölçeğine
+     yaklaşınca AÇILIR, zoom- yapıp uzaklaşınca KAPANIR. Gizle/Aç düğmesi üstündür:
+     düğmeyle gizlendiyse otomatik sistem karışmaz. CSS ile aç/kapa yapıldığı için
+     hiçbir şey silinip yeniden çizilmez — programı hiç yormaz. */
+  var _notOtoGizli=false;
+  function notDenom(){
+    try{
+      var map=M();
+      if(typeof window.scaleDenominatorAtZoom==='function') return window.scaleDenominatorAtZoom(map.getZoom(), map.getCenter().lat);
+      var mpp=156543.03392*Math.cos(map.getCenter().lat*Math.PI/180)/Math.pow(2,map.getZoom());
+      return mpp*3779.53;
+    }catch(e){ return 999999; }
+  }
+  function notOtoUygula(){
+    try{
+      var map=M(); if(!map) return;
+      if(_notKapaliBayrak){ try{ map.getContainer().classList.remove('ayb-not-oto-gizli'); }catch(e){} _notOtoGizli=false; return; }
+      var gizli = notDenom() > 620;   /* 1/500 gösteriminden uzaktaysa kapalı */
+      if(gizli===_notOtoGizli) return;
+      _notOtoGizli=gizli;
+      try{ map.getContainer().classList.toggle('ayb-not-oto-gizli', gizli); }catch(e){}
+      if(!gizli){ try{ applyScaleNow(); }catch(e){} }
+    }catch(e){}
+  }
   function notGoster(gorunsun){
     if(gorunsun && _notKapaliBayrak) return;         /* kullanıcı notları kapattıysa açma */
     try{
@@ -2891,13 +2924,17 @@
   function bindZoom(){
     var map=M(); if(!map||zbound) return;
     try{
-      /* ZOOM: not katmanını tamamen çıkar (SVG çizgi + DOM kutu yükü sıfır) */
-      map.on("zoomstart", function(){ if(_notKapaliBayrak) return; _zoomCikti=katmanKaldir(); });
-      /* ZOOM BİTTİ: geri ekle ve YENİDEN KUR -> taşıma/silme/yazma bağlantıları çalışır */
+      /* ===== NOT-ZOOM KESİN ÇÖZÜMÜ (Bayram YARAŞ) =====
+         ESKİDEN: her zoom kademesinde TÜM notlar haritadan SÖKÜLÜP zoom bitince
+         SIFIRDAN yeniden kuruluyordu (DOM sil + baştan oluştur + tüm dokunma/taşıma/
+         silme bağlantılarını yeniden bağla). Notlar açıkken zoom'un donması buydu.
+         ARTIK: notlar yerinde kalır — zoom animasyonu sırasında CSS onları zaten
+         gizliyor (leaflet-zoom-anim kuralı), zoom bitince SADECE ölçek güncellenir.
+         Hiçbir şey sökülüp yeniden kurulmaz; bağlantılar hiç kopmaz. */
       map.on("zoomend", function(){
         if(_notKapaliBayrak) return;
-        if(_zoomCikti){ katmanEkle(); _zoomCikti=false; try{ rebuild(); }catch(e){} }
-        else applyScaleNow();
+        notOtoUygula();                     /* 1/500 kuralı: yaklaşınca aç, uzaklaşınca kapat */
+        if(!_notOtoGizli) applyScaleNow();
       });
       map.on("moveend", applyScale);
       zbound=true;
@@ -2928,7 +2965,8 @@
       +".ayb-note-del{border:none;background:#ef4444;color:#fff;width:20px;height:20px;border-radius:5px;font-size:15px;line-height:1;cursor:pointer;}"
       +".ayb-note-text{padding:7px 8px;min-height:36px;color:#3b2f00;outline:none;white-space:pre-wrap;word-break:break-word;}"
       +".ayb-note-arrowwrap{background:transparent!important;border:none!important;}"
-      +".ayb-note-arrow{color:#b45309;font-size:18px;line-height:1;transform-origin:center;text-shadow:0 0 3px #fff,0 0 3px #fff;}";
+      +".ayb-note-arrow{color:#b45309;font-size:18px;line-height:1;transform-origin:center;text-shadow:0 0 3px #fff,0 0 3px #fff;}"
+      +".ayb-not-oto-gizli .ayb-note-wrap,.ayb-not-oto-gizli .ayb-note-arrowwrap,.ayb-not-oto-gizli .ayb-note-line{display:none!important;}";
     (d.head||d.documentElement).appendChild(s);
   }
   function injectBtn2(){
@@ -2976,6 +3014,16 @@
       var map=M();
       if(!layer && map && window.L){ try{ layer=window.L.layerGroup().addTo(map); }catch(e){} }
       _notKapaliBayrak=!_notKapaliBayrak;
+      /* İKİNCİ KİLİT (Bayram YARAŞ): gizliyken CSS ile de zorla gizle — hangi kod
+         yeniden çizerse çizsin notlar GÖRÜNEMEZ. Açınca kural kaldırılır. */
+      try{
+        var kcss=d.getElementById('aybNotKillCss');
+        if(_notKapaliBayrak){
+          if(!kcss){ kcss=d.createElement('style'); kcss.id='aybNotKillCss';
+            kcss.textContent='.ayb-note-wrap,.ayb-note-arrowwrap{display:none!important;}';
+            (d.head||d.documentElement).appendChild(kcss); }
+        } else if(kcss){ kcss.remove(); }
+      }catch(e){}
       if(_notKapaliBayrak){
         katmanKaldir();
         /* katman yakalanamadıysa tek tek de gizle (garanti) */
@@ -2991,7 +3039,8 @@
           var ea=(g.arrow&&g.arrow.getElement)?g.arrow.getElement():null; if(ea) ea.style.display=''; }); }catch(e){}
         try{ rebuild(); }catch(e){}
       }
-      try{ if(window.toast) toast(_notKapaliBayrak?'Yapışkan notlar gizlendi (harita hızlanır).':'Yapışkan notlar açıldı.'); }catch(e){}
+      try{ notOtoUygula(); }catch(e){}
+      try{ if(window.toast) toast(_notKapaliBayrak?'Yapışkan notlar gizlendi (harita hızlanır).':(_notOtoGizli?'Notlar açık — 1/500 ölçeğine yaklaşınca görünür.':'Yapışkan notlar açıldı.')); }catch(e){}
       var b=d.getElementById('aybNotGizleBtn');
       if(b){ var sm=b.querySelector('small'); var yz=_notKapaliBayrak?'Notları Göster':'Notları Gizle'; if(sm) sm.textContent=yz; else b.textContent='📝 '+yz; }
     }catch(e){}
@@ -6571,18 +6620,40 @@
     if(!AYB_LEJANT[ad]) return '';
     return g(0,'INSERT')+g(8,katman)+g(2,ad)+g(10,x.toFixed(3))+g(20,y.toFixed(3))+g(30,'0.0')+g(41,(olcek||1).toFixed(3))+g(42,(olcek||1).toFixed(3))+g(43,'1.0');
   }
-  /* B_CAD fontunun kendi tablosundan çözülen GERÇEK karakterler */
-  function direkKarakter(pr,yeni){
+  /* ===== B_CAD FONTUNUN TAM DURUM TABLOSU (Bayram YARAŞ) =====
+     Fontta her sembolün 5 durum hali var: M_(MEVCUT) Y_(YENİ) YA_(YAKIN)
+     I_(İLERDE) B_(TADILAT BYSK / SÖKÜLEN). Karakterler fontun Windows
+     tablosundan glif adı eşleştirilerek çıkarıldı — tahmin yok. */
+  function durumOneki(durum){
+    var d=String(durum||'').toLocaleUpperCase('tr');
+    if(d.indexOf('YENİ')>=0||d.indexOf('YENI')>=0) return 'Y';
+    if(d.indexOf('YAKIN')>=0) return 'YA';
+    if(d.indexOf('İLER')>=0||d.indexOf('ILER')>=0) return 'I';
+    if(d.indexOf('BYSK')>=0||d.indexOf('SÖK')>=0||d.indexOf('SOK')>=0||d.indexOf('TEKRAR')>=0||d.indexOf('TADILAT')>=0) return 'B';
+    return 'M';
+  }
+  var KARAKTER_TABLO={
+    AG:       {M:'R', Y:'E', B:'T', YA:'Y', I:'U'},
+    AG_KAFES: {M:'P', Y:'2', B:'1', YA:'O', I:'3'},
+    OG:       {M:'A', Y:'M', B:'S', YA:'D', I:'F'},
+    OG_KAFES: {M:'6', Y:'8', B:'7', YA:'0', I:'9'},
+    AYD:      {M:'W', Y:'V', B:'B', YA:'Q', I:'N'},
+    BOX:      {M:'H', Y:'J', B:'L', YA:'G', I:'K'},
+    KOFRE:    {M:'k', Y:'l', B:'m', YA:'o', I:'n'}
+  };
+  function direkKarakter(pr,durum){
     var gt=String(pr.genel_tip||pr.GENEL_TIP||'').toLocaleUpperCase('tr');
     var alt=String(pr.alt_tip||pr.ALT_TIP||'').toLocaleUpperCase('tr');
     var kafes=(alt.indexOf('KAFES')>=0);
-    if(gt.indexOf('OG')>=0||gt.indexOf('MUS')>=0||gt.indexOf('MÜŞ')>=0)
-      return kafes ? (yeni?'8':'6') : (yeni?'M':'A');      /* Y_OG / M_OG , kafes: Y_OG_KAFES / M_OG_KAFES */
-    if(gt.indexOf('AYD')>=0) return yeni?'\u0086':'\u0097';  /* Y_AYD (134) / M_AYD (151) - fontun kendi kodlari */
-    return kafes ? (yeni?'2':'P') : (yeni?'E':'R');        /* Y_AG / M_AG , kafes: Y_AG_KAFES / M_AG_KAFES */
+    var grup;
+    if(gt.indexOf('OG')>=0||gt.indexOf('MUS')>=0||gt.indexOf('MÜŞ')>=0) grup=kafes?'OG_KAFES':'OG';
+    else if(gt.indexOf('AYD')>=0) grup='AYD';
+    else grup=kafes?'AG_KAFES':'AG';
+    var t=KARAKTER_TABLO[grup];
+    return t[durumOneki(durum)]||t.M;
   }
-  function boxKarakter(yeni){ return yeni?'J':'H'; }        /* Y_BOX / M_BOX */
-  function kofreKarakter(yeni){ return yeni?'l':'k'; }      /* Y_KOFRE / M_KOFRE */
+  function boxKarakter(durum){ var t=KARAKTER_TABLO.BOX; return t[durumOneki(durum)]||t.M; }
+  function kofreKarakter(durum){ var t=KARAKTER_TABLO.KOFRE; return t[durumOneki(durum)]||t.M; }
   function direkBlok(o,pr,yeni){
     var gt=String(pr.genel_tip||pr.GENEL_TIP||'').toLocaleUpperCase('tr');
     if(gt.indexOf('AYD')>=0) return yeni?'DIREK_AYD_YENI':'DIREK_AYD_MEVCUT';
@@ -6592,7 +6663,7 @@
 
   function KAT(){
     return [
-      ['DIREK_MEVCUT',4],['DIREK_YENI',3],['TRAFO_MEVCUT',5],['KOFRE_MEVCUT',6],['BOX_MEVCUT',5],
+      ['DIREK_MEVCUT',4],['DIREK_YENI',3],['TRAFO_MEVCUT',5],['TRAFO_YENI',5],['KOFRE_MEVCUT',6],['BOX_MEVCUT',5],
       ['ABONE_MEVCUT',2],['EK_MUF',8],['LAMBA_SEMBOL',4],['LAMBA_GUCU',4],['ETIKET_OK',7],
       ['HAT_AYD_HAVAI',150],['HAT_AYD_YERALTI',5],['HAT_ABONE',2],['KANAL',40],['CIZGI',7],['ALAN',3],['NOT',2],['TOPRAKLAMA',1]
     ];
@@ -6613,14 +6684,74 @@
     var pts=[{y:x-r,x:y-r},{y:x+r,x:y-r},{y:x+r,x:y+r},{y:x-r,x:y+r}];
     return polyEnt(katman, pts, true);
   }
-  function polyEnt(katman,pts,kapali){
+  function polyEnt(katman,pts,kapali,ltype){
     /* R12 uyumlu: POLYLINE + VERTEX + SEQEND (LWPOLYLINE R13+ olduğu için AutoCAD boş açıyordu) */
-    var s=g(0,'POLYLINE')+g(8,katman)+g(66,'1')+g(70,kapali?'1':'0')+g(10,'0.0')+g(20,'0.0')+g(30,'0.0');
+    var s=g(0,'POLYLINE')+g(8,katman)+(ltype?g(6,ltype):'')+g(66,'1')+g(70,kapali?'1':'0')+g(10,'0.0')+g(20,'0.0')+g(30,'0.0');
     for(var i=0;i<pts.length;i++){
       s+=g(0,'VERTEX')+g(8,katman)+g(10,pts[i].y.toFixed(3))+g(20,pts[i].x.toFixed(3))+g(30,'0.0')+g(70,'0');
     }
     s+=g(0,'SEQEND')+g(8,katman);
     return s;
+  }
+  /* Lejant PDF'indeki TRAFO POSTASI sembolü: ÜÇGEN (mevcut=boş, yeni=dolu) */
+  function trafoUcgen(katman,c,dolu,ltype){
+    var tw=2.35, th=2.06;
+    var s2=polyEnt(katman,[{y:c.y,x:c.x+th},{y:c.y-tw,x:c.x-th},{y:c.y+tw,x:c.x-th}],true,ltype);
+    if(dolu){
+      s2+=g(0,'SOLID')+g(8,katman)
+        +g(10,c.y.toFixed(3))+g(20,(c.x+th).toFixed(3))+g(30,'0.0')
+        +g(11,(c.y-tw).toFixed(3))+g(21,(c.x-th).toFixed(3))+g(31,'0.0')
+        +g(12,(c.y+tw).toFixed(3))+g(22,(c.x-th).toFixed(3))+g(32,'0.0')
+        +g(13,(c.y+tw).toFixed(3))+g(23,(c.x-th).toFixed(3))+g(33,'0.0');
+    }
+    return s2;
+  }
+  function solidQuad(katman,p1,p2,p3,p4){
+    return g(0,'SOLID')+g(8,katman)
+      +g(10,p1.y.toFixed(3))+g(20,p1.x.toFixed(3))+g(30,'0.0')
+      +g(11,p2.y.toFixed(3))+g(21,p2.x.toFixed(3))+g(31,'0.0')
+      +g(12,p3.y.toFixed(3))+g(22,p3.x.toFixed(3))+g(32,'0.0')
+      +g(13,p4.y.toFixed(3))+g(23,p4.x.toFixed(3))+g(33,'0.0');
+  }
+  function cizgiEnt(katman,a,b,ltype){
+    return g(0,'LINE')+g(8,katman)+(ltype?g(6,ltype):'')
+      +g(10,a.y.toFixed(3))+g(20,a.x.toFixed(3))+g(30,'0.0')
+      +g(11,b.y.toFixed(3))+g(21,b.x.toFixed(3))+g(31,'0.0');
+  }
+  /* TRAFO TÜRÜNE GÖRE SEMBOL — B PRO LEJANT DXF'İNDEN BİREBİR ÇIKARILDI (Bayram YARAŞ):
+     DİREK      -> üçgen 4.71x4.11 (lejanttaki "DIREK TIPI TRAFO POSTASI")
+     BINA       -> kare 4.71x4.71  (lejanttaki "BINA TIPI TRAFO POSTASI")
+     BETONKÖŞK  -> çatılı köşk     (lejanttaki "MBK: MODULER BETON KOSK")
+     MEVCUT = boş çizgi, YENİ = dolu. */
+  function trafoSembol(katman,c,durum,tur){
+    var on=durumOneki(durum), dolu=(on==='Y'), lt=(on==='I')?'DASHED':null;
+    var t=String(tur||'').toLocaleUpperCase('tr').replace(/\s+/g,'');
+    if(t.indexOf('DİREK')>=0||t.indexOf('DIREK')>=0) return trafoUcgen(katman,c,dolu,lt);
+    var s2='';
+    function P(dx,dy){ return {y:c.y+dx, x:c.x+dy}; }
+    if(t.indexOf('KÖŞK')>=0||t.indexOf('KOSK')>=0||t.indexOf('KULE')>=0){
+      /* B Pro MBK sembolü (lejanttan birebir, merkeze oturtuldu) */
+      s2+=cizgiEnt(katman,P(2.99,1.06),P(1.58,1.06),lt);    /* sağ saçak */
+      s2+=cizgiEnt(katman,P(0,2.47),P(2.99,1.06),lt);       /* sağ çatı  */
+      s2+=cizgiEnt(katman,P(1.58,1.06),P(1.58,-2.47),lt);   /* sağ duvar */
+      s2+=cizgiEnt(katman,P(-1.59,1.06),P(-3.0,1.06),lt);   /* sol saçak */
+      s2+=cizgiEnt(katman,P(-1.59,-2.47),P(-1.59,1.06),lt); /* sol duvar */
+      s2+=cizgiEnt(katman,P(-3.0,1.06),P(0,2.47),lt);       /* sol çatı  */
+      s2+=cizgiEnt(katman,P(-1.59,-2.47),P(1.58,-2.47),lt); /* taban     */
+      s2+=cizgiEnt(katman,P(0,2.47),P(0,-2.47),lt);         /* orta dikme (lejanttaki gibi) */
+      if(dolu){
+        s2+=solidQuad(katman,P(0,2.47),P(2.99,1.06),P(0,1.06),P(0,1.06));
+        s2+=solidQuad(katman,P(-3.0,1.06),P(0,2.47),P(0,1.06),P(0,1.06));
+        s2+=solidQuad(katman,P(0,1.06),P(1.58,1.06),P(0,-2.47),P(1.58,-2.47));
+        s2+=solidQuad(katman,P(-1.59,1.06),P(0,1.06),P(-1.59,-2.47),P(0,-2.47));
+      }
+    } else {
+      /* bina: 4.71'lik kare (lejant ölçüsü) */
+      var w=2.355;
+      s2+=polyEnt(katman,[P(-w,-w),P(w,-w),P(w,w),P(-w,w)],true,lt);
+      if(dolu){ s2+=solidQuad(katman,P(-w,w),P(w,w),P(-w,-w),P(w,-w)); }
+    }
+    return s2;
   }
 
   function uret(){
@@ -6634,7 +6765,7 @@
     s+='__SINIR__'+g(0,'ENDSEC');
     /* TABLES: LTYPE + LAYER + STYLE(B_CAD) */
     s+=g(0,'SECTION')+g(2,'TABLES');
-    s+=g(0,'TABLE')+g(2,'LTYPE')+g(70,'1')+g(0,'LTYPE')+g(2,'CONTINUOUS')+g(70,'0')+g(3,'Solid line')+g(72,'65')+g(73,'0')+g(40,'0.0')+g(0,'ENDTAB');
+    s+=g(0,'TABLE')+g(2,'LTYPE')+g(70,'2')+g(0,'LTYPE')+g(2,'CONTINUOUS')+g(70,'0')+g(3,'Solid line')+g(72,'65')+g(73,'0')+g(40,'0.0')+g(0,'LTYPE')+g(2,'DASHED')+g(70,'0')+g(3,'Dashed line')+g(72,'65')+g(73,'2')+g(40,'1.2')+g(49,'0.8')+g(49,'-0.4')+g(0,'ENDTAB');
     var kats=KAT();
     s+=g(0,'TABLE')+g(2,'LAYER')+g(70,String(kats.length));
     kats.forEach(function(k){ s+=g(0,'LAYER')+g(2,k[0])+g(70,'0')+g(62,String(k[1]))+g(6,'CONTINUOUS'); });
@@ -6660,9 +6791,15 @@
       var no=''; try{ no=(window.getObjectNo?window.getObjectNo(o):'')||''; }catch(e){}
       if(o.type==='direk'){
         var dkat=yeni?'DIREK_YENI':'DIREK_MEVCUT';
-        var kar=direkKarakter(pr,yeni);
-        if(kar){ s+=txtEnt(dkat, c.y, c.x, 2.5, kar, 'Direk', null, 0); say.t++; }
-        else { var blk=direkBlok(o,pr,yeni); s+= (insertEnt(dkat, blk, c.y, c.x, 1) || (daireEnt(dkat,c.y,c.x,0.6)+noktaEnt(dkat,c.y,c.x))); say.n++; }
+        /* DÜZELTME: genel tipi TR/TRAFO olan kayıtlar direk sembolü değil TRAFO ÜÇGENİ alır */
+        var gtTR=String(pr.genel_tip||pr.GENEL_TIP||'').toLocaleUpperCase('tr');
+        if(gtTR==='TR'||gtTR.indexOf('TRAFO')>=0){
+          s+=trafoSembol(yeni?'TRAFO_YENI':'TRAFO_MEVCUT', c, pr.durum||'', 'DİREK'); say.n++;
+        } else {
+          var kar=direkKarakter(pr, pr.durum||pr.Durumu||'');
+          if(kar){ s+=txtEnt(dkat, c.y, c.x, 2.5, kar, 'Direk', null, 0); say.t++; }
+          else { var blk=direkBlok(o,pr,yeni); s+= (insertEnt(dkat, blk, c.y, c.x, 1) || (daireEnt(dkat,c.y,c.x,0.6)+noktaEnt(dkat,c.y,c.x))); say.n++; }
+        }
 
         /* lambalar: B_CAD sembolü + güç yazısı */
         var lm=Array.isArray(pr.lambalar)?pr.lambalar:[];
@@ -6678,12 +6815,13 @@
           say.t++;
         }
       } else if(o.type==='trafo'){
-        s+= (insertEnt('TRAFO_MEVCUT','TRAFO_YENI', c.y, c.x, 1) ||
-             (daireEnt('TRAFO_MEVCUT',c.y,c.x,2.2)+daireEnt('TRAFO_MEVCUT',c.y,c.x,1.4)+txtEnt('TRAFO_MEVCUT',c.y,c.x,1.4,'TR','Standard',null,0)));
+        /* DÜZELTME (Bayram YARAŞ): trafo, TÜRÜNE göre lejant sembolüyle çizilir:
+           DİREK=üçgen, BINA=kare, BETONKÖŞK=çatılı köşk. MEVCUT=boş, YENİ=dolu. */
+        s+=trafoSembol(yeni?'TRAFO_YENI':'TRAFO_MEVCUT', c, pr.durum||'', pr.trafo_turu||pr.TRAFO_TURU||'');
         say.n++;
       }
-      else if(o.type==='kofre'){ s+=txtEnt('KOFRE_MEVCUT', c.y, c.x, 2.5, kofreKarakter(yeni), 'Direk', null, 0); say.t++; }
-      else if(o.type==='box'){ s+=txtEnt('BOX_MEVCUT', c.y, c.x, 2.5, boxKarakter(yeni), 'Direk', null, 0); say.t++; }
+      else if(o.type==='kofre'){ s+=txtEnt('KOFRE_MEVCUT', c.y, c.x, 2.5, kofreKarakter(pr.durum||''), 'Direk', null, 0); say.t++; }
+      else if(o.type==='box'){ s+=txtEnt('BOX_MEVCUT', c.y, c.x, 2.5, boxKarakter(pr.durum||''), 'Direk', null, 0); say.t++; }
       else if(o.type==='abone'){ s+=daireEnt('ABONE_MEVCUT', c.y, c.x, 0.7); say.n++; }
       else { s+=kareEnt('EK_MUF', c.y, c.x, 0.6); say.n++; }
       /* numara + tip etiketi */
@@ -6702,17 +6840,27 @@
         if(pts.length<2) pts=[{y:a.y,x:a.x},{y:b.y,x:b.x}];
       }
       s+=polyEnt(kat, pts, false); say.l++;
-      var kesit=(l.props&&(l.props.kesit||l.props.cins))||'';
+      /* DÜZELTME (Bayram YARAŞ): HAT KESİTİ artık programın haritada gösterdiği
+         metinle aynı alınır (main_hat_tipi/og_hat_tipi/hat_tipi + AG eki).
+         Eski kod var olmayan 'kesit'/'cins' anahtarlarına bakıyordu → hep boştu. */
+      var kesit='';
+      try{ if(typeof window.getLineDisplayText==='function') kesit=String(window.getLineDisplayText(l)||'').trim(); }catch(e){}
+      if(!kesit){ var lp=l.props||{};
+        kesit=String(lp.main_hat_tipi||lp.og_hat_tipi||lp.hat_tipi||lp.kesit||lp.cins||'').trim();
+        if(lp.ag_hat_aktif&&lp.ag_hat_tipi){ kesit=kesit?(kesit+'+('+lp.ag_hat_tipi+')'):String(lp.ag_hat_tipi); }
+      }
       var uz=(l.length_m!=null)?(Number(l.length_m).toFixed(1)+' m'):'';
       var uzSayi=(l.length_m!=null)?Number(l.length_m):0;
-      var etk=[kesit,(uzSayi>0.5?uzSayi.toFixed(1)+' m':'')].filter(Boolean).join('  ');
-      if(etk){
+      /* İSTEK (Bayram YARAŞ): programdaki gibi — KESİT hattın ÜSTÜNDE, METRE ALTINDA */
+      var uzTxt=(uzSayi>0.5?uzSayi.toFixed(1)+' m':'');
+      if(kesit||uzTxt){
         var mx=(pts[0].y+pts[pts.length-1].y)/2, my=(pts[0].x+pts[pts.length-1].x)/2;
         var ang=Math.atan2(pts[pts.length-1].x-pts[0].x, pts[pts.length-1].y-pts[0].y)*180/Math.PI;
         while(ang>90) ang-=180; while(ang<-90) ang+=180;      /* yazı hiç ters dönmesin */
         var rad=ang*Math.PI/180;
-        var ox=-Math.sin(rad)*1.1, oy=Math.cos(rad)*1.1;      /* çizginin hemen üstüne kaydır */
-        s+=txtEnt('ETIKET_OK', mx+ox, my+oy, 1.4, etk, 'Standard', null, ang); say.t++;
+        var px=-Math.sin(rad), pyv=Math.cos(rad);             /* hatta dik birim vektör (üst yön) */
+        if(kesit){ s+=txtEnt('ETIKET_OK', mx+px*1.6, my+pyv*1.6, 1.4, kesit, 'Standard', null, ang); say.t++; }
+        if(uzTxt){ s+=txtEnt('ETIKET_OK', mx-px*1.6, my-pyv*1.6, 1.4, uzTxt, 'Standard', null, ang); say.t++; }
       }
     });
     (p.channels||[]).forEach(function(c2){ if(!c2||!c2.points) return; var pts=[]; c2.points.forEach(function(q){ var t2=tm(q[0],q[1]); if(t2) pts.push({y:t2.y,x:t2.x}); }); if(pts.length>1){ s+=polyEnt('KANAL',pts,false); say.l++; } });
@@ -6799,4 +6947,23 @@
     return true;
   }
   var t=0, iv=setInterval(function(){ if(btn()|| ++t>80) clearInterval(iv); }, 700);
+})();
+
+/* ===================== SÜRÜM ROZETİ (Bayram YARAŞ) =====================
+   Hangi sürümün çalıştığını anlamak için: ekranın sol alt köşesinde küçük
+   "PERF-24.07" yazısı görünür. Bu yazı YOKSA eski sürüm çalışıyor demektir. */
+(function(){
+  try{
+    function ekle(){
+      try{
+        if(document.getElementById('aybPerfBadge')) return;
+        var b=document.createElement('div');
+        b.id='aybPerfBadge'; b.textContent='PERF-24.07-G';
+        b.style.cssText='position:fixed;left:4px;bottom:4px;z-index:2147483000;font:700 10px system-ui;color:#fff;background:rgba(15,23,42,.55);padding:2px 6px;border-radius:6px;pointer-events:none;';
+        document.body.appendChild(b);
+      }catch(e){}
+    }
+    if(document.body) ekle(); else document.addEventListener('DOMContentLoaded', ekle);
+    setTimeout(ekle, 3000);
+  }catch(e){}
 })();
