@@ -295,6 +295,7 @@
     var fin=document.createElement('button'); fin.textContent='✕ Bitir';
     fin.style.cssText='font:700 13px system-ui;padding:8px 12px;border:0;border-radius:20px;background:#c62828;color:#fff;box-shadow:0 3px 10px rgba(0,0,0,.35)';
     fin.onclick=finishAll;
+    fin.style.display='none';   /* İSTEK (Bayram YARAŞ): sağ altta Bitir İSTENMİYOR — Bitir, Çizim Araçları şeridinde ve üst mod çubuğunda zaten var */
     // Panel
     var panel=document.createElement('div'); panel.id='aybToolboxPanel';
     panel.style.cssText='display:none;flex-direction:column;gap:6px;background:#0d1b34;border:1px solid #24406e;border-radius:12px;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);max-height:70vh;overflow-y:auto';
@@ -1393,7 +1394,9 @@
       var iGen=colIndex(C,["GenelTip"]);
       var iAlt=colIndex(C,["AltCins","Alt_Cins"]);
       var iGuc=colIndex(C,["LambaGucu1","LambaGucu","Lamba_Gucu"]);
-      var iAd =colIndex(C,["LambaCount1","LambaSayisi1","LambaAdet1","LambaCount"]);
+      var iAd =colIndex(C,["LambaSayisi","LambaCount1","LambaSayisi1","LambaAdet1","LambaCount"]);
+      var iLCins=colIndex(C,["LambaTipi1","LambaTipi","LambaCinsi"]);
+      var iLDur=colIndex(C,["LambaDurumu","LambaDurum","Lamba_Durum"]);
       var iTr =colIndex(C,["BagliTrafoNo","TrafoNo","Bagli_Trafo"]);
       dm.features.forEach(function(ft,idx){
         if(ft.geom!=="point") return;
@@ -1401,7 +1404,12 @@
         var ll=tmToLatLon(ft.coords[0][0], ft.coords[0][1], cm);
         var lambalar=[];
         var g=iGuc>=0?num(row[iGuc]):0, ad=iAd>=0?num(row[iAd]):0;
-        if(g>0 && ad>0){ for(var q=0;q<1;q++){} lambalar.push({guc:String(g),adet:ad,cins:"LED",armatur:"",status:"MEVCUT"}); }
+        if(g>0 && ad>0){
+          var lcins=iLCins>=0?String(row[iLCins]||"LED"):"LED";
+          var ldur=iLDur>=0?String(row[iLDur]||"").trim().toLocaleUpperCase("tr-TR"):"";
+          if(ldur.indexOf("MEVCUT")>=0) ldur="MEVCUT"; else if(ldur) ldur="YENİ";
+          lambalar.push({guc:String(g),adet:ad,cins:(lcins||"LED"),armatur:"",durum:(ldur||"MEVCUT"),status:(ldur||"MEVCUT")});
+        }
         var mifGenel=iGen>=0?String(row[iGen]||"AG"):"AG";
         var genelTip=(lambalar.length>0)?"AYD":mifGenel;   /* lambalı direk = AYDINLATMA (AG değil) */
         var props={
@@ -2211,6 +2219,91 @@
     Object.keys(st.base).forEach(function(id){ if(!(id in cur)){ st.base[id]=0; st.baseW[id]={}; st.baseM[id]={}; } });
     save(st);
   }
+  /* İSTEK (Bayram YARAŞ): TRAFO BAZINDA döküm — hangi trafoda kaç direk, kaç adet hangi güçte lamba takıldı */
+  /* KURAL (Bayram YARAŞ): Sayım SADECE HAT BAĞLANTISINA göre yapılır.
+     Her trafo, kendisinden çıkan kollar/dallar (hatlar) ile ULAŞILAN direkleri sayar.
+     Direk kartındaki trafo_no yazısı sayımda KULLANILMAZ — Oto No tüm projeye tek
+     trafoyu damgalayabildiği için 312 direğin tamamı TR00'a yazılıyordu.
+     Hatla hiçbir trafoya bağlı olmayan direkler "(trafo olmayan bölge)" olarak AYRI sayılır. */
+  var BOLGESIZ="(trafo olmayan bölge)";
+  function trafoAtama(){
+    var p=proj(), out={atama:{},adlar:[]};
+    if(!p||!p.objects) return out;
+    var byId={}; p.objects.forEach(function(o){ if(o&&o.id) byId[o.id]=o; });
+    var trafos=p.objects.filter(function(o){ return o&&o.type==='trafo'; });
+    var tAd={}; trafos.forEach(function(t){ var no=(t.props&&(t.props.trafo_no||t.props.ad))||''; tAd[t.id]=String(no||'').trim()||'TR?'; });
+    var adj={};
+    (p.lines||[]).forEach(function(l){
+      if(!l||!l.start||!l.end) return;
+      (adj[l.start]=adj[l.start]||[]).push(l.end);
+      (adj[l.end]=adj[l.end]||[]).push(l.start);
+    });
+    var sahip={}, q=[];
+    trafos.forEach(function(t){ sahip[t.id]=t.id; q.push(t.id); });
+    while(q.length){
+      var cur=q.shift();
+      (adj[cur]||[]).forEach(function(nx){
+        if(sahip[nx]) return;
+        var oo=byId[nx]; if(oo&&oo.type==='trafo') return;
+        sahip[nx]=sahip[cur]; q.push(nx);
+      });
+    }
+    var seen={};
+    p.objects.forEach(function(o){
+      if(!o||o.type!=='direk') return;
+      var sid=sahip[o.id], tno=(sid&&tAd[sid])?tAd[sid]:BOLGESIZ;
+      out.atama[o.id]=tno;
+      if(!seen[tno]){ seen[tno]=1; out.adlar.push(tno); }
+    });
+    out.adlar.sort();
+    return out;
+  }
+  function trafoBazinda(){
+    var g={}, p=proj();
+    if(!p||!p.objects) return g;
+    var at=trafoAtama();
+    p.objects.forEach(function(o){
+      if(!o||o.type!=='direk') return;
+      var tno=at.atama[o.id]||BOLGESIZ;
+      var gg=g[tno]||(g[tno]={direk:0,watts:{},toplam:0});
+      gg.direk++;
+      var pw=poleNewWatts(o);
+      Object.keys(pw).forEach(function(w){ gg.watts[w]=(gg.watts[w]||0)+pw[w]; gg.toplam+=pw[w]; });
+    });
+    return g;
+  }
+  /* Bölgeleri haritada renklendir: her trafonun SAYDIĞI direkler kendi renginde,
+     trafosuz bölge GRİ. Yanlış bağlayan (köprü) hat varsa gözle bulunur. */
+  var BOLGE_RENK=["#e11d48","#2563eb","#d97706","#7c3aed","#0d9488","#be185d","#65a30d","#0369a1"];
+  var _bolgeLayer=null;
+  function bolgeRenkMap(adlar){
+    var m={}, ci=0;
+    adlar.forEach(function(ad){ m[ad]=(ad===BOLGESIZ)?"#94a3b8":BOLGE_RENK[(ci++)%BOLGE_RENK.length]; });
+    return m;
+  }
+  function bolgeKapat(){
+    if(_bolgeLayer){ try{ var m=window.__aybMap||window.map; if(m) m.removeLayer(_bolgeLayer); }catch(e){} _bolgeLayer=null; }
+    var b=d.getElementById("aybGunBolge"); if(b) b.textContent="🎨 Bölgeleri Haritada Göster";
+  }
+  function bolgeGoster(){
+    try{
+      var m=window.__aybMap||window.map, L=window.L, p=proj();
+      if(!m||!L||!p||!p.objects) return;
+      if(_bolgeLayer){ bolgeKapat(); return; }
+      var at=trafoAtama(), renk=bolgeRenkMap(at.adlar);
+      _bolgeLayer=L.layerGroup();
+      p.objects.forEach(function(o){
+        if(!o||o.type!=='direk') return;
+        var ad=at.atama[o.id]; if(!ad) return;
+        var la=+o.lat, ln=+o.lng; if(!isFinite(la)||!isFinite(ln)) return;
+        L.circleMarker([la,ln],{radius:11,color:renk[ad]||"#94a3b8",weight:3,fill:true,fillColor:renk[ad]||"#94a3b8",fillOpacity:.25,interactive:false}).addTo(_bolgeLayer);
+      });
+      _bolgeLayer.addTo(m);
+      var b=d.getElementById("aybGunBolge"); if(b) b.textContent="🎨 Renkleri Kaldır";
+      hide();
+      try{ (window.hint||function(){})("Bölgeler renklendirildi — kaldırmak için Günün Özeti → Renkleri Kaldır"); }catch(e){}
+    }catch(e){}
+  }
   function stats(){
     var p=proj(), st=load(), direk=0, yeni=0, mevcut=0;
     if(p&&p.objects) p.objects.forEach(function(o){ if(o.type!=="direk")return; direk++;
@@ -2240,6 +2333,9 @@
         '<div class="ayb-gun-row"><span>Projede Yeni Lamba</span><b id="aybGunYeni">0</b></div>'+
         '<div class="ayb-gun-row"><span>Projede Mevcut Lamba</span><b id="aybGunMevcut">0</b></div>'+
         '<div class="ayb-gun-row"><span>Toplam Direk</span><b id="aybGunDirek">0</b></div>'+
+        '<div style="margin-top:10px;font-size:13px;font-weight:800;color:#0f766e;">TRAFO BAZINDA — takılan lamba</div>'+
+        '<div id="aybGunTrafo" style="max-height:180px;overflow:auto;font-size:12.5px;color:#0f172a;border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-top:6px;line-height:1.55;">(hesaplanıyor)</div>'+
+        '<button id="aybGunBolge" style="width:100%;margin-top:8px;border:1px solid #0f766e;border-radius:10px;background:#f0fdfa;color:#0f766e;padding:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">🎨 Bölgeleri Haritada Göster</button>'+
         '<div style="display:flex;gap:8px;margin-top:14px;">'+
           '<button id="aybGunExcel" style="flex:1;border:none;border-radius:10px;background:#16a34a;color:#fff;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Excel İndir</button>'+
           '<button id="aybGunKapat" style="flex:1;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Kapat</button></div>'+
@@ -2252,6 +2348,7 @@
     d.getElementById("aybGunClose").onclick=hide;
     d.getElementById("aybGunKapat").onclick=hide;
     d.getElementById("aybGunExcel").onclick=excel;
+    var bb=d.getElementById("aybGunBolge"); if(bb) bb.onclick=bolgeGoster;
     return el;
   }
   function fill(){
@@ -2264,6 +2361,26 @@
     d.getElementById("aybGunYeni").textContent=s.yeni;
     d.getElementById("aybGunMevcut").textContent=s.mevcut;
     d.getElementById("aybGunDirek").textContent=s.direk;
+    try{
+      var g=trafoBazinda(), keys=Object.keys(g).sort(function(a,b){ if(a===BOLGESIZ) return 1; if(b===BOLGESIZ) return -1; return a<b?-1:(a>b?1:0); });
+      var rmap=bolgeRenkMap(keys);
+      var el=d.getElementById("aybGunTrafo");
+      if(el){
+        var html="";
+        keys.forEach(function(t){
+          var gg=g[t];
+          var ws=Object.keys(gg.watts).sort(function(a,b){ return (parseFloat(a)||0)-(parseFloat(b)||0); });
+          var parca=ws.map(function(w){ return gg.watts[w]+" ad "+w; }).join(", ");
+          html+="<div style='border-bottom:1px dashed #e2e8f0;padding:3px 0;'><span style='display:inline-block;width:10px;height:10px;border-radius:50%;background:"+(rmap[t]||"#94a3b8")+";margin-right:6px;'></span><b>"+t+"</b> · "+gg.direk+" direk"+(parca?(" — "+parca):" — (takılan yok)")+"</div>";
+        });
+        var tw=projectNewByWatt();
+        var tws=Object.keys(tw).sort(function(a,b){ return (parseFloat(a)||0)-(parseFloat(b)||0); });
+        var tp=tws.map(function(w){ return tw[w]+" ad "+w; }).join(", ");
+        html+="<div style='padding:6px 0 2px;font-weight:800;color:#065f46;'>TOPLAM · "+s.direk+" direk"+(tp?(" — "+tp):"")+"</div>";
+        el.innerHTML=html||"(kayıt yok)";
+      }
+      var bb2=d.getElementById("aybGunBolge"); if(bb2) bb2.textContent=_bolgeLayer?"🎨 Renkleri Kaldır":"🎨 Bölgeleri Haritada Göster";
+    }catch(e){}
   }
   function show(){ panelEl(); fill(); d.getElementById("aybGunPanel").style.display="flex"; }
   function hide(){ var el=d.getElementById("aybGunPanel"); if(el) el.style.display="none"; }
@@ -2324,11 +2441,25 @@
       calisan.forEach(function(dt){ var dm=daysM[dt]||{}; var tot=0; Object.keys(dm).forEach(function(k){tot+=dm[k];}); if(tot===0) tot=(+days[dt]||0); s4.push([dt,tot]); });
       if(gunSay===0) s4.push(["(Kayıt yok)",""]);
 
+      /* SAYFA 5: TRAFO BAZINDA (direk + takılan lamba güç kırılımı) */
+      var g5=trafoBazinda(), s5=[["TRAFO BAZINDA — DİREK VE TAKILAN LAMBA","","",""],
+        ["Trafo","Direk Adedi","Güç (W)","Takılan Adet"]];
+      Object.keys(g5).sort(function(a,b){ if(a===BOLGESIZ) return 1; if(b===BOLGESIZ) return -1; return a<b?-1:(a>b?1:0); }).forEach(function(t){
+        var gg=g5[t];
+        var ws=Object.keys(gg.watts).sort(function(a,b){ return (parseFloat(a)||0)-(parseFloat(b)||0); });
+        if(!ws.length){ s5.push([t, gg.direk, "(takılan yok)", 0]); }
+        else ws.forEach(function(w,i){ s5.push([t, i===0?gg.direk:"", w, gg.watts[w]]); });
+        s5.push([t+" — TOPLAM","","",gg.toplam]);
+      });
+      var tw5=projectNewByWatt(), gt=0;
+      Object.keys(tw5).sort(function(a,b){ return (parseFloat(a)||0)-(parseFloat(b)||0); }).forEach(function(w){ s5.push(["GENEL", "", w, tw5[w]]); gt+=tw5[w]; });
+      s5.push(["GENEL TOPLAM", s.direk, "", gt]);
       var blob=window.aybBuildXlsx([
         {name:"Genel_Ozet", rows:s1},
         {name:"Bugun_Malzeme", rows:s2},
         {name:"Tarih_Tarih", rows:s3},
-        {name:"Ekip_Performans", rows:s4}
+        {name:"Ekip_Performans", rows:s4},
+        {name:"Trafo_Bazinda", rows:s5}
       ]);
       var nm=(typeof window.aybFileTag==="function")? (window.aybFileTag()+"_gunun_ozeti.xlsx") : (pname()+"_gunun_ozeti.xlsx");
       var mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -2405,18 +2536,109 @@
     return s;
   }
 
-  var DIREK_COLS=['GenelTip Char(20)','AltCins Char(20)','TipAdi Char(20)','DirekNo Char(20)','Durumu Char(20)','MevcutDurum Integer','KorumaTopraklama Char(20)','IsletmeTopraklama Char(20)','Kafes Char(20)','Lente Char(20)','Durdurucu Char(20)','Potans Char(20)','Boy Integer','TopluYuk Integer','CosQ Decimal(5, 1)','Diversite Integer','LambaTipi1 Char(20)','LambaGucu1 Integer','LambaCount1 Integer','BagliTrafoNo Char(20)'];
+  var DIREK_COLS=['GenelTip Char(20)','AltCins Char(20)','TipAdi Char(20)','DirekNo Char(20)','Durumu Char(20)','MevcutDurum Integer','KorumaTopraklama Char(20)','IsletmeTopraklama Char(20)','Kafes Char(20)','Lente Char(20)','Durdurucu Char(20)','Potans Char(20)','Boy Integer','TopluYuk Integer','CosQ Decimal(5, 1)','Diversite Integer','LambaTipi1 Char(20)','LambaGucu1 Integer','LambaSayisi Integer','LambaDurumu Char(20)','BagliTrafoNo Char(20)'];
   var HAT_COLS=['Tip Integer','GenelTip Char(20)','OGTip Char(20)','AGTip Char(20)','Konsumasyon Integer','J1 Char(20)','J2 Char(20)','J12 Char(20)','J Decimal(5, 1)','JGerilimDusumu Decimal(5, 1)','HatKullanimTipi Integer','OGDurum Char(20)','AGDurum Char(20)','MesafeDeger Integer','TrafoCikisTip Char(20)','TrafoCikisMesafe Decimal(5, 1)','Uzunluk Integer','Color Integer','Diversite Integer','AnaRing Char(20)','IsiYuku Decimal(5, 1)','MaxIsiYuku Decimal(5, 1)','IsletmeVoltaji Char(20)','AnmaVoltaji Char(20)','BaslangicX Decimal(5, 1)','BaslangicY Decimal(5, 1)','BitisX Decimal(5, 1)','BitisY Decimal(5, 1)','KolAdi Char(3)'];
+
+  /* ====== B PRO LAMBA EŞLEŞME (İSTEK: Bayram YARAŞ) ======
+     B Pro, MIF'teki lamba cinsini kendi LAMBA tablosundaki AD ile birebir arar.
+     Saha "LED + 51" yazınca B Pro'da LED yalnız 47/68/90/128/150W kayıtlı olduğundan
+     eşleşmez, her direk LED 47W görünürdü. Çözüm: güç -> B Pro cins eşlemesi
+     (51 -> LED-S14) ve MIF'e tam seri adının yazılması. Eşleme düzenlenebilir,
+     Rapor/Veri -> 💡 B Pro Lamba. */
+  var ESLKEY='ayb_bpro_lamba_eslesme_v1';
+  var BPRO_CINSLER=['LED','LED-S3','LED-S10','LED-S11','LED-S12','LED-S13','LED-S14','LED-S15'];
+  function eslesmeOku(){
+    var m=null; try{ m=JSON.parse(localStorage.getItem(ESLKEY)||'null'); }catch(e){}
+    if(!m||typeof m!=='object'||Array.isArray(m)) m={};
+    if(!m['51']) m['51']='LED-S14';   /* Bayram YARAŞ: 51W = LED-S14 standart */
+    return m;
+  }
+  function eslesmeYaz(m){ try{ localStorage.setItem(ESLKEY, JSON.stringify(m)); }catch(e){} }
+  function lambaWattNo(l){ var w=l&&(l.guc||l.watt||l.w); w=(w==null)?'':String(w).replace(/[^0-9.]/g,''); var n=parseFloat(w); return (isFinite(n)&&n>0)?Math.round(n):0; }
+  function direkLambaOzet(pr){
+    var arr=Array.isArray(pr&&pr.lambalar)?pr.lambalar:[];
+    var toplam=0, sayim={}, dsay={}, gdur={};
+    arr.forEach(function(l){
+      var a=parseInt(l&&l.adet,10); a=(isFinite(a)&&a>0)?a:1;
+      var w=lambaWattNo(l);
+      /* İSTEK (Bayram YARAŞ): lamba durumu (MEVCUT/YENİ) MIF'e AYRI kolon gider.
+         Durum girilmemişse YENİ sayılır (Günün Özeti ile aynı kural). */
+      var du=String((l&&(l.durum||l.status))||'YENİ').trim().toLocaleUpperCase('tr-TR');
+      du=(du.indexOf('MEVCUT')>=0)?'MEVCUT':'YENİ';
+      toplam+=a; gdur[du]=(gdur[du]||0)+a;
+      if(w>0){ sayim[w]=(sayim[w]||0)+a; (dsay[w]=dsay[w]||{})[du]=(dsay[w][du]||0)+a; }
+    });
+    var enW=0, enA=-1;
+    Object.keys(sayim).forEach(function(w){ if(sayim[w]>enA){ enA=sayim[w]; enW=+w; } });
+    var durum='', kaynak=(enW>0&&dsay[enW])?dsay[enW]:gdur, enD=-1;
+    Object.keys(kaynak).forEach(function(k){ if(kaynak[k]>enD){ enD=kaynak[k]; durum=k; } });
+    return {toplam:toplam, watt:enW, durum:durum};
+  }
+  function projeLambaWattlari(){
+    var ws={}, p=window.project;
+    if(p&&p.objects) p.objects.forEach(function(o){
+      if(!o||o.type!=='direk'||!o.props||!Array.isArray(o.props.lambalar)) return;
+      o.props.lambalar.forEach(function(l){ var w=lambaWattNo(l); if(w>0) ws[w]=1; });
+    });
+    return Object.keys(ws).map(Number).sort(function(a,b){return a-b;});
+  }
+  window.aybLambaEslesmePanel=function(devamFn){
+    var eski=document.getElementById('aybEslPanel'); if(eski) eski.remove();
+    var m=eslesmeOku(), watts=projeLambaWattlari();
+    Object.keys(m).forEach(function(w){ if(watts.indexOf(+w)<0) watts.push(+w); });
+    watts.sort(function(a,b){return a-b;});
+    if(!watts.length) watts=[51];
+    var el=document.createElement('div'); el.id='aybEslPanel';
+    el.style.cssText='position:fixed;inset:0;z-index:6300;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+    var rowsHtml=watts.map(function(w){
+      return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0;">'+
+        '<div style="width:70px;font-weight:800;color:#0f172a;">'+w+' W</div>'+
+        '<input data-esl-w="'+w+'" list="aybBproCinsList" value="'+(m[String(w)]||'')+'" placeholder="örn. LED-S14" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;">'+
+      '</div>';
+    }).join('');
+    el.innerHTML='<div style="background:#fff;border-radius:16px;max-width:430px;width:100%;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.45);">'+
+      '<div style="font-size:16px;font-weight:800;color:#0f766e;margin-bottom:6px;">💡 B Pro Lamba Eşleştirme</div>'+
+      '<div style="font-size:12.5px;color:#475569;margin-bottom:10px;line-height:1.5;">MIF dışa verirken lamba cinsi bu tabloya göre yazılır. Cins adı, B Pro Lamba Seçimi listesindeki adın <b>BİREBİR AYNISI</b> olmalı (örn. 51 W → LED-S14). Bir kez kaydet, hep kullanılır.</div>'+
+      '<datalist id="aybBproCinsList">'+BPRO_CINSLER.map(function(c){return '<option value="'+c+'">';}).join('')+'</datalist>'+
+      rowsHtml+
+      '<div style="display:flex;gap:8px;margin-top:14px;">'+
+        '<button id="aybEslKaydet" style="flex:1;border:none;border-radius:10px;background:#16a34a;color:#fff;padding:11px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;">Kaydet'+(devamFn?' ve Devam Et':'')+'</button>'+
+        '<button id="aybEslKapat" style="flex:1;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Kapat</button>'+
+      '</div></div>';
+    document.body.appendChild(el);
+    el.querySelector('#aybEslKapat').onclick=function(){ el.remove(); };
+    el.querySelector('#aybEslKaydet').onclick=function(){
+      var yeni=eslesmeOku();
+      el.querySelectorAll('[data-esl-w]').forEach(function(inp){
+        var w=inp.getAttribute('data-esl-w'), v=(inp.value||'').trim();
+        if(v) yeni[w]=v; else delete yeni[w];
+      });
+      eslesmeYaz(yeni);
+      el.remove();
+      if(typeof devamFn==='function') devamFn();
+      else try{ (window.hint||function(){})('B Pro lamba eşleşmesi kaydedildi'); }catch(e){}
+    };
+  };
 
   function buildDirekler(direks){
     var mif=header(DIREK_COLS), mid='';
     direks.forEach(function(o){
       var p=o.props||{}, t=tm(o.lat,o.lng);
-      var lamp=(Array.isArray(p.lambalar)&&p.lambalar[0])?p.lambalar[0]:{};
+      /* İSTEK (Bayram YARAŞ): B Pro lambayı otomatik algılasın —
+         cins EŞLEMEDEN yazılır (51->LED-S14), güç SAYI olarak,
+         LambaCount1 kolonuna direkteki TOPLAM lamba adedi yazılır. */
+      var oz=direkLambaOzet(p), esl=eslesmeOku();
+      var cins='', guc='0', say='0', lamDurum='';
+      if(oz.toplam>0){
+        say=String(oz.toplam);
+        lamDurum=oz.durum||'YENİ';
+        if(oz.watt>0){ guc=String(oz.watt); cins=esl[String(oz.watt)]||'LED'; }
+        else cins='LED';
+      }
       mif+='Point '+t.e.toFixed(2)+' '+t.n.toFixed(2)+'\r\n    Symbol(34,255,6)\r\n';
       var row=[ p.genel_tip||'AG', p.alt_tip||p.alt_cins||'', p.direk_tipi||'', p.direk_no||(window.getObjectNo?getObjectNo(o):''),
         p.durum||'MEVCUT', '0','False','False','False','False','False','False','0','0','0.8','100',
-        (lamp.cins||lamp.armatur||''), (lamp.guc||'0'), (lamp.adet||'0'), (p.trafo_no||'') ];
+        cins, guc, say, lamDurum, (p.trafo_no||'') ];
       mid+=row.map(q).join(',')+'\r\n';
     });
     return {mif:mif, mid:mid};
@@ -2495,6 +2717,18 @@
     try{
       var p=window.project;
       if(!p||!p.objects){ (window.aybModal||alert)("Önce proje aç."); return; }
+      /* İSTEK (Bayram YARAŞ): eşleşmemiş lamba gücü varsa önce eşleme penceresi açılır,
+         kaydedince MIF otomatik devam eder. (Bir kez sorar; kapatıp tekrar basarsan
+         eşlemesizler düz LED yazılır.) */
+      try{
+        var _esl=eslesmeOku();
+        var _eksik=projeLambaWattlari().filter(function(w){ return !_esl[String(w)]; });
+        if(_eksik.length && !doExport.__eslSoruldu){
+          doExport.__eslSoruldu=true;
+          window.aybLambaEslesmePanel(function(){ doExport(); });
+          return;
+        }
+      }catch(e){}
       var direks=(p.objects||[]).filter(function(o){return o.type==='direk';});
       var trafos=(p.objects||[]).filter(function(o){return o.type==='trafo';});
       var boxes =(p.objects||[]).filter(function(o){return o.type==='box';});
@@ -2537,6 +2771,23 @@
 
   window.aybExportMif=doExport;
   window.aybZipStore=buildZip;
+
+  /* Rapor/Veri şeridine eşleme düğmesi */
+  (function(){
+    function inj(){
+      if(document.getElementById('aybBproLambaBtn')) return true;
+      var r=document.querySelector('.ayb-pro-group.report .ayb-pro-row');
+      if(!r) return false;
+      var b=document.createElement('button');
+      b.type='button'; b.id='aybBproLambaBtn'; b.className='ayb-pro-btn toolbtn';
+      b.title='B Pro lamba cins eşleştirme (MIF dışa aktarımda kullanılır)';
+      b.innerHTML='<div class="ayb-pro-ico" style="font-size:18px">💡</div><small>B Pro Lamba</small>';
+      b.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); window.aybLambaEslesmePanel(); });
+      r.appendChild(b);
+      return true;
+    }
+    var n=0, iv=setInterval(function(){ if(inj()||++n>60) clearInterval(iv); }, 700);
+  })();
 
   /* ---- XLSX üretici (SheetJS'siz, offline) ---- */
   function xmlEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -5190,26 +5441,50 @@
     lt=t; lx=e.clientX; ly=e.clientY;
   }, true);
 
-  /* ---- ekranda Bitir / İptal düğmeleri ---- */
-  function bar(){
-    var el=d.getElementById('aybCizimBar');
-    if(el) return el;
-    el=d.createElement('div'); el.id='aybCizimBar';
-    el.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:74px;z-index:2147481500;display:none;gap:8px;';
-    el.innerHTML='<button id="aybCizBitir" style="height:44px;padding:0 18px;border:none;border-radius:10px;background:#16a34a;color:#fff;font:800 15px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;">✔ Bitir</button>'
-      +'<button id="aybCizIptal" style="height:44px;padding:0 16px;border:none;border-radius:10px;background:#ef4444;color:#fff;font:800 15px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;">✖ İptal</button>';
-    d.body.appendChild(el);
-    el.querySelector('#aybCizBitir').addEventListener('click', function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(_){} bitir(); });
-    el.querySelector('#aybCizIptal').addEventListener('click', function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(_){} iptal(); });
-    return el;
+  /* ---- MOD ÇUBUĞU (İSTEK: Bayram YARAŞ) ----
+     Bitir/İptal araç şeridinden KALDIRILDI. Taşıma Modu'ndaki TURUNCU çubuğun
+     aynısı, HANGİ ARAÇ AKTİFSE haritanın üst ortasında açılır:
+     Direk'e tıkla -> "DİREK MODU" çubuğu; ✔ Bitir -> işlem biter, araç kapanır. */
+  var ARAC_AD={direk:'DİREK',trafo:'TRAFO',hat:'HAT ÇİZİMİ',abonehat:'ABONE HAT',
+    yeraltihat:'YERALTI HAT',kanal:'KANAL',kofre:'KOFRE',box:'BOX',abone:'LAMBA',
+    not:'NOT',bina:'BİNA/ALAN',cizgi:'ÇİZGİ',ok:'OK',olcum:'ÖLÇÜM'};
+  function aracKodu(){
+    try{ if(typeof activeTool!=='undefined'&&activeTool) return String(activeTool); }catch(e){}
+    if(olcumAktif()) return 'olcum';
+    return '';
+  }
+  var modBar=null;
+  function modBarKur(){
+    if(modBar&&modBar.parentNode) return modBar;
+    modBar=d.createElement('div'); modBar.id='aybCizimModBar';
+    modBar.style.cssText='position:fixed;left:50%;transform:translateX(-50%);top:150px;z-index:2147482900;display:none;gap:10px;align-items:center;background:rgba(15,23,42,.92);border:1px solid #f59e0b;border-radius:999px;padding:6px 8px 6px 16px;box-shadow:0 8px 24px rgba(0,0,0,.45);font:700 13px system-ui;color:#fde68a;';
+    modBar.innerHTML='<span id="aybCizimModAd">✏ ÇİZİM MODU</span>'+
+      '<button id="aybCizBitir" style="height:32px;padding:0 16px;border:none;border-radius:999px;background:#f59e0b;color:#111;font:800 13px system-ui;cursor:pointer;">✔ Bitir</button>'+
+      '<button id="aybCizIptal" style="height:32px;padding:0 12px;border:1px solid #64748b;border-radius:999px;background:transparent;color:#e2e8f0;font:800 13px system-ui;cursor:pointer;">✖ İptal</button>';
+    var bb=modBar.querySelector('#aybCizBitir'), ii=modBar.querySelector('#aybCizIptal');
+    function tetik(fn){ return function(e){ try{e.preventDefault();e.stopPropagation();}catch(_){}
+      var t=Date.now(); if(modBar.__son&&t-modBar.__son<400) return; modBar.__son=t; fn(); }; }
+    ['pointerdown','click','touchend'].forEach(function(ev){
+      bb.addEventListener(ev,tetik(function(){ bitir(); setTimeout(function(){ if(!tempPts()) iptal(); },80); }),true);
+      ii.addEventListener(ev,tetik(iptal),true);
+    });
+    d.body.appendChild(modBar);
+    return modBar;
   }
   setInterval(function(){
     try{
-      var el=bar(), a=cizimAktif();
-      el.style.display=a?'flex':'none';
-      if(!a) temizleRubber();
+      var eski=d.getElementById('aybCizimBar'); if(eski){ try{ eski.remove(); }catch(_){} }
+      var bar=modBarKur();
+      var kod=aracKodu(), ciz=cizimAktif();
+      var goster=(!!kod||ciz)&&!window.__aybTasimaModu;
+      bar.style.display=goster?'flex':'none';
+      if(goster){
+        var ad=ARAC_AD[kod]||(kod?String(kod).toUpperCase():'ÇİZİM');
+        var sp=bar.querySelector('#aybCizimModAd'); if(sp) sp.textContent='✏ '+ad+' MODU';
+      }
+      if(!ciz) temizleRubber();
     }catch(e){}
-  }, 400);
+  }, 350);
 
   /* ---- harita olaylarını bağla ---- */
   var n=0, iv=setInterval(function(){
@@ -7109,21 +7384,502 @@
   var t=0, iv=setInterval(function(){ if(btn()|| ++t>80) clearInterval(iv); }, 700);
 })();
 
-/* ===================== SÜRÜM ROZETİ (Bayram YARAŞ) =====================
-   Hangi sürümün çalıştığını anlamak için: ekranın sol alt köşesinde küçük
-   "PERF-24.07" yazısı görünür. Bu yazı YOKSA eski sürüm çalışıyor demektir. */
+/* ================= ARAÇ SIRALAMA (İSTEK: Bayram YARAŞ) =================
+   Çizim Araçları düğmelerini BASILI TUTUP SÜRÜKLEYEREK yerleri değiştirilir,
+   sıra hafızada tutulur (localStorage) ve her açılışta aynen uygulanır. */
 (function(){
-  try{
-    function ekle(){
-      try{
-        if(document.getElementById('aybPerfBadge')) return;
-        var b=document.createElement('div');
-        b.id='aybPerfBadge'; b.textContent='PERF-24.07-N';
-        b.style.cssText='position:fixed;left:4px;bottom:4px;z-index:2147483000;font:700 10px system-ui;color:#fff;background:rgba(15,23,42,.55);padding:2px 6px;border-radius:6px;pointer-events:none;';
-        document.body.appendChild(b);
-      }catch(e){}
+  var d=document, KEY="ayb_arac_sira_draw_v1", drag=null;
+  function row(){ return d.querySelector(".ayb-pro-group.draw .ayb-pro-row"); }
+  function items(r){ return Array.prototype.slice.call(r.children).filter(function(c){ return c.id!=="aybCizimBar"; }); }
+  function kimlik(el){
+    try{ if(el.dataset&&el.dataset.tool) return "t:"+el.dataset.tool; }catch(e){}
+    if(el.id) return "i:"+el.id;
+    var sm=el.querySelector?el.querySelector("small"):null;
+    return "s:"+((sm&&sm.textContent)||el.textContent||"").trim();
+  }
+  function kaydet(){ var r=row(); if(!r) return; try{ localStorage.setItem(KEY, JSON.stringify(items(r).map(kimlik))); }catch(e){} }
+  function uygula(){
+    var r=row(); if(!r) return;
+    var sira=null; try{ sira=JSON.parse(localStorage.getItem(KEY)||"null"); }catch(e){}
+    if(!sira||!sira.length) return;
+    var mevcut=items(r), map={};
+    mevcut.forEach(function(el){ var k=kimlik(el); if(!(k in map)) map[k]=el; });
+    sira.forEach(function(k){ if(map[k]) r.appendChild(map[k]); });
+    mevcut.forEach(function(el){ if(sira.indexOf(kimlik(el))<0) r.appendChild(el); });
+    var cb=d.getElementById("aybCizimBar"); if(cb&&cb.parentElement===r) r.appendChild(cb);
+  }
+  function hedefBul(r,x){
+    var its=items(r);
+    for(var i=0;i<its.length;i++){ if(its[i]===drag.el) continue;
+      var b=its[i].getBoundingClientRect();
+      if(x < b.left+b.width/2) return its[i];
     }
-    if(document.body) ekle(); else document.addEventListener('DOMContentLoaded', ekle);
-    setTimeout(ekle, 3000);
-  }catch(e){}
+    return null;
+  }
+  function blokla(e){ if(drag&&drag.aktif&&e.cancelable) e.preventDefault(); }
+  function aktifEt(){
+    if(!drag||drag.aktif) return; drag.aktif=true;
+    try{ clearTimeout(drag.timer); }catch(e){}
+    try{ if(navigator.vibrate) navigator.vibrate(25); }catch(e){}
+    try{ if(drag.pid!=null&&drag.el.setPointerCapture) drag.el.setPointerCapture(drag.pid); }catch(e){}
+    var el=drag.el;
+    el.style.transform="scale(1.08)"; el.style.boxShadow="0 6px 16px rgba(0,0,0,.35)";
+    el.style.position="relative"; el.style.zIndex="99"; el.style.opacity="0.9"; el.style.cursor="grabbing";
+    d.addEventListener("touchmove", blokla, {passive:false});
+  }
+  function tasi(x){
+    var r=row(); if(!r||!drag||!drag.aktif) return;
+    var hedef=hedefBul(r,x);
+    if(hedef){ if(drag.el.nextElementSibling!==hedef) r.insertBefore(drag.el,hedef); }
+    else { var cb=d.getElementById("aybCizimBar");
+      if(cb&&cb.parentElement===r){ if(drag.el.nextElementSibling!==cb) r.insertBefore(drag.el,cb); }
+      else if(r.lastElementChild!==drag.el) r.appendChild(drag.el);
+    }
+  }
+  function birak(){
+    if(!drag) return;
+    try{ clearTimeout(drag.timer); }catch(e){}
+    var aktifti=drag.aktif, el=drag.el;
+    try{ if(drag.pid!=null&&drag.el.releasePointerCapture) drag.el.releasePointerCapture(drag.pid); }catch(e){}
+    if(aktifti){
+      el.style.transform=""; el.style.boxShadow=""; el.style.position=""; el.style.zIndex=""; el.style.opacity=""; el.style.cursor="";
+      kaydet();
+      var yut=function(ev){ try{ ev.stopPropagation(); ev.preventDefault(); }catch(e){} kaldir(); };
+      var kaldir=function(){ try{ d.removeEventListener("click",yut,true); }catch(e){} };
+      d.addEventListener("click",yut,true);
+      setTimeout(kaldir,400);
+      try{ (window.hint||function(){})("Araç sırası kaydedildi"); }catch(e){}
+    }
+    try{ d.removeEventListener("touchmove", blokla); }catch(e){}
+    drag=null;
+  }
+  d.addEventListener("pointerdown", function(e){
+    if(e.button!==undefined && e.button!==0) return;
+    var r=row(); if(!r) return;
+    var el=(e.target&&e.target.closest)?e.target.closest(".ayb-pro-btn"):null;
+    if(!el||el.parentElement!==r) return;
+    var mouse=(e.pointerType!=='touch');
+    drag={el:el,startX:e.clientX,startY:e.clientY,aktif:false,pid:e.pointerId,mouse:mouse,
+      timer:setTimeout(aktifEt,mouse?300:350)};
+  }, true);
+  d.addEventListener("pointermove", function(e){
+    if(!drag) return;
+    if(!drag.aktif){
+      var dx=Math.abs(e.clientX-drag.startX), dy=Math.abs(e.clientY-drag.startY);
+      /* PC (fare/kalem): bekleme YOK — 6px hareketle sürükleme hemen başlar.
+         Dokunmatik: erken kayma = şerit kaydırma; sürükleme için basılı tut. */
+      if(drag.mouse){ if(dx>6||dy>6) aktifEt(); }
+      else if(dx>12||dy>12){ try{clearTimeout(drag.timer);}catch(_){} drag=null; }
+      return;
+    }
+    if(e.cancelable) e.preventDefault();
+    tasi(e.clientX);
+  }, true);
+  d.addEventListener("pointerup", birak, true);
+  d.addEventListener("pointercancel", birak, true);
+  d.addEventListener("contextmenu", function(e){ if(drag&&drag.aktif){ e.preventDefault(); } }, true);
+  if(!d.getElementById("aybSiralaCss")){
+    var st=d.createElement("style"); st.id="aybSiralaCss";
+    st.textContent=".ayb-pro-group.draw .ayb-pro-btn{-webkit-user-select:none;user-select:none;cursor:grab;-webkit-app-region:no-drag;}"+
+      "#aybOfficeRibbon,.ayb-pro-row,.ayb-pro-btn,#aybRibbonTabs{-webkit-app-region:no-drag;}";
+    (d.head||d.documentElement).appendChild(st);
+  }
+  var lastN=-1, n=0, iv=setInterval(function(){
+    try{
+      var r=row(); if(!r){ if(++n>80) clearInterval(iv); return; }
+      if(!drag){ var c=r.children.length; if(c!==lastN){ lastN=c; uygula(); } }
+      if(++n>80) clearInterval(iv);
+    }catch(e){}
+  }, 700);
+})();
+
+/* ================= KULLANIM KILAVUZU (İSTEK: Bayram YARAŞ) =================
+   Kısayol tuşları + kullanım kılavuzu PROGRAM İÇİNDE: Rapor/Veri şeridinde
+   📖 Kılavuz düğmesi; pencereden TXT olarak da kaydedilebilir.
+   Ayrıca PC klasöründe KULLANIM_KILAVUZU.txt hazır gelir. */
+(function(){
+  var d=document;
+  var B=[
+    ["KISAYOL TUŞLARI (PC KLAVYE)",[
+      "D  : Son direk bilgisiyle direk atma (seri giriş)   |   Ctrl+D : Menüyle direk",
+      "T  : Son trafo bilgisiyle trafo atma                |   Ctrl+T : Menüyle trafo",
+      "H  : Havai hat çekme (son hat bilgisiyle)           |   Ctrl+H : Menüyle hat",
+      "A / M : Yeraltı kablosu çekme                       |   Ctrl+A : Menüyle yeraltı",
+      "K  : Kofre atma          |  Ctrl+K : Menüyle kofre",
+      "L  : Lamba atma          |  Ctrl+L : Menüyle lamba",
+      "N  : Not atma            |  Ctrl+N : Menüyle not",
+      "G  : Hat etiketlerini gizle / göster      Y : Etiketleri aç",
+      "Q  : Kesit değiştirme (başlangıç ve bitiş objesine tıkla, form açılır)",
+      "Enter : Serbest çizimi bitir (kanal, bina, çizgi, ok)",
+      "ESC   : Aktif işlemi iptal et",
+      "NOT: İmleç bir yazı kutusundayken kısayollar çalışmaz; önce haritaya tıkla."
+    ]],
+    ["ÇİZİM VE BİTİRME",[
+      "Tüm çizim araçları Çizim Araçları sekmesindedir.",
+      "Bir araca tıklayınca haritanın üst ortasında TURUNCU MOD ÇUBUĞU açılır",
+      "(Taşıma Modu'ndaki çubuğun aynısı): ✏ DİREK MODU ✔ Bitir ✖ İptal.",
+      "✔ Bitir: işlemi bitirir ve aracı kapatır. ✖ İptal / ESC: yarım işlemi iptal eder.",
+      "Hat ve kanal çizerken ÇİFT TIK da çizimi bitirir."
+    ]],
+    ["ARAÇLARIN YERİNİ ÖZELLEŞTİRME",[
+      "PC: Çizim Araçları'nda bir düğmeyi FARE İLE TUTUP hemen sağa-sola sürükle.",
+      "Tablet: düğmeyi yarım saniye basılı tut, sonra sürükle.",
+      "Bıraktığın yer kaydedilir; program her açılışta senin sıranla gelir."
+    ]],
+    ["TAŞIMA MODU",[
+      "Objeye tıkla, Taşı de: taşıma modu açılır, menü bir daha gelmez.",
+      "Peş peşe istediğin kadar direk/trafo/obje taşı.",
+      "Direk taşırken bağlı hatlar CANLI birlikte hareket eder.",
+      "Bitirmek için: farede SAĞ TIK, tablette UZUN BAS, üstteki ✔ Bitir veya ESC."
+    ]],
+    ["NUMARALANDIRMA (OTO NO)",[
+      "Normal şebeke direkleri: A01, A02... B01... (kol harfi + sıra).",
+      "AYD (aydınlatma) direkleri: SA01, SB01... (S + kol harfi + sıra)."
+    ]],
+    ["GÜNÜN ÖZETİ VE TRAFO BAZINDA SAYIM",[
+      "Rapor/Veri sekmesinde Günün Özeti: bugün ve toplam takılan lamba, direk sayısı.",
+      "TRAFO BAZINDA sayım SADECE HAT BAĞLANTISINA göre yapılır:",
+      "her trafo kendi kollarındaki ve dallarındaki direkleri sayar.",
+      "Hatla hiçbir trafoya bağlı olmayan direkler (trafo olmayan bölge) olarak ayrı yazılır.",
+      "🎨 Bölgeleri Haritada Göster: her trafonun saydığı direkler kendi renginde,",
+      "trafosuz bölge gri görünür. Excel İndir 5 sayfalı rapor verir."
+    ]],
+    ["SAHA - OFİS VERİ ALIŞVERİŞİ",[
+      "Paket Dış: gönderilecek paket (MIF katmanları + aybproje.json tam veri).",
+      "Tablette WhatsApp tan gelen json/zip dosyasına dokun, Körfezim Saha ile aç:",
+      "açık projeye OTOMATİK BİRLEŞİR. Mükerrer kayıtta GÜNCEL VERİ KAZANIR.",
+      "PC de Belgeler\\Korfezim_Saha\\Gelen klasörüne bırakılan dosya otomatik alınır."
+    ]],
+    ["YEDEK VE SİLME",[
+      "Otomatik yedek: Belgeler\\Korfezim_Saha\\Yedek klasörü, günde 1 dosya, en çok 30 adet.",
+      "Proje ekranındaki Sil düğmesi ONAY sorar; açık proje silinemez."
+    ]],
+    ["DIŞA AKTARIM (DXF / MIF)",[
+      "DXF: direk sembolleri B_CAD fontuyla B Pro ile birebir aynıdır;",
+      "montaj/yerinde/yenilenecek/ilerde/bysk durumlarına göre sembol değişir.",
+      "Trafo sembolü türe göre çizilir: direk tipi, bina tipi, beton köşk.",
+      "Hat yazısı: KESİT hattın üstünde, METRE altında.",
+      "MIF: çizilen HER obje tipi katman olarak dışa verilir (direk, hat, trafo,",
+      "box, kofre, abone, ek müf, kanal)."
+    ]],
+    ["SÜRÜM KONTROLÜ",[
+      "Kurulu sürüm program başlığında yazar (PERF-... etiketi).",
+      "Yeni paket kurduktan sonra başlıktan doğrula; eski yazıyorsa eski klasör açılmıştır."
+    ]]
+  ];
+  function duzMetin(){
+    var L=[];
+    L.push("KÖRFEZİM SAHA METRAJ — KULLANIM KILAVUZU VE KISAYOLLAR");
+    L.push("Hazırlayan: Bayram YARAŞ   ·   Sürüm: "+(window.AYB_SURUM||"(başlıkta yazar)"));
+    L.push("");
+    B.forEach(function(bl){
+      L.push(bl[0]); L.push(new Array(bl[0].length+1).join("="));
+      bl[1].forEach(function(x){ L.push(x); });
+      L.push("");
+    });
+    return L.join("\r\n");
+  }
+  function panel(){
+    var el=d.getElementById("aybKilavuzPanel");
+    if(el) return el;
+    el=d.createElement("div"); el.id="aybKilavuzPanel";
+    el.style.cssText="position:fixed;inset:0;z-index:6200;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;";
+    var html=
+      '<div style="background:#fff;border-radius:16px;max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.45);overflow:hidden;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e2e8f0;">'+
+          '<div style="font-size:17px;font-weight:800;color:#0f766e;">📖 Kullanım Kılavuzu ve Kısayollar</div>'+
+          '<div id="aybKlvzKapaX" style="cursor:pointer;font-size:20px;color:#64748b;font-weight:800;">✕</div></div>'+
+        '<div id="aybKlvzGovde" style="overflow:auto;padding:14px 18px;font-size:13.5px;line-height:1.6;color:#0f172a;"></div>'+
+        '<div style="display:flex;gap:8px;padding:12px 18px;border-top:1px solid #e2e8f0;">'+
+          '<button id="aybKlvzTxt" style="flex:1;border:none;border-radius:10px;background:#16a34a;color:#fff;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">📄 TXT Olarak Kaydet</button>'+
+          '<button id="aybKlvzKapat" style="flex:1;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">Kapat</button></div>'+
+      '</div>';
+    el.innerHTML=html;
+    d.body.appendChild(el);
+    var g=el.querySelector("#aybKlvzGovde"), parca="";
+    parca+='<div style="font-size:12px;color:#64748b;margin-bottom:10px;">Hazırlayan: Bayram YARAŞ · Sürüm: '+(window.AYB_SURUM||"")+'</div>';
+    B.forEach(function(bl){
+      parca+='<div style="font-weight:800;color:#0f766e;margin:12px 0 4px;border-bottom:2px solid #ccfbf1;padding-bottom:2px;">'+bl[0]+'</div>';
+      bl[1].forEach(function(x){ parca+='<div style="padding:1.5px 0;white-space:pre-wrap;">'+x+'</div>'; });
+    });
+    g.innerHTML=parca;
+    function kapat(){ el.style.display="none"; }
+    el.querySelector("#aybKlvzKapaX").onclick=kapat;
+    el.querySelector("#aybKlvzKapat").onclick=kapat;
+    el.querySelector("#aybKlvzTxt").onclick=function(){
+      var metin=duzMetin();
+      try{ if(window.aybShareFile){ window.aybShareFile("KULLANIM_KILAVUZU.txt", new Blob(["\ufeff"+metin],{type:"text/plain;charset=utf-8"}), "text/plain"); return; } }catch(e){}
+      try{
+        var b=new Blob(["\ufeff"+metin],{type:"text/plain;charset=utf-8"});
+        var a=d.createElement("a"); a.href=URL.createObjectURL(b); a.download="KULLANIM_KILAVUZU.txt";
+        d.body.appendChild(a); a.click();
+        setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },1500);
+      }catch(e){}
+    };
+    return el;
+  }
+  window.aybKilavuzAc=function(){ panel().style.display="flex"; };
+  function injectBtn(){
+    if(d.getElementById("aybKilavuzBtn")) return true;
+    var r=d.querySelector(".ayb-pro-group.report .ayb-pro-row");
+    if(!r) return false;
+    var b=d.createElement("button");
+    b.type="button"; b.id="aybKilavuzBtn"; b.className="ayb-pro-btn toolbtn"; b.title="Kullanım kılavuzu ve kısayol tuşları";
+    b.innerHTML='<div class="ayb-pro-ico" style="font-size:18px">📖</div><small>Kılavuz</small>';
+    b.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); window.aybKilavuzAc(); });
+    r.appendChild(b);
+    return true;
+  }
+  var n=0, iv=setInterval(function(){ if(injectBtn()||++n>60) clearInterval(iv); }, 700);
+})();
+
+/* ================= KISAYOL SİGORTA (İSTEK: Bayram YARAŞ) =================
+   PC'de T=Trafo, D=Direk, H=Hat kısayolları çalışmıyordu: setup() içinde
+   tanımsız openAYBInfo referansı hata verip bindAYBShortcutKeys() satırına
+   hiç ulaşılamıyordu. Ana hata düzeltildi; bu modül ayrıca SİGORTA:
+   kısayollar herhangi bir sebeple bağlanmadıysa kendisi bağlar. */
+(function(){
+  function kur(){
+    try{
+      if(window.__aybShortcutBound) return true;
+      if(typeof window.bindAYBShortcutKeys==='function'){ window.bindAYBShortcutKeys(); return !!window.__aybShortcutBound; }
+    }catch(e){}
+    return false;
+  }
+  var n=0, iv=setInterval(function(){ if(kur()||++n>20) clearInterval(iv); }, 700);
+  kur();
+})();
+
+/* ===================== SÜRÜM YAZISI (Bayram YARAŞ) =====================
+   Sol alttaki rozet KALDIRILDI. Sürüm etiketi üst başlıkta "Körfezim Saha Metraj"
+   yanında görünür (eski v111'in yerinde). */
+(function(){
+  var TAG='PERF-25.07-G';
+  window.AYB_SURUM=TAG;
+  function uygula(){
+    try{
+      var eski=document.getElementById('aybPerfBadge'); if(eski) eski.remove();
+      var t=document.querySelector('.titlebar .title')||document.querySelector('.title');
+      if(t){
+        var want='Körfezim Saha Metraj '+TAG+'\u00A0\u00A0\u00A0Hazırlayan Bayram YARAŞ';
+        if(t.textContent!==want) t.textContent=want;
+      }
+    }catch(e){}
+  }
+  uygula();
+  var n=0, iv=setInterval(function(){ uygula(); if(++n>20) clearInterval(iv); }, 700);
+})();
+
+
+/* ===================== CANLI TAŞIMA v2 — LASTİK BANT (Bayram YARAŞ) =====================
+   Direk/trafo/box sürüklenirken bağlı hatlar PARLAK LASTİK BANT olarak objeyle birlikte
+   CANLI akar (kayıt sisteminden bağımsız, garantili görünür). Bırakınca bant kalkar,
+   gerçek hat yeni yerine oturur. Sürükleme başında "CANLI taşıma: X bağlı hat" bildirimi çıkar. */
+(function(){
+  "use strict";
+  var temps=[], gizli=[];
+  function P(){ try{ if(typeof project!=='undefined'&&project) return project; }catch(e){} return window.project||null; }
+  function REG(){ try{ if(typeof lineLayers!=='undefined') return lineLayers; }catch(e){} return null; }
+  function M(){ return window.__aybMap||window.map||null; }
+  function pts(l,p){
+    var a=p.objects.find(function(x){return x.id===l.start;}), b=p.objects.find(function(x){return x.id===l.end;});
+    if(!a||!b) return null;
+    if(Array.isArray(l.points)&&l.points.length>=2){
+      var q=l.points.map(function(z){return [+z[0],+z[1]];});
+      q[0]=[+a.lat,+a.lng]; q[q.length-1]=[+b.lat,+b.lng];
+      return q;
+    }
+    return [[+a.lat,+a.lng],[+b.lat,+b.lng]];
+  }
+  function basla(id){
+    temizle();
+    var p=P(), map=M(); if(!p||!map||!window.L) return 0;
+    var n=0;
+    (p.lines||[]).forEach(function(l){
+      if(!l||(l.start!==id&&l.end!==id)) return;
+      var q=pts(l,p); if(!q) return;
+      var t=window.L.polyline(q,{color:'#22d3ee',weight:4,opacity:.95,interactive:false}).addTo(map);
+      t.__l=l; temps.push(t); n++;
+      try{
+        var reg=REG(); var pk=reg&&reg.get?reg.get(l.id):null;
+        if(pk&&pk.poly&&pk.poly.setStyle){ gizli.push([pk.poly, pk.poly.options.opacity]); pk.poly.setStyle({opacity:0.12}); }
+      }catch(e){}
+    });
+    return n;
+  }
+  function guncelle(){
+    var p=P(); if(!p) return;
+    temps.forEach(function(t){ var q=pts(t.__l,p); if(q){ try{ t.setLatLngs(q); }catch(e){} } });
+  }
+  function temizle(){
+    var map=M();
+    temps.forEach(function(t){ try{ if(map) map.removeLayer(t); }catch(e){} }); temps=[];
+    gizli.forEach(function(g){ try{ g[0].setStyle({opacity:(g[1]==null?1:g[1])}); }catch(e){} }); gizli=[];
+  }
+  function kur(){
+    try{
+      if(typeof markers==='undefined'||!markers||!markers.forEach) return;
+      markers.forEach(function(m,id){
+        if(!m||m.__aybLive2||typeof m.on!=='function') return;
+        m.__aybLive2=1;
+        m.on('dragstart',function(){
+          var n=basla(id);
+          try{ if(window.toast) toast('CANLI taşıma: '+n+' bağlı hat takipte'); }catch(e){}
+        });
+        m.on('drag',function(){
+          try{
+            var p=P(); var o=p&&p.objects.find(function(x){return x.id===id;});
+            if(o){ var ll=m.getLatLng(); o.lat=ll.lat; o.lng=ll.lng; }
+            guncelle();
+            try{ if(typeof window.updateConnectedLines==='function') window.updateConnectedLines(id); }catch(e){}
+          }catch(e){}
+        });
+        m.on('dragend',function(){
+          try{ temizle(); }catch(e){}
+          /* KESİN OTURTMA (Bayram YARAŞ): bağlı hatlar 'ekranı yenile' ile aynı
+             çizim yolundan, ama SADECE o hatlar için baştan çizilir — geri kaçamaz. */
+          try{
+            var p=P(); if(!p) return;
+            var o=p.objects.find(function(x){return x.id===id;});
+            if(o){ var ll=m.getLatLng(); o.lat=ll.lat; o.lng=ll.lng; }
+            var map=M(), reg=REG();
+            (p.lines||[]).forEach(function(l){
+              if(!l||(l.start!==id&&l.end!==id)) return;
+              try{
+                var q=pts(l,p);
+                if(q&&Array.isArray(l.points)&&l.points.length>=2){ l.points[0]=q[0]; l.points[l.points.length-1]=q[q.length-1]; }
+                if(q&&typeof window.polyLength==='function') l.length_m=window.polyLength(q);
+              }catch(e){}
+              try{
+                var pk=reg&&reg.get?reg.get(l.id):null;
+                if(pk&&map){
+                  try{ map.removeLayer(pk.poly); }catch(e){}
+                  try{ if(pk.hit) map.removeLayer(pk.hit); }catch(e){}
+                  try{ if(pk.label) map.removeLayer(pk.label); }catch(e){}
+                  try{ if(pk.region) map.removeLayer(pk.region); }catch(e){}
+                  try{ reg.delete(l.id); }catch(e){}
+                }
+                if(typeof window.renderLine==='function') window.renderLine(l);
+              }catch(e){}
+            });
+            try{ if(typeof window.refreshLineLabels==='function') window.refreshLineLabels(); }catch(e){}
+            try{ if(typeof window.aybRefreshLampsFor==='function') window.aybRefreshLampsFor([id]); }catch(e){}
+            try{ if(typeof window.updateSummary==='function') window.updateSummary(); }catch(e){}
+            try{ if(typeof window.saveProject==='function') window.saveProject(); }catch(e){}
+            /* TAŞIMA MODU açıkken: bir sonraki obje için sürükleme aktif kalsın */
+            try{ if(window.__aybTasimaModu && m.dragging){ setTimeout(function(){ try{ m.dragging.enable(); }catch(e){} }, 30); } }catch(e){}
+          }catch(e){}
+        });
+      });
+    }catch(e){}
+  }
+  setInterval(kur, 1000);
+})();
+
+
+/* ===================== TAŞIMA MODU (Bayram YARAŞ) =====================
+   "Taşı" bir kez tıklanır: menü kapanır ve MOD AÇIK kalır — birden fazla obje
+   art arda sürüklenip taşınır. Mod boyunca Taşı/Sil menüsü AÇILMAZ.
+   Bitirme: PC'de SAĞ TIK, tablette haritaya BASILI TUT, ya da ✔ Taşımayı Bitir. */
+(function(){
+  "use strict";
+  var aktif=false, btn=null, bagli=false;
+  function MK(){ try{ if(typeof markers!=='undefined') return markers; }catch(e){} return null; }
+  function M(){ return window.__aybMap||window.map||null; }
+  function popKapat(){ try{ var map=M(); map&&map.closePopup(); }catch(e){} }
+  function tumunuAyarla(ac){
+    var mk=MK(); if(!mk||!mk.forEach) return;
+    mk.forEach(function(m){
+      try{
+        if(ac){ if(m.getPopup&&m.getPopup()) m.unbindPopup(); if(m.dragging) m.dragging.enable(); }
+        else { if(m.dragging) m.dragging.disable(); }
+      }catch(e){}
+    });
+  }
+  function btnGoster(g){
+    if(g){
+      if(btn) return;
+      /* Mod çubuğu: harita ÜST ORTASINDA sabit — her sekmede görünür, tıklaması garanti */
+      btn=document.createElement('div');
+      btn.id='aybTasiBitirBar';
+      btn.style.cssText='position:fixed;left:50%;transform:translateX(-50%);top:150px;z-index:2147483000;display:flex;gap:10px;align-items:center;background:rgba(15,23,42,.92);border:1px solid #f59e0b;border-radius:999px;padding:6px 8px 6px 16px;box-shadow:0 8px 24px rgba(0,0,0,.45);font:700 13px system-ui;color:#fde68a;';
+      btn.innerHTML='🖐 TAŞIMA MODU AÇIK <button id="aybTasiBitirBtn" style="height:32px;padding:0 16px;border:none;border-radius:999px;background:#f59e0b;color:#111;font:800 13px system-ui;cursor:pointer;">✔ Bitir</button>';
+      var bb=btn.querySelector('#aybTasiBitirBtn');
+      ['pointerdown','click','touchend'].forEach(function(ev){
+        bb.addEventListener(ev,function(e){ try{e.preventDefault();e.stopPropagation();}catch(_){} kapat(); },true);
+      });
+      document.body.appendChild(btn);
+      if(!window.__aybTasiEsc){
+        window.__aybTasiEsc=true;
+        document.addEventListener('keydown',function(e){ if(aktif&&(e.key==='Escape'||e.key==='Esc')) kapat(); },true);
+      }
+    } else if(btn){ try{ btn.remove(); }catch(e){} btn=null; }
+  }
+  function ac(){
+    if(aktif) return;
+    aktif=true; window.__aybTasimaModu=true;
+    popKapat(); tumunuAyarla(true); btnGoster(true); bagla();
+    try{ if(window.hint) hint('TAŞIMA MODU AÇIK: objeleri sürükle-bırak. Bitir: SAĞ TIK / basılı tut / ✔ Taşımayı Bitir.'); }catch(e){}
+    try{ if(window.toast) toast('Taşıma modu AÇIK — art arda taşıyabilirsin. Sağ tık = bitir.'); }catch(e){}
+  }
+  function kapat(){
+    if(!aktif) return;
+    aktif=false; window.__aybTasimaModu=false;
+    tumunuAyarla(false); btnGoster(false); popKapat();
+    try{ if(window.hint) hint('Hazır. Direk / Hat / Kanal aracını seç.'); }catch(e){}
+    try{ if(window.toast) toast('Taşıma modu kapatıldı.'); }catch(e){}
+  }
+  function bagla(){
+    if(bagli) return; var map=M(); if(!map) return; bagli=true;
+    map.on('contextmenu', function(e){
+      if(!aktif) return;
+      try{ if(e.originalEvent){ e.originalEvent.preventDefault(); e.originalEvent.stopPropagation(); } }catch(_){}
+      kapat();
+    });
+    try{
+      var c=map.getContainer(), t=null, sx=0, sy=0;
+      c.addEventListener('touchstart', function(ev){
+        if(!aktif) return; if(!ev.touches||ev.touches.length!==1) return;
+        var p=ev.touches[0]; sx=p.clientX; sy=p.clientY;
+        t=setTimeout(function(){ t=null; kapat(); }, 700);
+      }, {passive:true});
+      c.addEventListener('touchmove', function(ev){
+        if(!t) return; var p=ev.touches&&ev.touches[0];
+        if(p&&(Math.abs(p.clientX-sx)>14||Math.abs(p.clientY-sy)>14)){ clearTimeout(t); t=null; }
+      }, {passive:true});
+      c.addEventListener('touchend', function(){ if(t){ clearTimeout(t); t=null; } }, {passive:true});
+    }catch(e){}
+  }
+  var n=0, iv=setInterval(function(){
+    try{
+      if(window.APP && typeof window.APP.moveObject==='function' && !window.APP.__aybTasiModu){
+        window.APP.__aybTasiModu=true;
+        window.APP.moveObject=function(id){ popKapat(); ac(); };
+      }
+      if(typeof window.showObjectPopup==='function' && !window.showObjectPopup.__aybTasi){
+        var orij=window.showObjectPopup;
+        var yeni=function(obj){ if(aktif){ return; } return orij.apply(this,arguments); };
+        yeni.__aybTasi=true; window.showObjectPopup=yeni;
+      }
+    }catch(e){}
+    if(++n>240) clearInterval(iv);
+  }, 500);
+  setInterval(function(){ if(aktif) tumunuAyarla(true); }, 1200);   /* yeni çizilen objeler de moda dahil olsun */
+  window.aybTasimaModuKapat=kapat;
+})();
+
+
+/* Sağ alttaki eski '× Bitir' (btnCancelTool): pro şerit varken CSS ile KALICI gizlenir —
+   uygulama araç açılınca onu yeniden gösteriyordu, CSS kuralı hepsini bastırır (Bayram YARAŞ). */
+(function(){
+  var n=0, iv=setInterval(function(){
+    try{
+      if(document.querySelector('.ayb-pro-ribbon') && !document.getElementById('aybCancelGizle')){
+        var st=document.createElement('style'); st.id='aybCancelGizle';
+        st.textContent='#btnCancelTool{display:none!important;}';
+        (document.head||document.documentElement).appendChild(st);
+      }
+    }catch(e){}
+    if(document.getElementById('aybCancelGizle')||++n>80) clearInterval(iv);
+  }, 600);
 })();

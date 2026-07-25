@@ -2129,6 +2129,10 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
 .ayb-cok-marker .leaflet-zoom-anim .leaflet-marker-pane,
 .ayb-cok-marker.leaflet-zoom-anim .leaflet-shadow-pane,
 .ayb-cok-marker .leaflet-zoom-anim .leaflet-shadow-pane{visibility:hidden!important;}
+/* İSTEK (Bayram YARAŞ): bilgi yazısı harita üzerinde DEĞİL, alt barda görünsün.
+   PC'de (alt bar varken) yüzen baloncuk gizlenir; tablette alt bar olmadığı için kalır. */
+@media(min-width:901px){ .hint{display:none!important} }
+#statusReady{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 </style>
 
 </head>
@@ -3157,7 +3161,7 @@ function finishCurrentOperation(){
   if(hasEnergy || hasEnergyMode){ hint('Enerji animasyonu kapatıldı.'); toast('Enerji animasyonu kapatıldı.'); return true; }
   return false;
 }
-function hint(msg){$('#hint').textContent=msg; $('#statusReady').textContent='💾 '+msg.slice(0,45)}
+function hint(msg){$('#hint').textContent=msg; $('#statusReady').textContent='💾 '+msg.slice(0,90)}
 function aybAddFreeDrawLatLng(latlng,labelPrefix){
   if(!latlng) return;
   tempPoints.push(L.latLng(latlng.lat,latlng.lng));
@@ -4434,7 +4438,58 @@ function makeIcon(obj){
   return L.divIcon({className:'',iconSize,iconAnchor,html:`<div class="symbol ${cls}"${wrapperStyle}><div class="hit"></div>${core}<div class="sym-label${labelClass}">${labelHtml}</div></div>`});
 }
 function aybHandleFastObjectPick(obj,e){if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent);} if(!obj) return false; if(!(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'||activeTool==='kanal')) return false; if(aybShouldIgnoreFastObjectPick(obj)) return true; if(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'){handleLineObject(obj); return true;} if(activeTool==='kanal'){aybAddFreeDrawObjectPoint(obj); return true;} return false;}
-function renderObject(obj){const m=L.marker([obj.lat,obj.lng],{icon:makeIcon(obj),draggable:false,riseOnHover:true}).addTo(map); markers.set(obj.id,m); m.on('mouseover',e=>{aybEnergyHoverObject(obj,false);}); m.on('mousedown',e=>{if(aybHandleFastObjectPick(obj,e)) return;}); m.on('touchstart',e=>{if(aybHandleFastObjectPick(obj,e)) return;}); m.on('click',e=>{if(e&&e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent); if(aybEnergyHoverMode){aybEnergyHoverObject(obj,true); return} if(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'||activeTool==='kanal'){aybHandleFastObjectPick(obj,e); return} /* tek tık popup açmaz; çift tık=form, sağ tık=Taşı/Sil */}); m.on('contextmenu',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(finishCurrentOperation()) return; showObjectPopup(obj)}); aybBindLongPress(m,function(){ if(activeTool) return; if(aybEnergyHoverMode) return; showObjectPopup(obj); }); m.on('dblclick',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} APP.editObject(obj.id)}); m.on('drag',e=>{obj.lat=e.target.getLatLng().lat; obj.lng=e.target.getLatLng().lng; updateConnectedLines(obj.id)}); m.on('dragend',()=>{if(m.dragging)m.dragging.disable(); saveProject(); renderAll(); toast('Obje yeni konumuna taşındı')});
+/* ===== CANLI TAŞIMA / CANLI HAT (Bayram YARAŞ) =====
+   Direk/trafo/box vb. taşınırken bağlı hatlar CANLI takip eder; taşıma bitince
+   TAM YENİDEN ÇİZİM YAPILMAZ (hiçbir şey kaybolmaz), sadece ilgili parçalar güncellenir. */
+function aybHatCanliGuncelle(l){
+  try{
+    const a=project.objects.find(x=>x.id===l.start), b=project.objects.find(x=>x.id===l.end);
+    if(!a||!b) return;
+    let pts;
+    if(Array.isArray(l.points)&&l.points.length>=2){
+      l.points[0]=[+a.lat,+a.lng];
+      l.points[l.points.length-1]=[+b.lat,+b.lng];
+      pts=l.points.map(q=>[+q[0],+q[1]]);
+    } else {
+      pts=[[+a.lat,+a.lng],[+b.lat,+b.lng]];
+    }
+    const pk=lineLayers.get(l.id); if(!pk||!pk.poly) return;
+    pk.poly.setLatLngs(pts);
+    try{ if(pk.hit) pk.hit.setLatLngs(pts); }catch(e){}
+    try{
+      if(pk.label){
+        const mi=Math.floor(pts.length/2);
+        const mid=(pts.length%2===1)?pts[mi]:[(pts[mi-1][0]+pts[mi][0])/2,(pts[mi-1][1]+pts[mi][1])/2];
+        pk.label.setLatLng(mid);
+      }
+    }catch(e){}
+  }catch(e){}
+}
+function updateConnectedLines(id){
+  let n=0;
+  try{
+    if(!project||!map) return 0;
+    (project.lines||[]).forEach(l=>{ if(l && (l.start===id||l.end===id)){ aybHatCanliGuncelle(l); n++; } });
+  }catch(e){}
+  return n;
+}
+function aybTasimaBitir(obj){
+  updateConnectedLines(obj.id);
+  (project.lines||[]).forEach(l=>{
+    if(!l||(l.start!==obj.id&&l.end!==obj.id)) return;
+    try{
+      const aa=project.objects.find(x=>x.id===l.start), bb=project.objects.find(x=>x.id===l.end);
+      const pts=(Array.isArray(l.points)&&l.points.length>=2)?l.points:[[+aa.lat,+aa.lng],[+bb.lat,+bb.lng]];
+      l.length_m=polyLength(pts);
+    }catch(e){}
+  });
+  try{ refreshLineLabels(); }catch(e){}
+  try{ if(typeof aybRefreshLampsFor==='function') aybRefreshLampsFor([obj.id]); }catch(e){}
+  try{ repositionPointLabels(); }catch(e){}
+  try{ updateSummary(); }catch(e){}
+  saveProject();
+}
+function renderObject(obj){const m=L.marker([obj.lat,obj.lng],{icon:makeIcon(obj),draggable:false,riseOnHover:true}).addTo(map); markers.set(obj.id,m); m.on('mouseover',e=>{aybEnergyHoverObject(obj,false);}); m.on('mousedown',e=>{if(aybHandleFastObjectPick(obj,e)) return;}); m.on('touchstart',e=>{if(aybHandleFastObjectPick(obj,e)) return;}); m.on('click',e=>{if(e&&e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent); if(aybEnergyHoverMode){aybEnergyHoverObject(obj,true); return} if(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'||activeTool==='kanal'){aybHandleFastObjectPick(obj,e); return} /* tek tık popup açmaz; çift tık=form, sağ tık=Taşı/Sil */}); m.on('contextmenu',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(finishCurrentOperation()) return; showObjectPopup(obj)}); aybBindLongPress(m,function(){ if(activeTool) return; if(aybEnergyHoverMode) return; showObjectPopup(obj); }); m.on('dblclick',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} APP.editObject(obj.id)}); m.on('drag',e=>{obj.lat=e.target.getLatLng().lat; obj.lng=e.target.getLatLng().lng; updateConnectedLines(obj.id)}); m.on('dragend',()=>{if(m.dragging)m.dragging.disable(); try{ aybTasimaBitir(obj); }catch(e){ saveProject(); renderAll(); } toast('Obje yeni konumuna taşındı')});
   try{ aybRenderPoleLamps(obj); }catch(e){}
 }
 function aybRefreshPoleLamps(){
@@ -4669,7 +4724,7 @@ function aybLineRegionSvg(line,angle,scale=getLineLabelScale()){
 }
 function makeLineRegionHTML(line,angle,scale=getLineLabelScale()){return aybLineRegionSvg(line,angle,scale).html;}
 function makeLineRegionIcon(line,angle){const scale=getLineLabelScale(); const o=aybLineRegionSvg(line,angle,scale); return L.divIcon({className:'ayb-line-region-icon',html:o.html,iconSize:[o.w,o.h],iconAnchor:[Math.round(o.w/2),Math.round(o.h/2)]});}
-function updateLineRegionMarker(line,pack){if(!pack) return; const a=project.objects.find(o=>o.id===line.start), b=project.objects.find(o=>o.id===line.end); if(!a||!b) return; const items=getLineRegionSeparationItems(line); if(!items.length){ if(pack.region){try{map.removeLayer(pack.region)}catch(e){} pack.region=null;} return; } const pts=aybLinePathPoints(line,a,b); const place=aybLineLabelPlacementFromPoints(pts); if(!pack.region){pack.region=L.marker(place.latlng,{icon:makeLineRegionIcon(line,place.angle),interactive:false,zIndexOffset:10}).addTo(map);} else {pack.region.setLatLng(place.latlng); pack.region.setIcon(makeLineRegionIcon(line,place.angle));}}
+function updateLineRegionMarker(line,pack,oIdx){if(!pack) return; const a=(oIdx&&oIdx.get(line.start))||project.objects.find(o=>o.id===line.start), b=(oIdx&&oIdx.get(line.end))||project.objects.find(o=>o.id===line.end); if(!a||!b) return; const items=getLineRegionSeparationItems(line); if(!items.length){ if(pack.region){try{map.removeLayer(pack.region)}catch(e){} pack.region=null; pack.__regKey='';} return; } const pts=aybLinePathPoints(line,a,b); const place=aybLineLabelPlacementFromPoints(pts); let rk=''; try{ rk=items.map(String).join('~')+'|'+place.angle.toFixed(1)+'|'+String(typeof getLineLabelScale==='function'?JSON.stringify(getLineLabelScale()):''); }catch(e){ rk=''; } if(!pack.region){pack.region=L.marker(place.latlng,{icon:makeLineRegionIcon(line,place.angle),interactive:false,zIndexOffset:10}).addTo(map); pack.__regKey=rk;} else {pack.region.setLatLng(place.latlng); if(!rk||rk!==pack.__regKey){ pack.region.setIcon(makeLineRegionIcon(line,place.angle)); pack.__regKey=rk; }}}
 function aybChannelLabelSvg(ch,len,angle,scale){
   const tip=aybKanalLabelFromProps(ch.props);
   const set=getAYBLabelRuntimeSettings();
@@ -4695,8 +4750,21 @@ function aybChannelLabelSvg(ch,len,angle,scale){
 }
 function makeChannelLabelHTML(ch,len,angle){return aybChannelLabelSvg(ch,len,angle,getLineLabelScale()).html;}
 function makeChannelLabelIcon(ch,len,angle){const o=aybChannelLabelSvg(ch,len,angle,getLineLabelScale()); return L.divIcon({className:'',html:o.html,iconSize:[o.D,o.D],iconAnchor:[Math.round(o.D/2),Math.round(o.D/2)]});}
-function updateLineLabel(line,pack){const a=project.objects.find(o=>o.id===line.start), b=project.objects.find(o=>o.id===line.end); if(!a||!b||!pack?.label)return; const pts=aybLinePathPoints(line,a,b); const len=polyLength(pts); line.length_m=len; const place=aybLineLabelPlacementFromPoints(pts); pack.label.setLatLng(place.latlng); pack.label.setIcon(makeLineLabelIcon(line,len,place.angle)); updateLineRegionMarker(line,pack);}
-function refreshLineLabels(){lineLayers.forEach((pack,id)=>{const line=project?.lines?.find(l=>l.id===id); if(line){ updateLineLabel(line,pack); updateLineRegionMarker(line,pack); }});}
+function updateLineLabel(line,pack,oIdx){const a=(oIdx&&oIdx.get(line.start))||project.objects.find(o=>o.id===line.start), b=(oIdx&&oIdx.get(line.end))||project.objects.find(o=>o.id===line.end); if(!a||!b||!pack?.label)return; const pts=aybLinePathPoints(line,a,b); const len=polyLength(pts); line.length_m=len; const place=aybLineLabelPlacementFromPoints(pts); pack.label.setLatLng(place.latlng); /* İSTEK (Bayram YARAŞ): zoom hızlansın — etiket içeriği DEĞİŞMEDİYSE ikon yeniden üretilmez, sadece yeri kayar. */ let lk=''; try{ lk=String(getLineDisplayText(line))+'|'+(line.kind||'')+'|'+len.toFixed(2)+'|'+place.angle.toFixed(1)+'|'+String(typeof getLineLabelScale==='function'?JSON.stringify(getLineLabelScale()):''); }catch(e){ lk=''; } if(!lk||lk!==pack.__lblKey){ pack.label.setIcon(makeLineLabelIcon(line,len,place.angle)); pack.__lblKey=lk; } updateLineRegionMarker(line,pack,oIdx);}
+function refreshLineLabels(){
+  /* İSTEK (Bayram YARAŞ): HIZLI ZOOM — id haritası ile O(n) tarama,
+     ekran DIŞINDAKİ hatların etiketi o an atlanır (ekrana girince moveend günceller),
+     bölge işareti updateLineLabel içinde ZATEN güncellenir (çift iş kaldırıldı). */
+  if(!project||!map) return;
+  const byId=new Map((project.lines||[]).map(l=>[l.id,l]));
+  const oIdx=new Map((project.objects||[]).map(o=>[o.id,o]));
+  let vb=null; try{ vb=map.getBounds().pad(0.2); }catch(e){}
+  lineLayers.forEach((pack,id)=>{
+    const line=byId.get(id); if(!line) return;
+    if(vb&&pack&&pack.poly&&pack.poly.getBounds){ try{ if(!vb.intersects(pack.poly.getBounds())) return; }catch(e){} }
+    updateLineLabel(line,pack,oIdx);
+  });
+}
 
 function aybLineGenelFromProps(props){
   const p=props||{};
@@ -4744,7 +4812,9 @@ function aybAddLineBendAt(line,latlng){
   const idx=aybClosestPolylineInsertIndex(pts,latlng);
   pts.splice(idx,0,[latlng.lat,latlng.lng]);
   line.points=pts; line.length_m=polyLength(pts);
-  saveProject(); renderAll(); toast('Hat kırık noktası eklendi.');
+  aybHatCanliGuncelle(line);              /* hat KAYBOLMAZ — yerinde güncellenir */
+  try{ refreshLineLabels(); }catch(e){}
+  saveProject(); toast('Hat kırık noktası eklendi.');
 }
 function aybAddChannelBendAt(ch,latlng){
   if(!ch||!project) return;
@@ -7092,7 +7162,7 @@ function bindAYBShortcutKeys(){
   }
 }
 
-function setup(){bindProjectScreenButtons(); initMap(); if(map) map.on('zoomend moveend',()=>{if(project){refreshLineLabels(); repositionPointLabels();}}); ensureProject(); $$('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool)); $('#baseMapSelect').onchange=e=>switchBase(e.target.value);
+function setup(){bindProjectScreenButtons(); initMap(); if(map){ let __lblT=null; const __lblRun=()=>{ __lblT=null; if(project){ refreshLineLabels(); repositionPointLabels(); } }; map.on('zoomend moveend',()=>{ if(__lblT) clearTimeout(__lblT); __lblT=setTimeout(__lblRun,120); }); map.on('zoomstart movestart',()=>{ if(__lblT){ clearTimeout(__lblT); __lblT=null; } }); } ensureProject(); $$('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool)); $('#baseMapSelect').onchange=e=>switchBase(e.target.value);
   window.aybSyncBaseToggleButton=function(){
     const s=$('#baseMapSelect'), b=$('#btnBaseOffToggle');
     if(!b||!s) return;
@@ -7126,7 +7196,7 @@ function setup(){bindProjectScreenButtons(); initMap(); if(map) map.on('zoomend 
     }
   };
   setTimeout(()=>{window.aybSyncBaseToggleButton&&window.aybSyncBaseToggleButton();},500);
-  const sc=$('#scaleSelect'); if(sc){ sc.onchange=e=>applyWorkScale(e.target.value); setTimeout(()=>applyWorkScale(sc.value,true),500); } $('#btnFixMap').onclick=()=>{map.invalidateSize(true); toast('Harita düzeltildi')}; $('#btnZoomAll').onclick=()=>{const group=[]; if(project){project.objects.forEach(o=>group.push([o.lat,o.lng])); project.channels?.forEach(c=>c.points.forEach(p=>group.push(p))); project.lines.forEach(l=>{const a=project.objects.find(o=>o.id===l.start),b=project.objects.find(o=>o.id===l.end); if(a&&b){const pts=aybLinePathPoints(l,a,b); pts.forEach(p=>group.push(p));}})} if(group.length) map.fitBounds(group,{padding:[50,50]});}; $('#btnLocate').onclick=()=>locate(false); $('#btnGpsPoint').onclick=()=>locate(true); const btnGpsTop=$('#btnGpsTop'); if(btnGpsTop) btnGpsTop.onclick=()=>locate(true); $('#btnMobileGps').onclick=()=>locate(true); $('#btnFinish').onclick=finishCurrentOperation; $('#btnCancelTool').onclick=finishCurrentOperation; $('#btnExcel').onclick=exportExcel; $('#btnGeo').onclick=exportGeoJSON; const btnKML=$('#btnKML'); if(btnKML) btnKML.onclick=exportKMZ; $('#btnAYB').onclick=openAYBInfo; $('#btnOpen').onclick=showProjectScreen; $('#btnProjectOpenSmall').onclick=showProjectScreen; $('#btnNew').onclick=()=>{const name=prompt('Yeni proje adı','Saha Metraj Projesi'); if(name) openProject(newProject(name))}; $('#btnSave').onclick=()=>{if(project){project.updated=new Date().toISOString(); saveProject(); toast('Proje kaydedildi')}}; const autoNoBtn=$('#btnAutoNo'); if(autoNoBtn) autoNoBtn.onclick=autoNumberProjectObjects; const autoNoSmall=$('#btnAutoNoSmall'); if(autoNoSmall) autoNoSmall.onclick=autoNumberProjectObjects; bindAYBAutoNumberButtons(); $('#btnCloseProject').onclick=()=>showProjectScreen();  document.addEventListener('click',e=>{const save=e.target.closest&&e.target.closest('#saveDirek'); if(save&&APP.saveCurrentDirek){e.preventDefault(); e.stopPropagation(); APP.saveCurrentDirek()} const close=e.target.closest&&e.target.closest('[data-close]'); if(close){e.preventDefault(); e.stopPropagation(); closeModal()}}); bindAYBShortcutKeys();}
+  const sc=$('#scaleSelect'); if(sc){ sc.onchange=e=>applyWorkScale(e.target.value); setTimeout(()=>applyWorkScale(sc.value,true),500); } $('#btnFixMap').onclick=()=>{map.invalidateSize(true); toast('Harita düzeltildi')}; $('#btnZoomAll').onclick=()=>{const group=[]; if(project){project.objects.forEach(o=>group.push([o.lat,o.lng])); project.channels?.forEach(c=>c.points.forEach(p=>group.push(p))); project.lines.forEach(l=>{const a=project.objects.find(o=>o.id===l.start),b=project.objects.find(o=>o.id===l.end); if(a&&b){const pts=aybLinePathPoints(l,a,b); pts.forEach(p=>group.push(p));}})} if(group.length) map.fitBounds(group,{padding:[50,50]});}; $('#btnLocate').onclick=()=>locate(false); $('#btnGpsPoint').onclick=()=>locate(true); const btnGpsTop=$('#btnGpsTop'); if(btnGpsTop) btnGpsTop.onclick=()=>locate(true); $('#btnMobileGps').onclick=()=>locate(true); $('#btnFinish').onclick=finishCurrentOperation; $('#btnCancelTool').onclick=finishCurrentOperation; $('#btnExcel').onclick=exportExcel; $('#btnGeo').onclick=exportGeoJSON; const btnKML=$('#btnKML'); if(btnKML) btnKML.onclick=exportKMZ; { const bAYB=$('#btnAYB'); if(bAYB) bAYB.onclick=()=>{ if(typeof openAYBInfo==='function') openAYBInfo(); else toast('Proje yedeği: Rapor/Veri sekmesindeki Yedek / Paket Dış düğmelerini kullan.'); }; } $('#btnOpen').onclick=showProjectScreen; $('#btnProjectOpenSmall').onclick=showProjectScreen; $('#btnNew').onclick=()=>{const name=prompt('Yeni proje adı','Saha Metraj Projesi'); if(name) openProject(newProject(name))}; $('#btnSave').onclick=()=>{if(project){project.updated=new Date().toISOString(); saveProject(); toast('Proje kaydedildi')}}; const autoNoBtn=$('#btnAutoNo'); if(autoNoBtn) autoNoBtn.onclick=autoNumberProjectObjects; const autoNoSmall=$('#btnAutoNoSmall'); if(autoNoSmall) autoNoSmall.onclick=autoNumberProjectObjects; bindAYBAutoNumberButtons(); { const bCP=$('#btnCloseProject'); if(bCP) bCP.onclick=()=>showProjectScreen(); }  document.addEventListener('click',e=>{const save=e.target.closest&&e.target.closest('#saveDirek'); if(save&&APP.saveCurrentDirek){e.preventDefault(); e.stopPropagation(); APP.saveCurrentDirek()} const close=e.target.closest&&e.target.closest('[data-close]'); if(close){e.preventDefault(); e.stopPropagation(); closeModal()}}); bindAYBShortcutKeys();}
 window.addEventListener('load',setup);
 window.addEventListener('load',bindAYBAutoNumberButtons);
 </script>
@@ -11831,6 +11901,51 @@ body .ayb-ico-frame{
   function writeProjects(projects){
     try{ localStorage.setItem(SKEY,JSON.stringify(projects)); }catch(err){ console.warn(err); }
   }
+  /* İSTEK (Bayram YARAŞ): yanlış oluşan proje ONAY ALINARAK silinebilsin */
+  function aybSilOnayPenceresi(ad, say, onayCb){
+    /* ÖNEMLİ (Bayram YARAŞ): programda window.confirm, "sil" geçen onayları
+       otomatik EVET'e çeviriyor (hat/direk hızlı silme özelliği). PROJE silme
+       bu yüzden native confirm KULLANMAZ — kendi penceresiyle KESİN onay alır. */
+    const w=document.createElement('div');
+    w.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.78);z-index:2147483647;display:flex;align-items:center;justify-content:center;';
+    const kutu=document.createElement('div');
+    kutu.style.cssText='background:#fff;border-radius:14px;max-width:440px;width:92%;padding:20px;font:14px system-ui;box-shadow:0 24px 60px rgba(0,0,0,.45);';
+    kutu.innerHTML='<div style="font-weight:800;font-size:17px;color:#b91c1c;margin-bottom:10px;">⚠️ DİKKAT — Proje Silinecek</div>'
+      +'<div id="aybSilMsg" style="color:#0f172a;line-height:1.5;margin-bottom:16px;white-space:pre-line;"></div>'
+      +'<div style="display:flex;gap:10px;justify-content:flex-end;">'
+      +'<button id="aybSilVaz" style="border:none;background:#e2e8f0;color:#0f172a;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer;">Vazgeç</button>'
+      +'<button id="aybSilEvet" style="border:none;background:#dc2626;color:#fff;border-radius:9px;padding:10px 18px;font-weight:800;cursor:pointer;">EVET, SİL</button></div>';
+    w.appendChild(kutu);
+    kutu.querySelector('#aybSilMsg').textContent='"'+ad+'" projesi KALICI olarak silinecek'+(say?(' (içinde '+say+' obje var)'):'')+'.\nBu işlem GERİ ALINAMAZ.\n\nSilmek istediğine emin misin?';
+    kutu.querySelector('#aybSilVaz').onclick=function(){ w.remove(); };
+    kutu.querySelector('#aybSilEvet').onclick=function(){ w.remove(); try{ onayCb(); }catch(e){} };
+    w.addEventListener('click',function(e){ if(e.target===w) w.remove(); });
+    /* Proje ekranının İÇİNE eklenir ki onun üstünde görünsün (arkada bulanık kalmasın) */
+    (document.getElementById('projectScreen')||document.body).appendChild(w);
+  }
+  function aybProjeSil(id){
+    try{
+      const all=readProjects(); const pr=all[id];
+      if(!pr){ return; }
+      const ad=pr.name||"Proje";
+      if(window.project && window.project.id===id){
+        try{ if(window.toast) toast('"'+ad+'" şu an AÇIK olan proje — silinemez. Önce başka proje aç.'); }catch(e){}
+        return;
+      }
+      const say=(Array.isArray(pr.objects)?pr.objects.length:0);
+      aybSilOnayPenceresi(ad, say, function(){
+        delete all[id];
+        writeProjects(all);
+        /* KRİTİK (Bayram YARAŞ): bellekteki liste de temizlenmeli — yoksa program
+           kapanırken bellektekini diske geri yazıp SİLİNEN PROJEYİ DİRİLTİYORDU. */
+        try{ if(typeof projects!=='undefined' && projects && projects[id]){ delete projects[id]; } }catch(e){}
+        try{ if(window.projects && window.projects[id]){ delete window.projects[id]; } }catch(e){}
+        try{ if(localStorage.getItem(LKEY)===id) localStorage.removeItem(LKEY); }catch(e){}
+        try{ renderProjectCenter(); }catch(e){}
+        try{ if(window.toast) toast('"'+ad+'" silindi.'); }catch(e){}
+      });
+    }catch(err){ console.warn('proje silme',err); }
+  }
   function getFavs(){
     try{ return JSON.parse(localStorage.getItem(FAV_KEY)||"[]"); }catch(_){ return []; }
   }
@@ -12040,6 +12155,7 @@ Kanal: ${((window.project&&window.project.channels)||[]).length}
         </div>
         <button class="open" data-open-project="${esc(p.id)}">Aç</button>
         <button class="star" title="Sık kullanılanlara ekle/kaldır" data-fav-project="${esc(p.id)}">${fav?"★":"☆"}</button>
+        <button class="del" title="Projeyi kalıcı olarak sil" data-del-project="${esc(p.id)}" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:8px;padding:6px 12px;font-weight:800;cursor:pointer;">Sil</button>
       </div>`;
   }
   function renderProjectCenter(){
@@ -12135,6 +12251,9 @@ Kanal: ${((window.project&&window.project.channels)||[]).length}
     });
     body.querySelectorAll("[data-fav-project]").forEach(b=>{
       b.addEventListener("click",()=>toggleFav(b.dataset.favProject));
+    });
+    body.querySelectorAll("[data-del-project]").forEach(b=>{
+      b.addEventListener("click",(e)=>{ e.preventDefault(); e.stopPropagation(); aybProjeSil(b.dataset.delProject); });
     });
     $("#aybNewProjectName")?.addEventListener("keydown",e=>{ if(e.key==="Enter") createNewProject(); });
   }
