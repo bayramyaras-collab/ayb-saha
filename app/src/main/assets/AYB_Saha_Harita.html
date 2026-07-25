@@ -2129,6 +2129,8 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
 .ayb-cok-marker .leaflet-zoom-anim .leaflet-marker-pane,
 .ayb-cok-marker.leaflet-zoom-anim .leaflet-shadow-pane,
 .ayb-cok-marker .leaflet-zoom-anim .leaflet-shadow-pane{visibility:hidden!important;}
+/* İSTEK (Bayram YARAŞ): lambalar 1/1000 ölçeği dışında CSS ile gizli (silinmez, anında geri gelir) */
+.ayb-lamba-gizli .ayb-pole-lamp{display:none!important;}
 /* İSTEK (Bayram YARAŞ): bilgi yazısı harita üzerinde DEĞİL, alt barda görünsün.
    PC'de (alt bar varken) yüzen baloncuk gizlenir; tablette alt bar olmadığı için kalır. */
 @media(min-width:901px){ .hint{display:none!important} }
@@ -2673,8 +2675,52 @@ let aybYerAltiBendPoints=[];
 let gpsWatchId=null, gpsAccuracyCircle=null;
 let aybLastFastObjectPick={id:'',ts:0};
 let aybContinueChannelId=null, aybContinueChannelSide='end';
-const AYB_OBJECT_SNAP_PX={default:10,hat:12,yeraltihat:12,abonehat:13,kanal:14};
-function aybObjectSnapPx(tool=activeTool){return AYB_OBJECT_SNAP_PX[tool]||AYB_OBJECT_SNAP_PX.default;}
+const AYB_OBJECT_SNAP_PX={default:3,hat:3,yeraltihat:3,abonehat:3.5,kanal:4} /* İSTEK (Bayram YARAŞ): snap MİNİMUM — ayrıca 🧲 Snap penceresinden elle ayarlanabilir */;
+function aybSnapMetre(){
+  /* İSTEK (Bayram YARAŞ) — SON KURAL: bu metrenin İÇİNE tek tık = direğe YAPIŞ ve BİTİR,
+     DIŞINA tek tık = KIRIK NOKTA. Çift tık şart değil. Varsayılan 0.75 m
+     (1 m'ye kırık atılır, direğin üstüne tıklayınca yapışır). */
+  try{
+    if(!localStorage.getItem('ayb_snap_mig1')){
+      const eski=parseFloat(localStorage.getItem('ayb_snap_m')||'');
+      if(isFinite(eski)&&eski>0&&eski<0.5) localStorage.setItem('ayb_snap_m','0.75');
+      localStorage.setItem('ayb_snap_mig1','1');
+    }
+    const o=parseFloat(localStorage.getItem('ayb_snap_m')||'');
+    if(isFinite(o)&&o>0) return o;
+  }catch(e){}
+  return 0.75;
+}
+window.aybSnapMetre=aybSnapMetre;
+function aybObjectSnapPx(tool=activeTool){
+  /* İSTEK (Bayram YARAŞ): İKİLİ KURAL —
+     HAVAİ hat: her tık zaten bir direği hedefler (kırık nokta yok) -> RAHAT 14 px sabit.
+     YERALTI/kırıklı çizim: metre kuralı (Ayarlar > 🧲 Snap) -> kırık noktalar direğe
+     yapışmadan atılır; DİREĞE BAĞLAMAK için sembole ÇİFT TIK (zoom gerekmez). */
+  /* İSTEK (Bayram YARAŞ) — SON KARAR:
+     HAVAİ: kırık nokta yok, her tık direk hedefler -> TEK TIKLA bağlanır (rahat 14 px).
+     YERALTI: tek tık = KIRIK NOKTA (metre kuralı, Ayarlar > 🧲 Snap);
+              direğe bağlamak = sembole ÇİFT TIK. */
+  try{
+    let __havai=(tool==='hat');
+    if(tool==='abonehat'){ try{ const __d=aybDefaultsForLine('abonehat'); const __ug=!__d||norm(__d.hy||'').includes('YERALTI')||norm(__d.hy||'').includes('YER ALTI'); __havai=!__ug; }catch(e){ __havai=false; } }
+    if(__havai) return 14;
+  }catch(e){}
+  try{
+    const m=aybSnapMetre();
+    const c=map.getCenter();
+    const ll2=L.latLng(c.lat, c.lng+0.0001);
+    const metre=c.distanceTo(ll2);
+    const pxAra=map.latLngToContainerPoint(c).distanceTo(map.latLngToContainerPoint(ll2));
+    if(metre>0 && pxAra>0){
+      const px=m*(pxAra/metre);
+      /* İSTEK (Bayram YARAŞ): ALT SINIR YOK — 0.25 m ayarlandıysa uzak zoomda
+         yarım piksele bile düşer; piksel tabanı metreyi bozmaz. */
+      return Math.min(24, px);
+    }
+  }catch(e){}
+  return AYB_OBJECT_SNAP_PX[tool]||AYB_OBJECT_SNAP_PX.default;
+}
 function aybShouldIgnoreFastObjectPick(obj){const now=Date.now(); if(aybLastFastObjectPick.id===String((obj&&obj.id)||'') && (now-aybLastFastObjectPick.ts)<260) return true; aybLastFastObjectPick={id:String((obj&&obj.id)||''),ts:now}; return false;}
 let markers=new Map(), lineLayers=new Map(), otherLayers=[], rasterLayers=[], cadDisplayLayers=[];
 const pointTypes=['direk','trafo','box','kofre','abone','ekmuf','not'];
@@ -2960,7 +3006,12 @@ if(typeof window!=='undefined'){
 }
 function initMap(){
   try{ aybApplyMobileUI(); }catch(e){}
-  map=L.map('map',{zoomControl:true,preferCanvas:true,attributionControl:true,zoomSnap:0.01,zoomDelta:0.25,wheelPxPerZoomLevel:80}).setView([39.6,32.85],17);
+  map=L.map('map',{zoomControl:true,preferCanvas:true,attributionControl:true,zoomSnap:0.01,zoomDelta:0.25,wheelPxPerZoomLevel:80,
+    /* İSTEK (Bayram YARAŞ): ÇİZİMLER VEKTÖR GİBİ YAPIŞSIN — çizgi kanvası ekranın
+       2.5 KATINI önceden boyar (padding). Kaydırmada hat kaybolmaz; ancak çok uzun
+       kaydırmada kenara gelince tek karede tazelenir. tolerance: dokunmatikte
+       hatta parmakla dokunmayı kolaylaştırır. */
+    renderer:L.canvas({padding:0.75,tolerance:8})}).setView([39.6,32.85],17);
   try{window.__aybMap=map;}catch(e){}
   const precisionTileOptions={
     subdomains:['0','1','2','3'],
@@ -2986,7 +3037,9 @@ function initMap(){
   if(map.createPane){ const pane=map.createPane('aybRasterPane'); pane.style.zIndex=330; pane.style.pointerEvents='none'; const cadPane=map.createPane('aybCadPane'); cadPane.style.zIndex=345; cadPane.style.pointerEvents='none'; }
   L.control.layers({'Google Uydu':baseLayers.sat,'Google Uydu + Yol':baseLayers.hybrid,'Esri Uydu Yedek':baseLayers.esri,'Yol Haritası':baseLayers.osm,'Topoğrafya':baseLayers.topo},{}).addTo(map);
   L.control.scale({metric:true, imperial:false, position:'bottomright', maxWidth:160}).addTo(map);
-  map.on('zoomstart',()=>{map.getContainer().classList.add('zooming-safe')});
+  map.on('zoomstart',()=>{ /* İSTEK (Bayram YARAŞ): etiketler zoomda YANIP SÖNMESİN —
+    gizleme yalnız DEV projelerde (1200+ obje) uygulanır, normalde etiketler yapışık kalır. */
+    if((((window.project||{}).objects)||[]).length>1200) map.getContainer().classList.add('zooming-safe'); });
   map.on('zoomend',()=>{map.getContainer().classList.remove('zooming-safe'); setTimeout(()=>map.invalidateSize(false),80); updateScaleStatusFromMap(); if(project){ refreshLineLabels(); repositionPointLabels(); aybRefreshPoleLamps(); }});
   map.on('moveend',()=>{map.getContainer().classList.remove('zooming-safe'); setTimeout(()=>map.invalidateSize(false),80); if(project){ repositionPointLabels(); try{ aybRefreshPoleLamps(); }catch(e){} }});
   Object.values(baseLayers).forEach(layer=>{
@@ -3295,11 +3348,31 @@ function aybLineLabelPlacementFromPoints(pts){
 }
 function aybAddYerAltiBendPoint(latlng){
   if(!lineStart){toast('Önce yer altı hattın başlangıç objesini seç.');return;}
+  window.__aybSonKirikTs=Date.now();
   aybYerAltiBendPoints.push(L.latLng(latlng.lat,latlng.lng));
   updateLinePreview(latlng,null);
   hint(`Yer altı kırık noktası alındı: ${aybYerAltiBendPoints.length}. Devam için güzergaha tıkla; bitirmek için direk/trafo/box/ek mufa dokun.`);
 }
 
+function aybHatTekCiz(line){
+  /* İSTEK (Bayram YARAŞ): hat direğe bağlanınca / hat formu kaydedilince TÜM EKRAN ÇİZİLMEZ —
+     sadece o hat (varsa eskisi kaldırılıp) çizilir. "Hatlar kaybolup pan ile geri geliyor" biter. */
+  try{
+    const pk=lineLayers.get(line.id);
+    if(pk){
+      try{map.removeLayer(pk.poly);}catch(e){}
+      try{if(pk.hit)map.removeLayer(pk.hit);}catch(e){}
+      try{if(pk.label)map.removeLayer(pk.label);}catch(e){}
+      try{if(pk.region)map.removeLayer(pk.region);}catch(e){}
+      try{if(Array.isArray(pk.handles))pk.handles.forEach(h=>{try{map.removeLayer(h);}catch(_){}});}catch(e){}
+      lineLayers.delete(line.id);
+    }
+    renderLine(line);
+    try{ updateSummary(); }catch(e){}
+    try{ aybRefreshLampsFor([line.start,line.end]); }catch(e){}   /* uç direklerin lamba yönü hatta göre döner */
+    try{ repositionPointLabels(); }catch(e){}
+  }catch(e){ try{ renderAll(); }catch(_){} }
+}
 function aybCreateLineWithLastKesit(kind,start,end,defaults,pathPoints=null){
   const p=aybRepairLineScopedHatProps(aybClonePropsForRepeat(defaults||{}),kind);
   const line={id:uid('HAT'),kind,start:start.id,end:end.id};
@@ -3314,7 +3387,7 @@ function aybCreateLineWithLastKesit(kind,start,end,defaults,pathPoints=null){
   aybRememberLastLineProps(kind,line.props);
   project.updated=new Date().toISOString();
   saveProject();
-  renderAll();
+  aybHatTekCiz(line);
   return line;
 }
 function handleLineObject(obj){
@@ -3624,6 +3697,10 @@ function aybRenderChannelVertexHandles(ch,poly,label){
 }
 function aybRenderLineVertexHandles(line,pts,poly,label){
   if(!line||!aybIsLineYerAlti(line)) return;
+  /* İSTEK (Bayram YARAŞ): tutamaçlar pakette izlenir — kırık nokta eklenince
+     ESKİLERİ kaldırılıp yenileri kurulur; yeni nokta ANINDA sürüklenebilir. */
+  const __pk=lineLayers.get(line.id);
+  if(__pk&&Array.isArray(__pk.handles)){ __pk.handles.forEach(hm=>{ try{ map.removeLayer(hm); }catch(e){} }); __pk.handles=[]; }
   if(!Array.isArray(line.points) || line.points.length<=2) return;
   const group=[];
   const iconKind='yeraltihat';
@@ -3635,6 +3712,7 @@ function aybRenderLineVertexHandles(line,pts,poly,label){
     mk.on('dragend',()=>{saveProject(); toast('Hat kırık noktası güncellendi.');});
     otherLayers.push(mk); group.push(mk);
   }
+  if(__pk) __pk.handles=group;
   aybBindVertexHover(poly,group);
 }
 
@@ -4214,7 +4292,7 @@ function traceEnergyForObject(objectId){
   toast(`${getObjectNo(obj)} için enerji kaynağı gösteriliyor: ${getObjectNo(result.source)}`);
 }
 
-function renderAll(){if(!map) return; clearEnergyTrace(); markers.forEach(m=>map.removeLayer(m)); markers.clear(); lineLayers.forEach(l=>{map.removeLayer(l.poly); if(l.hit) map.removeLayer(l.hit); if(l.label) map.removeLayer(l.label); if(l.region) map.removeLayer(l.region)}); lineLayers.clear(); otherLayers.forEach(l=>map.removeLayer(l)); otherLayers=[]; rasterLayers.forEach(l=>{try{map.removeLayer(l)}catch(e){}}); rasterLayers=[]; cadDisplayLayers.forEach(l=>{try{map.removeLayer(l)}catch(e){}}); cadDisplayLayers=[]; if(!project)return; renderRasterOverlays(); renderCadLayers(); const objList=(typeof aybViewObjectVisible==='function')?project.objects.filter(aybViewObjectVisible):project.objects; const lineList=(typeof aybViewLineVisible==='function')?project.lines.filter(aybViewLineVisible):project.lines; const channelList=(typeof aybViewChannelsVisible==='function'&& !aybViewChannelsVisible())?[]:(project.channels||[]); const freeLineList=(typeof aybViewFreeLineVisible==='function')?(project.freeLines||[]).filter(aybViewFreeLineVisible):(project.freeLines||[]); const areaList=(typeof aybViewAreaVisible==='function')?(project.areas||[]).filter(aybViewAreaVisible):(project.areas||[]); objList.forEach(renderObject); lineList.forEach(renderLine); channelList.forEach(renderChannel); freeLineList.forEach(renderFreeLine); areaList.forEach(renderArea); updateSummary(); try{map.__aybLabelsHidden=false;}catch(e){} repositionPointLabels(); if(typeof requestAnimationFrame==='function') requestAnimationFrame(()=>repositionPointLabels());}
+function renderAll(){if(!map) return; clearEnergyTrace(); markers.forEach(m=>map.removeLayer(m)); markers.clear(); lineLayers.forEach(l=>{map.removeLayer(l.poly); if(l.hit) map.removeLayer(l.hit); if(l.label) map.removeLayer(l.label); if(l.region) map.removeLayer(l.region)}); lineLayers.clear(); otherLayers.forEach(l=>map.removeLayer(l)); otherLayers=[]; try{ window.__aybLampLayers=[]; window.__aybLampDrawn={}; }catch(e){} rasterLayers.forEach(l=>{try{map.removeLayer(l)}catch(e){}}); rasterLayers=[]; cadDisplayLayers.forEach(l=>{try{map.removeLayer(l)}catch(e){}}); cadDisplayLayers=[]; if(!project)return; renderRasterOverlays(); renderCadLayers(); const objList=(typeof aybViewObjectVisible==='function')?project.objects.filter(aybViewObjectVisible):project.objects; const lineList=(typeof aybViewLineVisible==='function')?project.lines.filter(aybViewLineVisible):project.lines; const channelList=(typeof aybViewChannelsVisible==='function'&& !aybViewChannelsVisible())?[]:(project.channels||[]); const freeLineList=(typeof aybViewFreeLineVisible==='function')?(project.freeLines||[]).filter(aybViewFreeLineVisible):(project.freeLines||[]); const areaList=(typeof aybViewAreaVisible==='function')?(project.areas||[]).filter(aybViewAreaVisible):(project.areas||[]); objList.forEach(renderObject); lineList.forEach(renderLine); channelList.forEach(renderChannel); freeLineList.forEach(renderFreeLine); areaList.forEach(renderArea); updateSummary(); try{map.__aybLabelsHidden=false;}catch(e){} repositionPointLabels(); if(typeof requestAnimationFrame==='function') requestAnimationFrame(()=>repositionPointLabels());}
 /* AYB: Nokta obje (direk/trafo/box/abone/ekmuf/not) etiketini bagli hatlarla cakismayacak sekilde 360 derece etrafinda en bos sektore yerlestir. Hat etiketi kilitli, dokunulmuyor. */
 function aybSegDistPx(p,a,b){
   const vx=b.x-a.x, vy=b.y-a.y, wx=p.x-a.x, wy=p.y-a.y;
@@ -4324,7 +4402,7 @@ function repositionPointLabels(){
       try{ document.querySelectorAll('.symbol .sym-label').forEach(function(el){ el.style.display='none'; }); }catch(e){}
       map.__aybLabelsHidden=true;
     }
-    try{ map.getContainer().classList.add('ayb-cok-marker'); }catch(e){}  /* uzak bakış: zoom animasyonunda işaretçileri gizle */
+    try{ map.getContainer().classList.toggle('ayb-cok-marker', ((project.objects||[]).length)>900); }catch(e){}  /* uzak bakış: gizleme yalnız dev projede */
     return; // konumlandırma da yapma (CPU tasarrufu)
   } else if(map.__aybLabelsHidden){
     try{ document.querySelectorAll('.symbol .sym-label').forEach(function(el){ el.style.display=''; }); }catch(e){}
@@ -4348,16 +4426,22 @@ function repositionPointLabels(){
   /* Ekranda az sembol varken zoom animasyonunda İŞARETÇİLER GİZLENMEZ (çizim sabit kalır);
      çok sembol varken gizlenir ki zoom donmasın. Gizleme yeniden çizim DEĞİLDİR —
      öğeler silinmez, sadece animasyon karelerinde boyanmaz. */
-  try{ map.getContainer().classList.toggle('ayb-cok-marker', __vis.length>80); }catch(e){}
+  try{ map.getContainer().classList.toggle('ayb-cok-marker', __vis.length>900); }catch(e){}  /* İSTEK (Bayram YARAŞ): zoomda sembol gizleme ancak 900+ görünür objede */
   // Ekranda çok obje varsa akıllı yerleştirme (çakışma çözme) çok pahalı olur.
   // O durumda etiketleri sabit üst konuma koy — akıcı kalsın.
   var __smart = __vis.length <= 140;
+  /* VEKTÖR GİBİ (Bayram YARAŞ): DİREK ETİKETİ BİR KEZ yerleşir ve ARTIK HİÇ OYNAMAZ —
+     ne kaydırmada ne zoomda. Etiket direğin ikonuna piksel ofsetle bağlı olduğu için
+     her zoomda aynı görünür. Yalnız tam yeniden çizimde (veri değişince) tazelenir. */
+  var __zKey='sabit';
   for(var __i=0; __i<__vis.length; __i++){
     var v=__vis[__i], symEl=v.symEl;
+    if(symEl.__aybLblK===__zKey) continue;
     var p = __smart ? getPointLabelPlacement(v.obj, v.labelEl) : {dx:0, dy:42};
     symEl.style.setProperty('--lbl-dx', (p.dx||0).toFixed(1)+'px');
     symEl.style.setProperty('--lbl-dy', (p.dy||42).toFixed(1)+'px');
     symEl.classList.add('lbl-positioned');
+    symEl.__aybLblK=__zKey;
   }
 }
 function getObjectLabelHTML(obj,no,tip){
@@ -4437,7 +4521,30 @@ function makeIcon(obj){
   const core=obj.type==='direk'?`<div class="ayb-pole-core"${scaleStyle}><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/><path d="M16 5v22" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M8 12h16M10 18h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M20 7l-5 8h5l-6 10" fill="none" stroke="#facc15" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`:`<div class="sym-core"${scaleStyle}>${symbol}</div>`;
   return L.divIcon({className:'',iconSize,iconAnchor,html:`<div class="symbol ${cls}"${wrapperStyle}><div class="hit"></div>${core}<div class="sym-label${labelClass}">${labelHtml}</div></div>`});
 }
-function aybHandleFastObjectPick(obj,e){if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent);} if(!obj) return false; if(!(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'||activeTool==='kanal')) return false; if(aybShouldIgnoreFastObjectPick(obj)) return true; if(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'){handleLineObject(obj); return true;} if(activeTool==='kanal'){aybAddFreeDrawObjectPoint(obj); return true;} return false;}
+function aybHandleFastObjectPick(obj,e){if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent);} if(!obj) return false; if(!(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'||activeTool==='kanal')) return false; if(aybShouldIgnoreFastObjectPick(obj)) return true; if(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'){
+  /* İSTEK (Bayram YARAŞ): SNAP GERÇEKTEN DAR OLSUN — sembol/etiket alanına tıklama da
+     AYNI dar yarıçapa uyar. Eskiden koca sembole tıklayınca mesafe ölçülmeden bağlanıyordu;
+     yarıçapı düşürmek bu yüzden fark etmiyordu. Artık direğin TAM DİBİ dışına tıklanırsa
+     bağlanmaz: yeraltıda kırık nokta atılır, havaide hiçbir şey yapılmaz. */
+  try{
+    if(e && e.originalEvent && map){
+      const __r=map.getContainer().getBoundingClientRect();
+      const __cp=L.point(e.originalEvent.clientX-__r.left, e.originalEvent.clientY-__r.top);
+      const __op=map.latLngToContainerPoint([obj.lat,obj.lng]);
+      if(__cp.distanceTo(__op) > aybObjectSnapPx(activeTool)){ /* tampon YOK — metre ayarı birebir */
+        const __ll=map.containerPointToLatLng(__cp);
+        if(activeTool==='yeraltihat' && lineStart){ aybAddYerAltiBendPoint(__ll); return true; }
+        if(activeTool==='abonehat' && lineStart){
+          const __d=aybDefaultsForLine('abonehat');
+          const __ug=!__d||norm(__d.hy||'').includes('YERALTI')||norm(__d.hy||'').includes('YER ALTI');
+          if(__ug){ aybAddYerAltiBendPoint(__ll); return true; }
+        }
+        return true;
+      }
+    }
+  }catch(err){}
+  handleLineObject(obj); return true;
+} if(activeTool==='kanal'){aybAddFreeDrawObjectPoint(obj); return true;} return false;}
 /* ===== CANLI TAŞIMA / CANLI HAT (Bayram YARAŞ) =====
    Direk/trafo/box vb. taşınırken bağlı hatlar CANLI takip eder; taşıma bitince
    TAM YENİDEN ÇİZİM YAPILMAZ (hiçbir şey kaybolmaz), sadece ilgili parçalar güncellenir. */
@@ -4489,23 +4596,44 @@ function aybTasimaBitir(obj){
   try{ updateSummary(); }catch(e){}
   saveProject();
 }
-function renderObject(obj){const m=L.marker([obj.lat,obj.lng],{icon:makeIcon(obj),draggable:false,riseOnHover:true}).addTo(map); markers.set(obj.id,m); m.on('mouseover',e=>{aybEnergyHoverObject(obj,false);}); m.on('mousedown',e=>{if(aybHandleFastObjectPick(obj,e)) return;}); m.on('touchstart',e=>{if(aybHandleFastObjectPick(obj,e)) return;}); m.on('click',e=>{if(e&&e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent); if(aybEnergyHoverMode){aybEnergyHoverObject(obj,true); return} if(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'||activeTool==='kanal'){aybHandleFastObjectPick(obj,e); return} /* tek tık popup açmaz; çift tık=form, sağ tık=Taşı/Sil */}); m.on('contextmenu',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(finishCurrentOperation()) return; showObjectPopup(obj)}); aybBindLongPress(m,function(){ if(activeTool) return; if(aybEnergyHoverMode) return; showObjectPopup(obj); }); m.on('dblclick',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} APP.editObject(obj.id)}); m.on('drag',e=>{obj.lat=e.target.getLatLng().lat; obj.lng=e.target.getLatLng().lng; updateConnectedLines(obj.id)}); m.on('dragend',()=>{if(m.dragging)m.dragging.disable(); try{ aybTasimaBitir(obj); }catch(e){ saveProject(); renderAll(); } toast('Obje yeni konumuna taşındı')});
+function renderObject(obj){const m=L.marker([obj.lat,obj.lng],{icon:makeIcon(obj),draggable:false,riseOnHover:true}).addTo(map); markers.set(obj.id,m); m.on('mouseover',e=>{aybEnergyHoverObject(obj,false);}); m.on('mousedown',e=>{if(aybHandleFastObjectPick(obj,e)) return;});
+  m.on('dblclick',e=>{ /* İSTEK (Bayram YARAŞ): yeraltı çizerken DİREĞE ÇİFT TIK = KESİN BAĞLAN (metre kuralına takılmadan, zoom gerekmeden) */
+    if(!(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat')) return;
+    if(e&&e.originalEvent){ L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent); }
+    try{ if(window.__aybSonKirikTs && (Date.now()-window.__aybSonKirikTs)<600 && aybYerAltiBendPoints.length){ aybYerAltiBendPoints.pop(); } }catch(err){}  /* çift tıkın ilk tıkı yanlışlıkla kırık attıysa geri al */
+    handleLineObject(obj);
+  }); m.on('touchstart',e=>{if(aybHandleFastObjectPick(obj,e)) return;}); m.on('click',e=>{if(e&&e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent); if(aybEnergyHoverMode){aybEnergyHoverObject(obj,true); return} if(activeTool==='hat'||activeTool==='yeraltihat'||activeTool==='abonehat'||activeTool==='kanal'){aybHandleFastObjectPick(obj,e); return} /* tek tık popup açmaz; çift tık=form, sağ tık=Taşı/Sil */}); m.on('contextmenu',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(finishCurrentOperation()) return; showObjectPopup(obj)}); aybBindLongPress(m,function(){ if(activeTool) return; if(aybEnergyHoverMode) return; showObjectPopup(obj); }); m.on('dblclick',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} APP.editObject(obj.id)}); m.on('drag',e=>{obj.lat=e.target.getLatLng().lat; obj.lng=e.target.getLatLng().lng; updateConnectedLines(obj.id)}); m.on('dragend',()=>{if(m.dragging)m.dragging.disable(); try{ aybTasimaBitir(obj); }catch(e){ saveProject(); renderAll(); } toast('Obje yeni konumuna taşındı')});
   try{ aybRenderPoleLamps(obj); }catch(e){}
 }
-function aybRefreshPoleLamps(){
+function aybLampPurgeAll(){
+  try{ if(Array.isArray(window.__aybLampLayers)) window.__aybLampLayers.forEach(l=>{ try{map.removeLayer(l);}catch(e){} }); }catch(e){}
+  try{ document.querySelectorAll('.ayb-lamp-box').forEach(b=>{ try{b.remove();}catch(e){} }); }catch(e){}
+  window.__aybLampLayers=[]; window.__aybLampDrawn={};
+}
+function aybRefreshPoleLamps(full){
   if(!map||!project||!Array.isArray(project.objects)) return;
-  // önceki lamba marker'larını temizle
-  if(Array.isArray(window.__aybLampLayers)){
-    window.__aybLampLayers.forEach(l=>{ try{map.removeLayer(l);}catch(e){} });
-  }
-  window.__aybLampLayers=[];
-  /* HIZLANDIRMA (Bayram YARAŞ): lambaları da SADECE ekrandaki direkler için çiz.
-     Eskiden her zoom/kaydırmada tüm direklerin lambaları baştan çiziliyordu. */
+  window.__aybLampLayers=window.__aybLampLayers||[]; window.__aybLampDrawn=window.__aybLampDrawn||{};
+  var z=18; try{ z=map.getZoom(); }catch(e){}
+  /* İSTEK (Bayram YARAŞ): LAMBALAR 1/1000 ölçeğine gelince görünür, yukarı çıkınca kaybolur.
+     Gizleme CSS iledir — çizilmiş lambalar SİLİNMEZ, ölçeğe geri inince ANINDA geri gelir. */
+  var denom=1e9; try{ denom=scaleDenominatorAtZoom(z, map.getCenter().lat); }catch(e){ denom=(z>=15)?1000:1e9; }
+  var goster=denom<=1200;
+  try{ map.getContainer().classList.toggle('ayb-lamba-gizli', !goster); }catch(e){}
+  /* İSTEK (Bayram YARAŞ): lamba direğin ikonuna gömülü — ZOOMDA YENİDEN KURULMAZ, oynamaz.
+     Sadece obje sayısı değişince (silme/ekleme/birleştirme) tazelenir. */
+  var sayiDegisti=(window.__aybLampObjN!==undefined && window.__aybLampObjN!==project.objects.length);
+  if(full===true || sayiDegisti) aybLampPurgeAll();
+  window.__aybLampObjN=project.objects.length;
+  if(!goster) return;
   var __lb=null; try{ __lb=map.getBounds().pad(0.2); }catch(e){}
-  /* HIZLANDIRMA: uzak zoomda lamba sembolleri zaten okunmuyor — hiç çizme (yüzlerce DOM işaretçisi tasarrufu) */
-  var __lz=18; try{ __lz=map.getZoom(); }catch(e){}
-  if(__lz<15) return;
-  project.objects.forEach(o=>{ if(o&&o.type==='direk'){ if(__lb){ try{ if(!__lb.contains([o.lat,o.lng])) return; }catch(e){} } try{aybRenderPoleLamps(o);}catch(e){} } });
+  /* VEKTÖR GİBİ (Bayram YARAŞ): kaydırmada SADECE ekrana YENİ giren direklerin lambası çizilir;
+     çizilmiş olanlara DOKUNULMAZ. "Kaydırınca yeniden okuma" donması biter. */
+  project.objects.forEach(o=>{
+    if(!o||o.type!=='direk') return;
+    if(window.__aybLampDrawn[o.id]) return;
+    if(__lb){ try{ if(!__lb.contains([o.lat,o.lng])) return; }catch(e){} }
+    try{ aybRenderPoleLamps(o); window.__aybLampDrawn[o.id]=1; }catch(e){}
+  });
 }
 /* HEDEFLİ lamba yenileme (Bayram YARAŞ): sadece verilen direklerin lambaları
    silinip yeniden çizilir — diğer hiçbir şey ekrandan kaybolmaz. */
@@ -4519,7 +4647,9 @@ function aybRefreshLampsFor(ids){
         return true;
       });
     }
-    project.objects.forEach(function(o){ if(o&&o.type==='direk'&&set[o.id]){ try{aybRenderPoleLamps(o);}catch(e){} } });
+    try{ Object.keys(set).forEach(function(id){ if(window.__aybLampDrawn) delete window.__aybLampDrawn[id];
+      var mk2=markers.get(id); if(mk2&&mk2._icon){ var bx=mk2._icon.querySelector('.ayb-lamp-box'); if(bx) bx.remove(); } }); }catch(e){}
+    project.objects.forEach(function(o){ if(o&&o.type==='direk'&&set[o.id]){ try{aybRenderPoleLamps(o); if(window.__aybLampDrawn) window.__aybLampDrawn[o.id]=1;}catch(e){} } });
   }catch(e){}
 }
 function aybPoleLineAngleRad(obj){
@@ -4552,7 +4682,13 @@ function aybPoleLineAngleRad(obj){
 }
 function aybRenderPoleLamps(obj){
   if(!obj||obj.type!=='direk'||!map||typeof L==='undefined') return;
-  try{ if(map.getZoom()<15) return; }catch(e){}  /* HIZLANDIRMA: uzak zoomda lamba çizme (tüm çağrı yolları için tek nokta) */
+  /* İSTEK (Bayram YARAŞ): TÜM çağrı yolları için TEK KAPI —
+     lamba yalnız 1/1000 ölçeğinde (payda<=1200) ve EKRANDAKİ direk için çizilir. */
+  var __z=18; try{ __z=map.getZoom(); }catch(e){}
+  var __dn=1e9; try{ __dn=scaleDenominatorAtZoom(__z, map.getCenter().lat); }catch(e){ __dn=(__z>=15)?1000:1e9; }
+  if(__dn>1200) return;
+  try{ if(!map.getBounds().pad(0.2).contains([obj.lat,obj.lng])) return; }catch(e){}
+  try{ (window.__aybLampDrawn=window.__aybLampDrawn||{})[obj.id]=1; }catch(e){}
   const p=obj.props||{};
   const lampSet=(typeof getAYBLampSettings==='function')?getAYBLampSettings():{sym:1,txt:1};
   const lambalar=Array.isArray(p.lambalar)?p.lambalar.filter(l=>l&&(l.armatur||l.cins||Number(l.adet||0)>0)):[];
@@ -4614,31 +4750,39 @@ function aybRenderPoleLamps(obj){
   else if(n===3){ positions=[U(perpA), U(perpA+Math.PI), U(lineAng)]; } // iki yan + hat ucu
   else { for(let i=0;i<n;i++){ positions.push(U(perpA + i*2*Math.PI/n)); } } // çember
   let __lampIdx=0;
+  /* İSTEK (Bayram YARAŞ): LAMBALAR VEKTÖR GİBİ YAPIŞIK — ayrı işaretçi DEĞİL,
+     direğin KENDİ ikonunun içine piksel ofsetle gömülür. Zoomda yeniden kurulmaz,
+     oynamaz; direk taşınırken bile onunla TEK PARÇA hareket eder. */
+  const __mk=markers.get(obj.id);
+  if(!__mk||!__mk._icon) return;
+  try{ const __esk=__mk._icon.querySelector('.ayb-lamp-box'); if(__esk) __esk.remove(); }catch(e){}
+  let __ax=0, __ay=0;
+  try{ const __ia=(__mk.options.icon&&__mk.options.icon.options&&__mk.options.icon.options.iconAnchor)||[0,0]; __ax=+__ia[0]||0; __ay=+__ia[1]||0; }catch(e){}
+  const __kutu=document.createElement('div');
+  __kutu.className='ayb-lamp-box';
+  __kutu.style.cssText='position:absolute;left:'+__ax+'px;top:'+__ay+'px;width:0;height:0;overflow:visible;pointer-events:none;z-index:4;';
   for(const off of positions){
-    const pt=L.point(center.x+off[0], center.y+off[1]);
-    const ll=map.containerPointToLatLng(pt);
     const myGuc = (lampGucList[__lampIdx]||'').toString().trim();
     const myGucLabel = myGuc ? (myGuc + 'W') : '';
-    const showGuc = !!myGucLabel;  // her lamba KENDİ gücünü gösterir
-    const wattSide = (off[1] < 0) ? 'up' : 'down';  // lamba yukarıda->etiket üst, aşağıda->alt (direkten uzak)
-    const svg = lampSvg(statusToTip(lampStatusList[__lampIdx]));  // bu lambanın KENDİ durumuna göre sembol
+    const showGuc = !!myGucLabel;
+    const wattSide = (off[1] < 0) ? 'up' : 'down';
+    const svg = lampSvg(statusToTip(lampStatusList[__lampIdx]));
     const __lsz=Math.round(20*lampSet.sym);
     const __wf=Math.round(12*lampSet.txt);
     const html = showGuc
       ? `<div class="ayb-pole-lamp" style="width:${__lsz}px;height:${__lsz}px">${svg}<span class="ayb-lamp-watt ${wattSide}" style="font-size:${__wf}px">${myGucLabel}</span></div>`
       : `<div class="ayb-pole-lamp" style="width:${__lsz}px;height:${__lsz}px">${svg}</div>`;
-    const __isz=Math.round(22*lampSet.sym);
-    const icon=L.divIcon({className:'',html, iconSize:[__isz,__isz], iconAnchor:[Math.round(__isz/2),Math.round(__isz/2)]});
-    const lm=L.marker(ll,{icon,interactive:false,zIndexOffset:600}).addTo(map);
-    lm.__aybPoleId=obj.id;  /* hangi direğin lambası — hedefli yenileme için */
-    otherLayers.push(lm);
-    if(!Array.isArray(window.__aybLampLayers)) window.__aybLampLayers=[];
-    window.__aybLampLayers.push(lm);
+    const __par=document.createElement('div');
+    __par.style.cssText='position:absolute;left:'+Math.round(off[0]-__lsz/2)+'px;top:'+Math.round(off[1]-__lsz/2)+'px;';
+    __par.innerHTML=html;
+    __kutu.appendChild(__par);
     __lampIdx++;
   }
+  __mk._icon.appendChild(__kutu);
+  try{ (window.__aybLampDrawn=window.__aybLampDrawn||{})[obj.id]=1; }catch(e){}
 }
 function getLineDisplayText(line){const main=(line.props?.main_hat_tipi||line.props?.og_hat_tipi||line.props?.hat_tipi||'').trim(); const ag=(line.props?.ag_hat_aktif?(line.props?.ag_hat_tipi||'').trim():''); if(main&&ag) return `(${main})+(${ag})`; return main||ag||(line.props?.hat_tipi||line.props?.tip||'Hat')}
-function getLineLabelScale(){const z=map?map.getZoom():18; return Math.max(0.65, Math.min(1.30, Math.pow(1.10, z-18)));}
+function getLineLabelScale(){const z=map?map.getZoom():18; const s=Math.max(0.65, Math.min(1.30, Math.pow(1.10, z-18))); return Math.round(s*20)/20; /* İSTEK (Bayram YARAŞ): 0.05 adım — küçük zoomda etiket ikonu yeniden üretilmez, yapışık kalır */}
 function getLineLabelIconSpec(scale){return {iconSize:[140,46], iconAnchor:[70,23]};}
 function getLineLabelPlacement(a,b){const lat=(parseFloat(a.lat)+parseFloat(b.lat))/2; const lng=(parseFloat(a.lng)+parseFloat(b.lng))/2; return {latlng:L.latLng(lat,lng), angle:0};}
 function getAYBLabelRuntimeSettings(){try{const s=JSON.parse(localStorage.getItem('ayb_label_size_settings_v1')||'{}'); const h=Number(s.hat||13); return {hat:h, metre:h};}catch(e){return {hat:13,metre:13};}}
@@ -4813,8 +4957,10 @@ function aybAddLineBendAt(line,latlng){
   pts.splice(idx,0,[latlng.lat,latlng.lng]);
   line.points=pts; line.length_m=polyLength(pts);
   aybHatCanliGuncelle(line);              /* hat KAYBOLMAZ — yerinde güncellenir */
+  /* İSTEK (Bayram YARAŞ): yeni kırık nokta ANINDA AKTİF — tutamaçlar yeniden kurulur, hemen sürüklenir */
+  try{ const pk2=lineLayers.get(line.id); if(pk2&&pk2.poly) aybRenderLineVertexHandles(line, pts, pk2.poly, pk2.label); }catch(e){}
   try{ refreshLineLabels(); }catch(e){}
-  saveProject(); toast('Hat kırık noktası eklendi.');
+  saveProject(); toast('Hat kırık noktası eklendi. Noktayı tutup sürükleyebilirsin.');
 }
 function aybAddChannelBendAt(ch,latlng){
   if(!ch||!project) return;
@@ -6445,7 +6591,7 @@ function openLineForm(kind,start,end,existing=null,defaults=null,pathPoints=null
       if(!existing) project.lines.push(line);
       aybRememberLastLineProps(line.kind,line.props);
       project.updated=new Date().toISOString();
-      saveProject(); closeModal(); renderAll();
+      saveProject(); closeModal(); aybHatTekCiz(line);
       if(!existing && (activeTool===kind || activeTool==='hat' || activeTool==='yeraltihat' || activeTool==='abonehat')){
         lineStart=end;
         aybYerAltiBendPoints=[];
@@ -11917,8 +12063,10 @@ body .ayb-ico-frame{
       +'<button id="aybSilEvet" style="border:none;background:#dc2626;color:#fff;border-radius:9px;padding:10px 18px;font-weight:800;cursor:pointer;">EVET, SİL</button></div>';
     w.appendChild(kutu);
     kutu.querySelector('#aybSilMsg').textContent='"'+ad+'" projesi KALICI olarak silinecek'+(say?(' (içinde '+say+' obje var)'):'')+'.\nBu işlem GERİ ALINAMAZ.\n\nSilmek istediğine emin misin?';
-    kutu.querySelector('#aybSilVaz').onclick=function(){ w.remove(); };
-    kutu.querySelector('#aybSilEvet').onclick=function(){ w.remove(); try{ onayCb(); }catch(e){} };
+    /* İSTEK (Bayram YARAŞ): TABLET — düğmeler dokunmaya da bağlanır (yalnız click değil) */
+    function aybDokunBagla(el,fn){ if(!el) return; var son=0; var h=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(_){} var t=Date.now(); if(t-son<500) return; son=t; fn(); }; el.addEventListener('click',h); el.addEventListener('touchend',h,{passive:false}); }
+    aybDokunBagla(kutu.querySelector('#aybSilVaz'), function(){ w.remove(); });
+    aybDokunBagla(kutu.querySelector('#aybSilEvet'), function(){ w.remove(); try{ onayCb(); }catch(e){} });
     w.addEventListener('click',function(e){ if(e.target===w) w.remove(); });
     /* Proje ekranının İÇİNE eklenir ki onun üstünde görünsün (arkada bulanık kalmasın) */
     (document.getElementById('projectScreen')||document.body).appendChild(w);
@@ -11928,12 +12076,12 @@ body .ayb-ico-frame{
       const all=readProjects(); const pr=all[id];
       if(!pr){ return; }
       const ad=pr.name||"Proje";
-      if(window.project && window.project.id===id){
-        try{ if(window.toast) toast('"'+ad+'" şu an AÇIK olan proje — silinemez. Önce başka proje aç.'); }catch(e){}
-        return;
-      }
+      /* İSTEK (Bayram YARAŞ): TABLETTE tek proje açıkken silinemiyordu ("açık proje" engeli).
+         Artık AÇIK proje de silinebilir — onaydan sonra silinir ve program temiz açılışla
+         proje merkezine döner. */
+      const acikMi=!!(window.project && window.project.id===id);
       const say=(Array.isArray(pr.objects)?pr.objects.length:0);
-      aybSilOnayPenceresi(ad, say, function(){
+      aybSilOnayPenceresi(ad+(acikMi?' — ŞU AN AÇIK PROJE':''), say, function(){
         delete all[id];
         writeProjects(all);
         /* KRİTİK (Bayram YARAŞ): bellekteki liste de temizlenmeli — yoksa program
@@ -11941,6 +12089,12 @@ body .ayb-ico-frame{
         try{ if(typeof projects!=='undefined' && projects && projects[id]){ delete projects[id]; } }catch(e){}
         try{ if(window.projects && window.projects[id]){ delete window.projects[id]; } }catch(e){}
         try{ if(localStorage.getItem(LKEY)===id) localStorage.removeItem(LKEY); }catch(e){}
+        if(acikMi){
+          try{ if(typeof project!=='undefined') project=null; }catch(e){}
+          try{ window.project=null; }catch(e){}
+          try{ location.reload(); }catch(e){}
+          return;
+        }
         try{ renderProjectCenter(); }catch(e){}
         try{ if(window.toast) toast('"'+ad+'" silindi.'); }catch(e){}
       });
@@ -12253,7 +12407,9 @@ Kanal: ${((window.project&&window.project.channels)||[]).length}
       b.addEventListener("click",()=>toggleFav(b.dataset.favProject));
     });
     body.querySelectorAll("[data-del-project]").forEach(b=>{
-      b.addEventListener("click",(e)=>{ e.preventDefault(); e.stopPropagation(); aybProjeSil(b.dataset.delProject); });
+      const h=(e)=>{ e.preventDefault(); e.stopPropagation(); const t=Date.now(); if(b.__aybSonSil && t-b.__aybSonSil<500) return; b.__aybSonSil=t; aybProjeSil(b.dataset.delProject); };
+      b.addEventListener("click",h);
+      b.addEventListener("touchend",h,{passive:false});   /* İSTEK (Bayram YARAŞ): tablette dokunuş da çalışsın */
     });
     $("#aybNewProjectName")?.addEventListener("keydown",e=>{ if(e.key==="Enter") createNewProject(); });
   }

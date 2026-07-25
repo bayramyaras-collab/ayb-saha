@@ -1581,7 +1581,10 @@
         if(_nt) window.__aybPendingNotes=_nt;
         var cnt={direk:0,trafo:0,hat:lns.length};
         objs.forEach(function(o){ if(!o)return; if(o.type==='direk')cnt.direk++; else if(o.type==='trafo')cnt.trafo++; });
-        var builtJ={objects:objs, lines:lns, count:cnt, fromJson:true};
+        var builtJ={objects:objs, lines:lns, count:cnt, fromJson:true,
+          channels:Array.isArray(kok.channels)?kok.channels:[],
+          freeLines:Array.isArray(kok.freeLines)?kok.freeLines:[],
+          areas:Array.isArray(kok.areas)?kok.areas:[]};
         status("JSON (tam veri): Direk "+cnt.direk+" · Trafo "+cnt.trafo+" · Hat "+cnt.hat);
         if(window.__aybPCMerge||window.__aybMergeOnce){ window.__aybMergeOnce=false; window.aybMergeBuilt(builtJ, (pj.name||projName)+" [JSON]"); return; }
         askImportMode(builtJ, (pj.name||projName));
@@ -1593,6 +1596,11 @@
     var mm=String(probe).match(/Projection\s+\d+\s*,\s*\d+\s*,\s*"[^"]*"\s*,\s*(\d+)/i);
     if(mm) cm=+mm[1];
     if(!map.mif && !map.hmif){ status("Direkler.mif / Hatlar.mif bulunamadı."); (window.aybModal||alert)("ZIP içinde Direkler.mif ve Direkler.mid bulunamadı. Doğru MİF zip'ini seçtiğinden emin ol."); return; }
+    /* İSTEK (Bayram YARAŞ): paket zip ama içinde aybproje.json YOK = paketi atan tablet ESKİ sürüm.
+       Veri MİF katmanlarından (eksik detayla) alınır ve kullanıcı net uyarılır. */
+    if(map.__zipti && !map.pjson){
+      try{ (window.aybModal||alert)("DİKKAT: Bu paket ESKİ tablet sürümünden geliyor (içinde aybproje.json tam veri dosyası YOK).\nVeri MİF katmanlarından alınacak; lamba detayları ve bazı bilgiler EKSİK olabilir.\nO tabletin programını (APK) güncelle — yeni sürüm paketleri tam veriyle gelir.","Eski Paket Uyarısı"); }catch(e){}
+    }
     var built;
     try{ built=buildProject(map, projName, cm); }
     catch(e){ status("İşlenemedi: "+(e&&e.message?e.message:e)); (window.aybModal||alert)("MİF işlenemedi: "+(e&&e.message?e.message:e)); return; }
@@ -1643,6 +1651,9 @@
         }
         else { l.start=ns; l.end=ne; p.lines.push(l); addedL++; }
       });
+      /* İSTEK (Bayram YARAŞ): JSON tam veride kanal / serbest çizim / alanlar da birleşir (id'ye göre güncel kazanır) */
+      function _mrgList(dst, src){ dst=Array.isArray(dst)?dst:[]; src=Array.isArray(src)?src:[]; var by={}; dst.forEach(function(x){ if(x&&x.id) by[x.id]=x; }); src.forEach(function(x){ if(!x) return; if(x.id&&by[x.id]){ try{ var h=by[x.id]; Object.keys(x).forEach(function(k){ h[k]=x[k]; }); }catch(_){} } else dst.push(x); }); return dst; }
+      try{ p.channels=_mrgList(p.channels, built.channels); p.freeLines=_mrgList(p.freeLines, built.freeLines); p.areas=_mrgList(p.areas, built.areas); }catch(e){}
       try{ if(typeof saveProjects==="function") saveProjects(); }catch(e){}
       try{ if(typeof renderAll==="function") renderAll(); }catch(e){}
       var msg="Birleştirildi ✓  +"+added+" yeni obje, +"+addedL+" yeni hat · "+dup+" obje ve "+updL+" hat GÜNCELLENDİ (güncel veri kazandı)";
@@ -1818,6 +1829,7 @@
       catch(e){ status("ZIP açılamadı: "+(e&&e.message?e.message:e)); (window.aybModal||alert)("ZIP açılamadı: "+(e&&e.message?e.message:e)); return; }
       var names=Object.keys(files2);
       status("ZIP içinde "+names.length+" dosya bulundu.");
+      map.__zipti=true;
       names.forEach(function(name){
         if(/aybproje\.json$/i.test(name)){ try{ map.pjson=new TextDecoder().decode(files2[name]); }catch(e){} return; }
         if(/aybnotes\.json$/i.test(name)){ try{ window.__aybPendingNotes=JSON.parse(new TextDecoder().decode(files2[name])); }catch(e){} return; }
@@ -2776,7 +2788,8 @@
   (function(){
     function inj(){
       if(document.getElementById('aybBproLambaBtn')) return true;
-      var r=document.querySelector('.ayb-pro-group.report .ayb-pro-row');
+      /* İSTEK (Bayram YARAŞ): ayar işlemleri AYARLAR sekmesinde */
+      var r=document.querySelector('.ayb-pro-group.fielddata .ayb-pro-row');
       if(!r) return false;
       var b=document.createElement('button');
       b.type='button'; b.id='aybBproLambaBtn'; b.className='ayb-pro-btn toolbtn';
@@ -4638,6 +4651,9 @@
     if(busy) return;
     busy=true; prev=null;
     try{ origAll.apply(this,arguments); } finally { busy=false; }
+    /* KANVAS SİGORTASI (Bayram YARAŞ): tam çizim sonrası çizgi kanvası bazı makinelerde
+       boş kalabiliyordu (ekran oynatılınca geliyordu) — sonraki karede zorla tazelenir. */
+    try{ setTimeout(function(){ try{ var mp=window.__aybMap||window.map; if(mp&&mp._renderer&&mp._renderer._update) mp._renderer._update(); }catch(e){} }, 60); }catch(e){}
     try{ prev={objs:visObjs().map(objSig), lines:visLines().map(lineSig), ot:otherSig()}; }catch(e){ prev=null; }
     try{ if(window.aybArtikTemizle) window.aybArtikTemizle(); }catch(e){}
   }
@@ -4657,7 +4673,7 @@
   }
   install();
   var _n=0, _iv=setInterval(function(){ install(); if(installed || ++_n>60) clearInterval(_iv); }, 500);
-  window.aybForceFullRender=function(){ prev=null; try{ if(origAll) origAll(); }catch(e){} };
+  window.aybForceFullRender=function(){ prev=null; try{ if(origAll) origAll(); }catch(e){} try{ setTimeout(function(){ try{ var mp=window.__aybMap||window.map; if(mp&&mp._renderer&&mp._renderer._update) mp._renderer._update(); }catch(e){} }, 60); }catch(e){} };
 })();
 
 /* ===================== HAT ÇİZERKEN AKICILIK: yakalama taraması sınırlandır =====================
@@ -5276,25 +5292,32 @@
   }
   window.aybArtikTemizle=temizle;
 
-  function sonrasi(){
+  function sonrasi(ad){
     /* devam eden hat/çizim varsa bitir: yoksa son direkten imlece uzanan ÖNİZLEME ekranda kalıp
        "hat silinmedi" gibi görünüyor */
     try{ if(typeof window.finishCurrentOperation==='function') window.finishCurrentOperation(); }catch(e){}
     try{ if(typeof window.clearLinePreview==='function') window.clearLinePreview(); }catch(e){}
     try{ if(typeof window.aybRubberTemizle==='function') window.aybRubberTemizle(); }catch(e){}
+    /* İSTEK (Bayram YARAŞ): TEK hat/obje silmede TAM YENİDEN ÇİZİM YAPILMAZ —
+       deleteLine katmanı hedefli kaldırıyor, deleteObject kendi çizimini kendisi yapıyor.
+       "Tüm hatlar silinip geri geliyor" görüntüsünün sebebi buradaki zorunlu tam çizimdi. */
+    var hedefli=(ad==='deleteLine'||ad==='deleteObject');
     setTimeout(function(){
       try{ temizle(); }catch(e){}
-      /* silmeden sonra HER ZAMAN tam yeniden çizim: ekran veriyle birebir olsun */
-      try{ if(window.aybForceFullRender) window.aybForceFullRender(); else if(window.renderAll) window.renderAll(); }catch(e){}
-      try{ temizle(); }catch(e){}
+      if(!hedefli){
+        try{ if(window.aybForceFullRender) window.aybForceFullRender(); else if(window.renderAll) window.renderAll(); }catch(e){}
+        try{ temizle(); }catch(e){}
+      }
     }, 0);
   }
   function sar(hedef, ad){
     try{
       var o=hedef&&hedef.obj; if(!o||typeof o[ad]!=='function'||o[ad].__aybDel) return false;
       var inner=o[ad];
-      var w=function(){ var r; try{ r=inner.apply(this,arguments); } finally { sonrasi(); } return r; };
-      w.__aybDel=true; o[ad]=w; return true;
+      var w=function(){ var r; try{ r=inner.apply(this,arguments); } finally { sonrasi(ad); } return r; };
+      w.__aybDel=true;
+      try{ if(inner.__aybGeo) w.__aybGeo=true; }catch(e){}   /* bayrak korunur: sarmalayıcılar birbirini tekrar sarmaz */
+      o[ad]=w; return true;
     }catch(e){ return false; }
   }
   function kur(){
@@ -5480,7 +5503,12 @@
       bar.style.display=goster?'flex':'none';
       if(goster){
         var ad=ARAC_AD[kod]||(kod?String(kod).toUpperCase():'ÇİZİM');
-        var sp=bar.querySelector('#aybCizimModAd'); if(sp) sp.textContent='✏ '+ad+' MODU';
+        var ek='';
+        /* İSTEK (Bayram YARAŞ): hangi snap kuralı canlı — çubukta görünsün */
+        if(kod==='yeraltihat'||kod==='abonehat'){
+          try{ if(typeof window.aybSnapMetre==='function') ek=' · 🧲 '+window.aybSnapMetre()+' m İÇİ: BAĞLA · DIŞI: KIRIK'; }catch(e){}
+        } else if(kod==='hat'){ ek=' · bağla: TEK TIK'; }
+        var sp=bar.querySelector('#aybCizimModAd'); if(sp) sp.textContent='✏ '+ad+' MODU'+ek;
       }
       if(!ciz) temizleRubber();
     }catch(e){}
@@ -6160,7 +6188,7 @@
         }
         return r;
       };
-      wL.__aybGeo=true; A.deleteLine=wL;
+      wL.__aybGeo=true; try{ if(iL.__aybDel) wL.__aybDel=true; }catch(e){} A.deleteLine=wL;
     }
     if(typeof A.deleteObject==='function' && !A.deleteObject.__aybGeo){
       var iO=A.deleteObject;
@@ -6180,7 +6208,7 @@
         }
         return r;
       };
-      wO.__aybGeo=true; A.deleteObject=wO;
+      wO.__aybGeo=true; try{ if(iO.__aybDel) wO.__aybDel=true; }catch(e){} A.deleteObject=wO;
     }
     return true;
   }
@@ -7633,6 +7661,50 @@
   var n=0, iv=setInterval(function(){ if(injectBtn()||++n>60) clearInterval(iv); }, 700);
 })();
 
+/* ================= SNAP AYARI (İSTEK: Bayram YARAŞ) =================
+   Snap artık METRE cinsinden: direğe gerçek dünyada bu mesafeden fazla
+   yaklaşmadan hat YAPIŞMAZ (zoom ne olursa olsun). Rapor/Veri -> 🧲 Snap. */
+(function(){
+  var d=document;
+  window.aybSnapPanel=function(){
+    var eski=d.getElementById('aybSnapPanel'); if(eski) eski.remove();
+    var mev=0.75; try{ var v=parseFloat(localStorage.getItem('ayb_snap_m')||''); if(isFinite(v)&&v>0) mev=v; }catch(e){}
+    var el=d.createElement('div'); el.id='aybSnapPanel';
+    el.style.cssText='position:fixed;inset:0;z-index:6300;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+    el.innerHTML='<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.45);">'+
+      '<div style="font-size:16px;font-weight:800;color:#0f766e;margin-bottom:6px;">🧲 Snap (Yapışma) Ayarı</div>'+
+      '<div style="font-size:12.5px;color:#475569;margin-bottom:12px;line-height:1.5;">Hat çizerken direğe YAPIŞMA mesafesi — GERÇEK METRE cinsinden, zoomdan bağımsız. Bu mesafenin İÇİNE tek tık = direğe bağlanır; DIŞINA tek tık = kırık nokta. Varsayılan: 0.75 m.</div>'+
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">'+
+        '<input id="aybSnapRange" type="range" min="0.25" max="5" step="0.25" value="'+mev+'" style="flex:1;">'+
+        '<div id="aybSnapVal" style="width:64px;text-align:center;font-weight:800;font-size:16px;color:#0f172a;">'+mev+' m</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;">'+
+        '<button id="aybSnapKaydet" style="flex:1;border:none;border-radius:10px;background:#16a34a;color:#fff;padding:11px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;">Kaydet</button>'+
+        '<button id="aybSnapSifirla" style="flex:1;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Varsayılan</button>'+
+        '<button id="aybSnapKapat" style="flex:1;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Kapat</button>'+
+      '</div></div>';
+    d.body.appendChild(el);
+    var rg=el.querySelector('#aybSnapRange'), vl=el.querySelector('#aybSnapVal');
+    rg.addEventListener('input', function(){ vl.textContent=rg.value+' m'; });
+    el.querySelector('#aybSnapKapat').onclick=function(){ el.remove(); };
+    el.querySelector('#aybSnapSifirla').onclick=function(){ try{ localStorage.removeItem('ayb_snap_m'); }catch(e){} el.remove(); try{ (window.hint||function(){})('Snap varsayılana döndü (0.75 m)'); }catch(e){} };
+    el.querySelector('#aybSnapKaydet').onclick=function(){ try{ localStorage.setItem('ayb_snap_m', String(parseFloat(rg.value)||0.75)); }catch(e){} el.remove(); try{ (window.hint||function(){})('Snap: '+rg.value+' metre olarak kaydedildi'); }catch(e){} };
+  };
+  function inj(){
+    if(d.getElementById('aybSnapBtn')) return true;
+    /* İSTEK (Bayram YARAŞ): ayar işlemleri Rapor/Veri'de DEĞİL, AYARLAR sekmesinde durur */
+    var r=d.querySelector('.ayb-pro-group.fielddata .ayb-pro-row');
+    if(!r) return false;
+    var b=d.createElement('button');
+    b.type='button'; b.id='aybSnapBtn'; b.className='ayb-pro-btn toolbtn'; b.title='Hat çizerken direğe yapışma mesafesi (metre)';
+    b.innerHTML='<div class="ayb-pro-ico" style="font-size:18px">🧲</div><small>Snap</small>';
+    b.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); window.aybSnapPanel(); });
+    r.appendChild(b);
+    return true;
+  }
+  var n=0, iv=setInterval(function(){ if(inj()||++n>60) clearInterval(iv); }, 700);
+})();
+
 /* ================= KISAYOL SİGORTA (İSTEK: Bayram YARAŞ) =================
    PC'de T=Trafo, D=Direk, H=Hat kısayolları çalışmıyordu: setup() içinde
    tanımsız openAYBInfo referansı hata verip bindAYBShortcutKeys() satırına
@@ -7654,7 +7726,7 @@
    Sol alttaki rozet KALDIRILDI. Sürüm etiketi üst başlıkta "Körfezim Saha Metraj"
    yanında görünür (eski v111'in yerinde). */
 (function(){
-  var TAG='PERF-25.07-G';
+  var TAG='PERF-25.07-Y';
   window.AYB_SURUM=TAG;
   function uygula(){
     try{
@@ -7757,6 +7829,7 @@
                   try{ if(pk.hit) map.removeLayer(pk.hit); }catch(e){}
                   try{ if(pk.label) map.removeLayer(pk.label); }catch(e){}
                   try{ if(pk.region) map.removeLayer(pk.region); }catch(e){}
+                  try{ if(Array.isArray(pk.handles)) pk.handles.forEach(function(hm){ try{ map.removeLayer(hm); }catch(_){} }); }catch(e){}
                   try{ reg.delete(l.id); }catch(e){}
                 }
                 if(typeof window.renderLine==='function') window.renderLine(l);
@@ -7874,9 +7947,11 @@
 (function(){
   var n=0, iv=setInterval(function(){
     try{
-      if(document.querySelector('.ayb-pro-ribbon') && !document.getElementById('aybCancelGizle')){
+      if(!document.getElementById('aybCancelGizle')){
+        /* İSTEK (Bayram YARAŞ): GPS sekmesindeki Bitir ve eski palet Bitir'i KOŞULSUZ gizli —
+           bitirme artık turuncu mod çubuğundan yapılır */
         var st=document.createElement('style'); st.id='aybCancelGizle';
-        st.textContent='#btnCancelTool{display:none!important;}';
+        st.textContent='#btnCancelTool{display:none!important;}#btnFinish{display:none!important;}';
         (document.head||document.documentElement).appendChild(st);
       }
     }catch(e){}
