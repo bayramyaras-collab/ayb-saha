@@ -8113,6 +8113,26 @@
       "(trafo tabanı, direk merkezi).",
       "Trafo, direk, kofre, box, abone ve ek muf her zoom kademesinde tam yerinde."
     ]],
+    ["SEMBOL FONTU (B_CAD.ttf) — 3. DOSYA",[
+      "GitHub paketinde 3 dosya vardır: AYB_Saha_Harita.html, ayb-tablet.js ve",
+      "B_CAD.ttf. Üçü de gereklidir.",
+      "B_CAD.ttf direk / trafo / kofre / box sembollerinin B Pro ile BİREBİR aynı",
+      "görünmesini sağlayan fonttur; programın içine gömülü DEĞİLDİR.",
+      "AYB_Saha_Harita.html ile AYNI KLASÖRDE durmak zorundadır.",
+      "Güncellerken üç dosyayı da aynı klasöre, eskilerin üzerine kopyala.",
+      "Font eksikse açılışta kırmızı uyarı çıkar; kapatıp çalışabilirsin ama",
+      "semboller doğru görünmez. Dosyayı yerine koyup programı yeniden aç."
+    ]],
+    ["ÇEVRİMDIŞI ÖNBELLEK VE GÜNCELLEME (TABLET)",[
+      "Tablet, internetsiz çalışabilmek için program dosyalarını cihazda saklar.",
+      "Saklanan dosyalara sembol fontu ve ayb-tablet.js de dahildir; internetsiz",
+      "ilk açılışta bile semboller B Pro fontuyla gelir.",
+      "Önbellek sürüm damgalıdır: yeni sürüm kurulunca eski önbellek silinir,",
+      "tablet ESKİ programda takılı kalmaz.",
+      "Harita kareleri önbelleğe yazılmaz; depo boşuna dolmaz.",
+      "Yeni sürüm inince bildirim çıkar. İş yarıda kesilmesin diye program",
+      "kendiliğinden yenilenmez; kapatıp açınca yeni sürüm çalışır."
+    ]],
     ["BİREBİR GERİ ALMA VE MÜKERRER KONTROLÜ",[
       "Dışa verilen her yer imine görünmeyen öznitelik bloğu (KATMAN/TIP/AD/ID/JSON)",
       "yazılır. Google Earth görüntüsü DEĞİŞMEZ; dosyayı geri aldığında direk no,",
@@ -8399,7 +8419,7 @@
    Sol alttaki rozet KALDIRILDI. Sürüm etiketi üst başlıkta "BY EDŞ Saha Programı"
    yanında görünür (eski v111'in yerinde). */
 (function(){
-  var TAG='PERF-25.07-AO';
+  var TAG='PERF-25.07-AP';
   window.AYB_SURUM=TAG;
   function uygula(){
     try{
@@ -8419,6 +8439,73 @@
   }
   uygula();
   var n=0, iv=setInterval(function(){ uygula(); if(++n>20) clearInterval(iv); }, 700);
+})();
+
+
+/* ===================== SEMBOL FONTU KONTROLÜ (Bayram YARAŞ) =====================
+   İSTEK (Bayram YARAŞ): "GİTHUB İÇİNDE SEMBOL FONTU VAR, BUNU DA YÜKLÜYOR MUYUZ?"
+   EVET — B_CAD.ttf SEMBOL FONTUDUR ve AYB_Saha_Harita.html ile AYNI KLASÖRDE
+   durmak zorundadır; program onu göreceli adresle çağırır:
+       @font-face{font-family:'BCAD';src:url('B_CAD.ttf') format('truetype');}
+   Font eksik ya da bozuk olursa direk / trafo / kofre / box sembolleri B Pro ile
+   AYNI görünmez ve bu SESSİZCE olur — kullanıcı yanlış sembolle metraj çıkarır.
+   Bu modül fontu yüklemeyi dener, GERÇEKTEN yüklendi mi diye harf genişliği ölçer
+   (B_CAD içinde gerçekten bulunan harflerle) ve yüklenmemişse ekranda net uyarı verir. */
+(function(){
+  "use strict";
+  var HARF='ABCDEFGHKLMNOPQRSTUVWYZ0123456789'; /* B_CAD cmap'inde bulunan harfler */
+  var uyarildi=false;
+  function yuklendiMi(){
+    try{
+      var c=document.createElement('canvas'), x=c&&c.getContext&&c.getContext('2d');
+      if(!x||!x.measureText) return true;               /* ölçemiyorsak boşuna uyarma */
+      function w(f){ x.font='64px '+f; return x.measureText(HARF).width; }
+      var m=w('monospace'), sf=w('serif');
+      if(!(m>0)||!(sf>0)) return true;                  /* ölçüm yok — uyarma */
+      if(Math.abs(m-sf)<0.5) return true;               /* tüm fontlar aynı ölçülüyor — güvenilmez */
+      if(Math.abs(w('"BCAD", monospace')-m)>0.5) return true;
+      if(Math.abs(w('"BCAD", serif')-sf)>0.5) return true;
+      return false;
+    }catch(e){ return true; }
+  }
+  function uyar(){
+    if(uyarildi) return; uyarildi=true;
+    try{ console.warn('BY EDŞ: SEMBOL FONTU B_CAD.ttf YÜKLENEMEDİ — semboller B Pro ile aynı olmayacak.'); }catch(e){}
+    try{
+      if(document.getElementById('aybFontUyari')) return;
+      var d=document.createElement('div');
+      d.id='aybFontUyari';
+      d.style.cssText='position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:100000;'
+        +'max-width:660px;width:94vw;padding:12px 42px 12px 14px;border-radius:12px;'
+        +'background:#b3261e;color:#fff;font:600 13px/1.5 system-ui,Segoe UI,Arial;'
+        +'box-shadow:0 8px 26px rgba(0,0,0,.45)';
+      d.innerHTML='<div style="font-size:14px;margin-bottom:4px">SEMBOL FONTU BULUNAMADI: <b>B_CAD.ttf</b></div>'
+        +'Direk / trafo / kofre / box sembolleri B Pro ile <b>aynı görünmez</b>.<br>'
+        +'<b>B_CAD.ttf</b> dosyasını <b>AYB_Saha_Harita.html</b> ile <b>aynı klasöre</b> koyup programı yeniden açın.';
+      var k=document.createElement('button');
+      k.type='button'; k.textContent='\u2715';
+      k.style.cssText='position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;border-radius:8px;'
+        +'background:rgba(255,255,255,.2);color:#fff;font:700 13px system-ui;cursor:pointer';
+      k.onclick=function(){ try{ d.remove(); }catch(e){} };
+      d.appendChild(k);
+      (document.body||document.documentElement).appendChild(d);
+    }catch(e){}
+  }
+  function dene(kalan){
+    var bitir=function(){
+      if(yuklendiMi()){ window.AYB_SEMBOL_FONTU=true; window.__aybBcadOk=true; return; }
+      if(kalan>0){ setTimeout(function(){ dene(kalan-1); }, 1500); return; }
+      window.AYB_SEMBOL_FONTU=false; window.__aybBcadOk=false; uyar();
+    };
+    try{
+      if(document.fonts&&document.fonts.load) document.fonts.load('64px "BCAD"','A').then(bitir,bitir);
+      else bitir();
+    }catch(e){ bitir(); }
+  }
+  function basla(){ setTimeout(function(){ dene(3); }, 2000); }
+  if(document.readyState==='complete') basla(); else window.addEventListener('load', basla);
+  /* Elle kontrol: konsoldan aybFontKontrol() */
+  window.aybFontKontrol=function(){ uyarildi=false; dene(0); return window.AYB_SEMBOL_FONTU; };
 })();
 
 

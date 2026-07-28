@@ -15764,7 +15764,28 @@ body.ayb-energy-active.ayb-og-active #btnOGEnergy{
 
 <div id="aybSahaImza">Hazirlayan: Bayram YARAS · 0530 630 05 40</div>
 <script>
-if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
+/* İSTEK (Bayram YARAŞ): yeni sürüm konunca tablet ESKİ dosyada takılı kalmasın.
+   sw.js önbelleği artık SÜRÜM DAMGALIDIR (eski önbellek otomatik silinir) ve sembol
+   fontu B_CAD.ttf ile ayb-tablet.js de önbelleğe alınır. Burada düzenli olarak güncelleme
+   aranır; yeni sürüm indiğinde kullanıcıya haber verilir. Sahada iş yarıda kesilmesin diye
+   ZORLA yenileme YAPILMAZ — program kapanıp açılınca yeni sürüm çalışır. */
+if('serviceWorker' in navigator){window.addEventListener('load',function(){
+  var vardi=!!navigator.serviceWorker.controller, duyuruldu=false;
+  function duyur(){
+    if(duyuruldu||!vardi) return; duyuruldu=true;
+    try{ if(typeof toast==='function'){ toast('Yeni sürüm indirildi. Programı kapatıp açınca güncel sürüm çalışacak.'); return; } }catch(_){}
+    try{ console.log('BY EDŞ: yeni sürüm indirildi — programı kapatıp açın.'); }catch(_){}
+  }
+  navigator.serviceWorker.register('sw.js').then(function(reg){
+    if(!reg) return;
+    try{ reg.update(); }catch(_){}
+    try{ setInterval(function(){ try{ reg.update(); }catch(_){} }, 3600000); }catch(_){}
+    try{ reg.addEventListener('updatefound',function(){
+      var yeni=reg.installing; if(!yeni) return;
+      yeni.addEventListener('statechange',function(){ if(yeni.state==='installed') duyur(); });
+    }); }catch(_){}
+  }).catch(function(){});
+});}
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__aybInstallEvt=e;try{var b=document.createElement('button');b.textContent='\uD83D\uDCF2 Uygulamayi Yukle';b.style.cssText='position:fixed;right:8px;bottom:8px;z-index:99999;padding:9px 14px;border:0;border-radius:10px;background:#388cff;color:#fff;font:700 13px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.35)';b.onclick=function(){b.remove();window.__aybInstallEvt.prompt();};document.body.appendChild(b);}catch(_){}});
 </script>
 <script src="ayb-backup.js"></script>
