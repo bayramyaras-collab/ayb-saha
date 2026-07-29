@@ -106,7 +106,7 @@ public class MainActivity extends Activity {
             public boolean onJsAlert(WebView v, String url, String message, final JsResult result) {
                 try {
                     new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("Körfezim Saha")
+                        .setTitle("BY EDŞ Saha")
                         .setMessage(message)
                         .setCancelable(false)
                         .setPositiveButton("Tamam", new DialogInterface.OnClickListener(){
@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
             public boolean onJsConfirm(WebView v, String url, String message, final JsResult result) {
                 try {
                     new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("Körfezim Saha")
+                        .setTitle("BY EDŞ Saha")
                         .setMessage(message)
                         .setCancelable(false)
                         .setPositiveButton("Evet", new DialogInterface.OnClickListener(){
@@ -136,7 +136,7 @@ public class MainActivity extends Activity {
                     final EditText input = new EditText(MainActivity.this);
                     if (defaultValue != null) input.setText(defaultValue);
                     new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("Körfezim Saha")
+                        .setTitle("BY EDŞ Saha")
                         .setMessage(message)
                         .setView(input)
                         .setCancelable(false)
