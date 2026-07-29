@@ -66,7 +66,7 @@
                 <data android:scheme="content" android:mimeType="*/*" />
                 <data android:scheme="file" android:mimeType="*/*" />
             </intent-filter>
-            <intent-filter android:label="Körfezim Saha ile aç">
+            <intent-filter android:label="BY EDŞ Saha ile aç">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
