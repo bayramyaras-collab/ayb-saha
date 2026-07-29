@@ -3119,7 +3119,8 @@ function applyWorkScale(value, silent=false){
   const c=map.getCenter();
   const targetZoom=Math.max(map.getMinZoom()||0, Math.min(map.getMaxZoom()||24, zoomForScaleDenominator(denom, c.lat)));
   setStatusScaleText('Ölçek: 1 / '+denom);
-  map.setZoomAround(c, targetZoom, {animate:true});
+  /* calisma olcegi BIREBIR olmali: ondalik kademe bu is icin gecici acilir */
+  aybKesinZoom(function(){ map.setZoomAround(c, targetZoom, {animate:true}); });
   setTimeout(()=>{map.invalidateSize(false); updateScaleStatusFromMap()},280);
   if(!silent) toast('Harita çalışma ölçeği 1 / '+denom+' olarak yakınlaştırıldı');
 }
@@ -3240,9 +3241,88 @@ if(typeof window!=='undefined'){
   window.addEventListener('resize', aybApplyMobileUI);
   window.addEventListener('orientationchange', function(){ setTimeout(aybApplyMobileUI,200); });
 }
+/* ============ YAKINLIK TAVANI + TEK ELDEN OTURMA (Bayram YARAS) ============
+   1) PARCALI GORUNTU: uydu karosu gercek cozunurlukte en fazla 21. kademeye
+      kadar var. Harita 24'e cikabildigi icin Leaflet ayni karoyu 8 KAT
+      gererek gosteriyordu. Artik tavan, ACIK OLAN altligin kendi
+      cozunurlugunun 1 kademe ustu (uyduda 22 = en fazla 2 kat; 21'de birebir).
+      Taban 21'de tutulur ki 1/500 calisma olcegi (z~19.8) her altlikta gecerli
+      kalsin.
+   2) AGIRLASMA: 'zoomend' ve 'moveend' AYNI isi iki kez yaptiriyordu (iki
+      zorlamali yerlesim, iki etiket yerlestirme, iki lamba tazeleme). Yeni is
+      EKLENMEDI; var olan is bir kereye indirildi. */
+var AYB_DIJITAL_KADEME=1;                 /* altligin cozunurlugu + bu kadar */
+function aybAcikAltlik(){
+  try{
+    if(!map) return null;
+    var b=window.__aybBaseLayer;
+    if(b&&map.hasLayer(b)) return b;
+    var bl=window.baseLayers||{};
+    for(var k in bl){ if(bl[k]&&map.hasLayer(bl[k])) return bl[k]; }
+  }catch(e){}
+  return null;
+}
+function aybZoomTavani(){
+  var l=aybAcikAltlik();
+  var n=(l&&l.options&&typeof l.options.maxNativeZoom==='number')?l.options.maxNativeZoom:21;
+  return Math.max(21, Math.min(24, n+AYB_DIJITAL_KADEME));
+}
+function aybZoomTavaniUygula(){
+  if(!map) return;
+  var t=aybZoomTavani();
+  if(map.options.maxZoom===t) return;
+  map.options.maxZoom=t;
+  try{ map.fire('zoomlevelschange'); }catch(e){}
+  try{ if(map.getZoom()>t) map.setZoom(t,{animate:false}); }catch(e){}
+}
+/* OLCEK ve BASKI ondalik kademe ister (calisma olcegi 1/500..1/5000, baskida
+   ozel olcek 1/100'e kadar). Ekran kullanimi tam kademede kalsin diye ondalik
+   kapalidir; bu kapi yalniz o iki yolda gecici acar ve hemen geri kapatir. */
+function aybKesinZoom(is){
+  if(!map||typeof is!=='function') return;
+  var s=map.options.zoomSnap, d=map.options.zoomDelta, m=map.options.maxZoom;
+  map.options.zoomSnap=0; map.options.zoomDelta=0.25; map.options.maxZoom=24;
+  try{ is(); }
+  finally{ map.options.zoomSnap=s; map.options.zoomDelta=d; map.options.maxZoom=m; }
+}
+/* GORUNUM OTURDU — TEK ELDEN, TEK ZAMANLAYICI. */
+var __aybOtZaman=null, __aybOtZoom=false, __aybOtBoy='';
+function aybGorunumOturdu(zoomMu){
+  if(zoomMu) __aybOtZoom=true;
+  if(__aybOtZaman) return;                        /* zaten sirada: ikinci kez yapma */
+  __aybOtZaman=setTimeout(function(){
+    __aybOtZaman=null;
+    var z=__aybOtZoom; __aybOtZoom=false;
+    if(!map) return;
+    /* invalidateSize YALNIZ kap boyutu gercekten degistiyse. Her kaydirmada
+       zorlamali yerlesim yaptirmak yavas tablette en pahali islerdendi. */
+    try{ var c=map.getContainer(), b=c.clientWidth+'x'+c.clientHeight;
+         if(b!==__aybOtBoy){ __aybOtBoy=b; map.invalidateSize(false); } }catch(e){}
+    if(z){ try{ updateScaleStatusFromMap(); }catch(e){} }
+    if(typeof project!=='undefined' && project){
+      if(z){ try{ refreshLineLabels(); }catch(e){} }
+      try{ repositionPointLabels(); }catch(e){}
+      try{ aybRefreshPoleLamps(); }catch(e){}
+      try{ aybEkranYenile(); }catch(e){}
+    }
+    try{ updateCoordInfo(map.getCenter()); }catch(e){}
+  },90);
+}
+try{ window.aybKesinZoom=aybKesinZoom; window.aybZoomTavaniUygula=aybZoomTavaniUygula; }catch(e){}
 function initMap(){
   try{ aybApplyMobileUI(); }catch(e){}
-  map=L.map('map',{zoomControl:true,preferCanvas:true,attributionControl:true,zoomSnap:0.01,zoomDelta:0.25,wheelPxPerZoomLevel:80,
+  /* YAKINLASTIRMA DUZENI (Bayram YARAS) — ISTEK: "ZOOM YAPARKEN UYDUDA COK
+     AGIRLASMA VAR GIBI PARCALI GELIYOR, KADEME KADEME BUYUP KUCULUYOR".
+     ESKI: zoomSnap 0.01 -> harita HER ZAMAN ondalik kademede duruyordu ve
+     Leaflet uydu karosunu o oranda GERIYORDU; ustelik tek tekerlek centigi
+     1.77 kademe atlayip tavana (24) yapisiyordu. 24'te uydu karosu 8 KAT
+     gerildigi icin ekran mozaik/parcali geliyordu.
+     YENI: zoomSnap/zoomDelta 1 -> kullanici yakinlastirmasi TAM kademeye
+     oturur, karo birebir gelir. wheelPxPerZoomLevel 240 -> bir centik = bir
+     kademe. bounceAtZoomLimits:false -> sinirda parmakla sikistirinca
+     yaylanma (buyuyup kuculme) olmaz. Olcek ve baski ondalik kademeyi
+     aybKesinZoom() ile gecici olarak geri acar: 1/500..1/5000 birebir korunur. */
+  map=L.map('map',{zoomControl:true,preferCanvas:true,attributionControl:true,zoomSnap:1,zoomDelta:1,wheelPxPerZoomLevel:240,bounceAtZoomLimits:false,
     /* İSTEK (Bayram YARAŞ): ÇİZİMLER VEKTÖR GİBİ YAPIŞSIN — çizgi kanvası ekranın
        2.5 KATINI önceden boyar (padding). Kaydırmada hat kaybolmaz; ancak çok uzun
        kaydırmada kenara gelince tek karede tazelenir. tolerance: dokunmatikte
@@ -3273,11 +3353,15 @@ function initMap(){
   if(map.createPane){ const pane=map.createPane('aybRasterPane'); pane.style.zIndex=330; pane.style.pointerEvents='none'; const cadPane=map.createPane('aybCadPane'); cadPane.style.zIndex=345; cadPane.style.pointerEvents='none'; }
   L.control.layers({'Google Uydu':baseLayers.sat,'Google Uydu + Yol':baseLayers.hybrid,'Esri Uydu Yedek':baseLayers.esri,'Yol Haritası':baseLayers.osm,'Topoğrafya':baseLayers.topo},{}).addTo(map);
   L.control.scale({metric:true, imperial:false, position:'bottomright', maxWidth:160}).addTo(map);
+  /* altlik degisince yakinlik tavani da degisir (uydu 22, digerleri 21) */
+  map.on('baselayerchange',()=>{try{ aybZoomTavaniUygula(); }catch(e){}});
+  try{ aybZoomTavaniUygula(); }catch(e){}
   map.on('zoomstart',()=>{ /* İSTEK (Bayram YARAŞ): etiketler zoomda YANIP SÖNMESİN —
     gizleme yalnız DEV projelerde (1200+ obje) uygulanır, normalde etiketler yapışık kalır. */
     if((((window.project||{}).objects)||[]).length>1200) map.getContainer().classList.add('zooming-safe'); });
-  map.on('zoomend',()=>{map.getContainer().classList.remove('zooming-safe'); setTimeout(()=>map.invalidateSize(false),80); updateScaleStatusFromMap(); if(project){ refreshLineLabels(); repositionPointLabels(); aybRefreshPoleLamps(); try{ aybEkranYenile(); }catch(e){} }});
-  map.on('moveend',()=>{map.getContainer().classList.remove('zooming-safe'); setTimeout(()=>map.invalidateSize(false),80); if(project){ repositionPointLabels(); try{ aybRefreshPoleLamps(); }catch(e){} try{ aybEkranYenile(); }catch(e){} }});
+  /* Etiket gizlemesi ANINDA kalkar; agir is tek elden aybGorunumOturdu'ya gider. */
+  map.on('zoomend',()=>{map.getContainer().classList.remove('zooming-safe'); aybGorunumOturdu(true);});
+  map.on('moveend',()=>{map.getContainer().classList.remove('zooming-safe'); aybGorunumOturdu(false);});
   Object.values(baseLayers).forEach(layer=>{
     if(layer&&layer.on) layer.on('tileerror',()=>{
       if(map.hasLayer(layer) && layer!==baseLayers.esri && layer!==baseLayers.osm && layer!==baseLayers.topo){
@@ -3286,7 +3370,7 @@ function initMap(){
     });
   });
   map.on('mousemove',e=>{updateCoordInfo(e.latlng); updateSnap(e.latlng)});
-  map.on('moveend',()=>{if(map) updateCoordInfo(map.getCenter())});
+  /* koordinat yazisi da aybGorunumOturdu icinde tazelenir (ikinci moveend yok) */
   map.on('mouseout',()=>hideToolCursor());
   map.on('click',handleMapClick);
   map.on('dblclick',finishFreeDraw);
@@ -9778,8 +9862,11 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
   function preparePrintMap(frame){
     if(!map||!frame) return;
     try{
+      /* baski ondalik kademe ister (ozel olcek 1/100'e kadar); baski bitince
+         cleanupAfterPrint() ekran duzenini tekrar tam kademeye dondurur. */
       map.options.zoomSnap=0;
       map.options.zoomDelta=0.25;
+      map.options.maxZoom=24;
       map.invalidateSize(true);
       if(frame.scaleMode==='fit' && printFrameLayer){
         map.fitBounds(printFrameLayer.getBounds(),{padding:[8,8],animate:false});
@@ -9794,6 +9881,10 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
     document.body.classList.remove('ayb-printing');
     applyPrintVisibility(frame||currentPrintSettings||{},false);
     try{map.invalidateSize(true);}catch(e){}
+    /* EKRAN DUZENI GERI: baski icin acilan ondalik kademe kapanir, uydu
+       karolari yeniden birebir keskin gelir. */
+    try{ map.options.zoomSnap=1; map.options.zoomDelta=1;
+         if(window.aybZoomTavaniUygula) window.aybZoomTavaniUygula(); }catch(e){}
     try{
       const h=el('hint'); if(h) h.style.display='';
       const t=el('toast'); if(t) t.style.display='';

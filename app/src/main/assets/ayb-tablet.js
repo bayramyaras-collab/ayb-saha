@@ -2240,6 +2240,9 @@
       l.options.keepBuffer=2;              /* 6 -> 2 : görüntü başına çok daha az karo isteği */
       l.options.updateWhenIdle=true;
       l.options.updateWhenZooming=false;
+      /* altlik degisti: yakinlik tavani onun cozunurlugune gore ayarlansin
+         (uydu 21 -> tavan 22). Boylece karo 8 kat gerilip parcali gelmez. */
+      setTimeout(function(){ try{ window.aybZoomTavaniUygula && window.aybZoomTavaniUygula(); }catch(e){} },0);
       if(!l._aybBlank){ l.options.errorTileUrl=BLANK; l._aybBlank=true; }
     }catch(e){}
   }
@@ -4195,7 +4198,9 @@
   function createBase(mode,map){
     var L=window.L; if(!L) return null;
     var goog=(mode==='sat'||mode==='hybrid');
-    var opts={ maxZoom:24, maxNativeZoom: goog?21:19, keepBuffer:6, crossOrigin:true, updateWhenIdle:false, attribution: goog?'Google':'' };
+    /* keepBuffer 2 + updateWhenIdle true: yakinlastirmada istenen karo sayisi
+       ucte bire iner (Bayram YARAS — "zoom yaparken uyduda cok agirlasma"). */
+    var opts={ maxZoom:24, maxNativeZoom: goog?21:19, keepBuffer:2, crossOrigin:true, updateWhenIdle:true, updateWhenZooming:false, attribution: goog?'Google':'' };
     if(goog) opts.subdomains=['0','1','2','3'];
     else if(mode==='osm'||mode==='topo') opts.subdomains=['a','b','c'];
     else opts.subdomains=[];
@@ -8497,7 +8502,7 @@
    Sol alttaki rozet KALDIRILDI. Sürüm etiketi üst başlıkta "BY EDŞ Saha Programı"
    yanında görünür (eski v111'in yerinde). */
 (function(){
-  var TAG='PERF-25.07-AS';
+  var TAG='PERF-25.07-AT';
   window.AYB_SURUM=TAG;
   function uygula(){
     try{
