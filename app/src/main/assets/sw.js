@@ -9,13 +9,15 @@
       dosyaları saklanır. Böylece tabletin deposu döşeme resimleriyle şişmez.
    NOT: Sürüm değişince aşağıdaki SURUM satırı da değişmelidir. */
 
-const SURUM  = 'PERF-25.07-AS';
+const SURUM  = 'PERF-26.08-U5';
 const CACHE  = 'ayb-saha-' + SURUM;
 
 /* Programın çevrimdışı çalışması için gereken KENDİ dosyaları */
 const ASSETS = [
   './AYB_Saha_Harita.html',
   './ayb-tablet.js',
+  './ayb-undo.js',
+  './ayb-label-screen.js',
   './B_CAD.ttf',                 /* SEMBOL FONTU - eksikse semboller B Pro ile aynı olmaz */
   './ayb-backup.js',
   './ayb-kmz.js',
