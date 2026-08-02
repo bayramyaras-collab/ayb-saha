@@ -1,6 +1,6 @@
 /* ============================================================
    BY EDŞ Saha Programı — Kalıcı Silinenler / Geri Al
-   Sürüm: PERF-26.08-U4
+   Sürüm: PERF-26.08-U8
    Hazırlayan: Bayram YARAŞ
 
    Performans kuralı:

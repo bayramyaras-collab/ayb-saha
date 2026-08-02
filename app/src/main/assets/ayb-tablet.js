@@ -842,13 +842,12 @@
       }).join('\n');
       const lampPlacemarks=(project.objects||[]).filter(aybKmlPoleHasLamp).map(o=>{
         const label=aybKmlLampLabel(o)||'Lamba';
-        const dLat=0.000032;   /* ~3.5m kuzey: direk sembolu ile cakismasin */
         return `<Placemark>
           <name>${aybXml(label)}</name>
           <styleUrl>#st_lamba</styleUrl>
           <description><![CDATA[Direk ${aybHtml(getObjectNo(o))} lambasi: ${aybHtml(label)}]]></description>
           ${window.aybXdLamba(o,label)}
-          <Point><coordinates>${Number(o.lng).toFixed(8)},${(Number(o.lat)+dLat).toFixed(8)},0</coordinates></Point>
+          <Point><coordinates>${Number(o.lng).toFixed(8)},${Number(o.lat).toFixed(8)},0</coordinates></Point>
         </Placemark>`;
       }).join('\n');
     
@@ -1041,7 +1040,7 @@
         }).join("\n");
         styleXml+=Object.keys(lnv).map(function(k){ return lnv[k]; }).join('');
         var lampPm=(project.objects||[]).filter(window.aybKmlPoleHasLamp).map(function(o){
-          var label=window.aybKmlLampLabel(o)||"Lamba"; var dLat=0.000032;
+          var label=window.aybKmlLampLabel(o)||"Lamba";
           var _t=_lampTip(o); var _su=_lampStyle[_t]?("#lamp_"+_t):"#st_lamba";
           /* İSTEK (Bayram YARAŞ): KMZ lamba ikonu da LEJANT B_CAD glifi (C/h, X/r, q/z, Z) */
           try{
@@ -1062,7 +1061,7 @@
               if(bcadStyle[_key]) _su='#'+_key;
             }
           }catch(e){}
-          return '<Placemark><name>'+aybXml(label)+'</name><styleUrl>'+_su+'</styleUrl><description><![CDATA[Direk '+aybHtml(getObjectNo(o))+' lambasi: '+aybHtml(label)+']]></description>'+window.aybXdLamba(o,label)+'<Point><coordinates>'+Number(o.lng).toFixed(8)+','+(Number(o.lat)+dLat).toFixed(8)+',0</coordinates></Point></Placemark>';
+          return '<Placemark><name>'+aybXml(label)+'</name><styleUrl>'+_su+'</styleUrl><description><![CDATA[Direk '+aybHtml(getObjectNo(o))+' lambasi: '+aybHtml(label)+']]></description>'+window.aybXdLamba(o,label)+'<Point><coordinates>'+Number(o.lng).toFixed(8)+','+Number(o.lat).toFixed(8)+',0</coordinates></Point></Placemark>';
         }).join("\n");
         var chanPm=(project.channels||[]).map(function(c){ var pts=(c.points||[]).map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); if(pts.length<2) return ""; return '<Placemark><name>'+aybXml("Kanal "+aybKanalFullNameFromProps(c.props))+'</name><styleUrl>#ln_kanal</styleUrl><description>'+aybChannelDescription(c,pts)+'</description>'+window.aybXdKanal(c)+'<LineString><tessellate>1</tessellate><coordinates>'+aybKmlCoords(pts)+'</coordinates></LineString></Placemark>'; }).join("\n");
         var freePm=(project.freeLines||[]).map(function(f){ var pts=(f.points||[]).map(aybNormalizeLinePoint).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);}); if(pts.length<2) return ""; return '<Placemark><name>'+aybXml(f.kind||"Çizgi")+'</name><styleUrl>#ln_free</styleUrl>'+window.aybXdHat(f,(f.props&&f.props.ad)||'')+'<LineString><tessellate>1</tessellate><coordinates>'+aybKmlCoords(pts)+'</coordinates></LineString></Placemark>'; }).join("\n");
@@ -1842,30 +1841,42 @@
     var Lyr=L.Layer.extend({
       onAdd:function(map){
         this._map=map;
-        var c=this._canvas=L.DomUtil.create("canvas","ayb-altlik-canvas");
+        var c=this._canvas=L.DomUtil.create("canvas","ayb-altlik-canvas leaflet-zoom-animated");
         c.style.position="absolute"; c.style.pointerEvents="none"; c.style.zIndex=200;
         map.getPanes().overlayPane.appendChild(c);
         map.on("moveend",this._redraw,this);
-        map.on("zoomstart",this._hide,this);
+        map.on("zoomanim",this._animateZoom,this);
         map.on("zoomend",this._redraw,this);
         map.on("resize",this._redraw,this);
         this._redraw();
         return this;
       },
       onRemove:function(map){
-        map.off("moveend",this._redraw,this); map.off("zoomstart",this._hide,this);
+        map.off("moveend",this._redraw,this); map.off("zoomanim",this._animateZoom,this);
         map.off("zoomend",this._redraw,this); map.off("resize",this._redraw,this);
         if(this._canvas&&this._canvas.parentNode) this._canvas.parentNode.removeChild(this._canvas);
       },
-      _hide:function(){ if(this._canvas) this._canvas.style.visibility="hidden"; },
+      /* Zoom sırasında tuvali gizlemek hatları söküp yeniden çiziliyormuş gibi
+         gösteriyordu. Leaflet'in kendi vektör katmanı gibi mevcut resmi canlı
+         ölçekle; zoom bitince yalnızca net piksel çizimini yenile. */
+      _animateZoom:function(e){
+        var map=this._map,c=this._canvas;
+        if(!map||!c||!this._origin||!map._latLngToNewLayerPoint) return;
+        try{
+          var scale=map.getZoomScale(e.zoom,this._drawZoom==null?map.getZoom():this._drawZoom);
+          var offset=map._latLngToNewLayerPoint(this._origin,e.zoom,e.center);
+          L.DomUtil.setTransform(c,offset,scale);
+        }catch(err){}
+      },
       _redraw:function(){
         var map=this._map; if(!map) return;
         var c=this._canvas, size=map.getSize();
         var tl=map.containerPointToLayerPoint([0,0]);
-        L.DomUtil.setPosition(c, tl);
+        L.DomUtil.setTransform(c,tl,1);
+        this._origin=map.containerPointToLatLng([0,0]);
+        this._drawZoom=map.getZoom();
         if(c.width!==size.x) c.width=size.x;
         if(c.height!==size.y) c.height=size.y;
-        c.style.visibility="visible";
         var ctx=c.getContext("2d"); ctx.clearRect(0,0,size.x,size.y);
         var z=map.getZoom(), showLbl=(z>=THRESH);
         /* hatlar */
@@ -2155,7 +2166,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="PERF-26.08-U5";
+  var SURUM="PERF-26.08-U8";
   var TARIH="02.08.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -5830,6 +5841,33 @@
     }
     return inside;
   }
+  function ortada(noktalar,ring){
+    if(!noktalar||!noktalar.length) return false;
+    var say=0;
+    for(var i=0;i<noktalar.length;i++){
+      var q=noktalar[i], la=(q&&q.length)?q[0]:q.lat, ln=(q&&q.length)?q[1]:q.lng;
+      if(Number.isFinite(+la)&&Number.isFinite(+ln)&&icinde(+la,+ln,ring)) say++;
+    }
+    return say>=Math.max(1,Math.ceil(noktalar.length/2));
+  }
+  function seciliIthalKayitlar(katmanlar,ring){
+    var sonuc=[];
+    (katmanlar||[]).forEach(function(layer){
+      if(!layer||layer.visible===false||!Array.isArray(layer.features)) return;
+      layer.features.forEach(function(f,index){
+        if(!f||!Array.isArray(f.points)||!f.points.length) return;
+        var sec=false;
+        if(f.kind==='point'){
+          var q=f.points[0], la=(q&&q.length)?q[0]:q.lat, ln=(q&&q.length)?q[1]:q.lng;
+          sec=Number.isFinite(+la)&&Number.isFinite(+ln)&&icinde(+la,+ln,ring);
+        }else sec=ortada(f.points,ring);
+        if(sec) sonuc.push({layerId:layer.id,index:index,feature:f});
+      });
+    });
+    return sonuc;
+  }
+  /* Regresyon testi ve diğer silme araçları aynı seçim kuralını kullanabilsin. */
+  window.aybTopluSilImportSec=seciliIthalKayitlar;
   function ciz(){
     var map=M(), L=window.L; if(!map||!L) return;
     var arr=pts.map(function(p){ return [p.lat,p.lng]; });
@@ -5858,16 +5896,16 @@
     var ring=pts.map(function(q){ return [q.lat,q.lng]; });
     var silObj=(p.objects||[]).filter(function(o){ return o && o.lat!=null && o.lng!=null && icinde(o.lat,o.lng,ring); });
     /* yapışkan notlar + serbest çizim / alan / kanal da alan içindeyse silinsin */
-    function ortada(pts){
-      if(!pts||!pts.length) return false;
-      var say=0; for(var i=0;i<pts.length;i++){ var q=pts[i]; var la=(q&&q.length)?q[0]:q.lat, ln=(q&&q.length)?q[1]:q.lng; if(icinde(la,ln,ring)) say++; }
-      return say>=Math.max(1,Math.ceil(pts.length/2));       /* noktalarının yarısı içerideyse */
-    }
     var silNot=(p.aybNotes||[]).filter(function(n){ if(!n) return false; var la=(n.noteLat!=null?n.noteLat:n.lat), ln=(n.noteLng!=null?n.noteLng:n.lng); return la!=null && (icinde(la,ln,ring)||icinde(n.lat,n.lng,ring)); });
-    var silFree=(p.freeLines||[]).filter(function(x){ return x && ortada(x.points); });
-    var silAlan=(p.areas||[]).filter(function(x){ return x && ortada(x.points); });
-    var silKanal=(p.channels||[]).filter(function(x){ return x && ortada(x.points); });
-    if(!silObj.length && !silNot.length && !silFree.length && !silAlan.length && !silKanal.length){
+    var silFree=(p.freeLines||[]).filter(function(x){ return x && ortada(x.points,ring); });
+    var silAlan=(p.areas||[]).filter(function(x){ return x && ortada(x.points,ring); });
+    var silKanal=(p.channels||[]).filter(function(x){ return x && ortada(x.points,ring); });
+    /* KMZ/MIF altligi project.objects icinde degildir. Eski toplu silme yalniz
+       proje objelerine baktigi icin secili alan KMZ ile dolu olsa bile
+       "silinecek bir sey yok" diyordu. Gorunen ithal katman kayitlarini da
+       ayni alan hesabina dahil et. */
+    var silImport=seciliIthalKayitlar(p.aybImportLayers,ring);
+    if(!silObj.length && !silNot.length && !silFree.length && !silAlan.length && !silKanal.length && !silImport.length){
       try{ if(window.toast) toast('Alan içinde silinecek bir şey yok.'); }catch(e){} return;
     }
     var ids={}; silObj.forEach(function(o){ ids[o.id]=1; });
@@ -5879,10 +5917,11 @@
     if(silFree.length) parca.push(silFree.length+' çizim');
     if(silKanal.length) parca.push(silKanal.length+' kanal');
     if(silAlan.length) parca.push(silAlan.length+' alan');
+    if(silImport.length) parca.push(silImport.length+' KMZ/MIF kaydı');
     var mesaj=parca.join(', ')+' silinecek. Onaylıyor musun?';
     var ok=true; try{ ok=window.confirm(mesaj); }catch(e){ ok=true; }
     if(!ok) return;
-    try{ if(window.aybUndoKaydet) window.aybUndoKaydet({kind:'bulk',title:'Toplu silme: '+parca.join(', '),payload:{objects:silObj,lines:silHat,aybNotes:silNot,freeLines:silFree,areas:silAlan,channels:silKanal}}); }catch(e){}
+    try{ if(window.aybUndoKaydet) window.aybUndoKaydet({kind:'bulk',title:'Toplu silme: '+parca.join(', '),payload:{objects:silObj,lines:silHat,aybNotes:silNot,freeLines:silFree,areas:silAlan,channels:silKanal,importFeatures:silImport}}); }catch(e){}
     try{
       p.objects=(p.objects||[]).filter(function(o){ return !ids[o.id]; });
       p.lines=(p.lines||[]).filter(function(l){ return !(ids[l.start]||ids[l.end]); });
@@ -5904,10 +5943,19 @@
       if(silAlan.length) p.areas=(p.areas||[]).filter(function(x){ return !aid[x.id]; });
       var cid={}; silKanal.forEach(function(x){ cid[x.id]=1; });
       if(silKanal.length) p.channels=(p.channels||[]).filter(function(x){ return !cid[x.id]; });
+      if(silImport.length){
+        var gruplar={};
+        silImport.forEach(function(x){ (gruplar[x.layerId]=gruplar[x.layerId]||[]).push(x.index); });
+        (p.aybImportLayers||[]).forEach(function(layer){
+          var ix=gruplar[layer&&layer.id]; if(!ix||!Array.isArray(layer.features)) return;
+          ix.sort(function(a,b){return b-a;}).forEach(function(i){ if(i>=0&&i<layer.features.length) layer.features.splice(i,1); });
+        });
+      }
       try{ if(silNot.length && window.aybNotesRebuild) window.aybNotesRebuild(); }catch(e){}
       if(window.saveProject) window.saveProject();
       if(window.aybArtikTemizle) window.aybArtikTemizle();
-      if(window.aybForceFullRender) window.aybForceFullRender(); else if(window.renderAll) window.renderAll();
+      if(silImport.length&&window.aybImportLayersRedraw) window.aybImportLayersRedraw();
+      else if(window.aybForceFullRender) window.aybForceFullRender(); else if(window.renderAll) window.renderAll();
       if(window.aybArtikTemizle) window.aybArtikTemizle();
       if(window.toast) toast(parca.join(', ')+' silindi.');
     }catch(e){ try{ if(window.toast) toast('Silme sırasında sorun: '+(e&&e.message?e.message:e)); }catch(_){} }
@@ -6637,17 +6685,25 @@
 
   function tuvalKur(){
     var map=M(), L=window.L; if(!map||!L||canvas) return;
-    canvas=L.DomUtil.create('canvas','ayb-fast-bg');
+    canvas=L.DomUtil.create('canvas','ayb-fast-bg leaflet-zoom-animated');
     canvas.style.position='absolute';
     canvas.style.pointerEvents='none';
     canvas.style.zIndex='250';
     try{ (map.getPane('overlayPane')||map.getPanes().overlayPane).appendChild(canvas); }catch(e){ canvas=null; return; }
     ctx=canvas.getContext('2d');
     var yenile=function(){ if(rafId) return; rafId=(window.requestAnimationFrame||function(f){return setTimeout(f,16);})(function(){ rafId=0; ciz&&ciz(); }); };
+    var canliZoom=function(e){
+      if(!canvas||!canvas.__aybOrigin||!map._latLngToNewLayerPoint) return;
+      try{
+        var base=canvas.__aybZoom==null?map.getZoom():canvas.__aybZoom;
+        var scale=map.getZoomScale(e.zoom,base);
+        var offset=map._latLngToNewLayerPoint(canvas.__aybOrigin,e.zoom,e.center);
+        L.DomUtil.setTransform(canvas,offset,scale);
+      }catch(err){}
+    };
     try{
       map.on('moveend zoomend resize', yenile);
-      map.on('move', yenile);                      /* kaydırırken de dolu kalsın (tuval çizimi hızlı) */
-      map.on('zoomstart', function(){ if(ctx&&canvas) try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch(e){} });
+      map.on('zoomanim', canliZoom);               /* zoomda SİLME YOK: mevcut hat resmi canlı ölçeklenir */
     }catch(e){}
   }
 
@@ -6659,7 +6715,8 @@
     tuvalKur(); if(!canvas||!ctx) return;
     var boyut=map.getSize();
     var sol=map.containerPointToLayerPoint([0,0]);
-    try{ L.DomUtil.setPosition(canvas, sol); }catch(e){}
+    try{ L.DomUtil.setTransform(canvas, sol, 1); }catch(e){}
+    try{ canvas.__aybOrigin=map.containerPointToLatLng([0,0]); canvas.__aybZoom=map.getZoom(); }catch(e){}
     var dpr=Math.min(2, window.devicePixelRatio||1);
     if(canvas.width!==Math.round(boyut.x*dpr) || canvas.height!==Math.round(boyut.y*dpr)){
       canvas.width=Math.round(boyut.x*dpr); canvas.height=Math.round(boyut.y*dpr);
@@ -6907,7 +6964,10 @@
     var lambalar=veri.filter(function(f){ return f.kind==='point' && String(f.katman||'').toLocaleUpperCase('tr')==='LAMBA'; });
     var cizgiler=veri.filter(function(f){ return f.kind!=='point'; });
     noktalar.forEach(function(f){ try{ objeEkle(f,sayac); }catch(e){} });
-    lambalar.forEach(function(f){ try{ if(!lambaBagla(f,sayac)) objeEkle(f,sayac); }catch(e){} });
+    /* Lamba bir diregin teknik bilgisidir; ayri DIREK olarak eklenmez. Eski
+       KMZ'lerde gorsellik icin ofsetlenmis lamba noktasi bulunsa bile hat
+       ucundan kaymis sahte direk olusturulmaz. */
+    lambalar.forEach(function(f){ try{ if(!lambaBagla(f,sayac)) sayac.atlanan++; }catch(e){} });
     cizgiler.forEach(function(f){ try{ hatEkle(f,sayac); }catch(e){} });
     try{ if(window.saveProject) window.saveProject(); }catch(e){}
     try{ if(window.aybForceFullRender) window.aybForceFullRender(); else if(window.renderAll) window.renderAll(); }catch(e){}
@@ -8594,7 +8654,7 @@
    Sol alttaki rozet KALDIRILDI. Sürüm etiketi üst başlıkta "BY EDŞ Saha Programı"
    yanında görünür (eski v111'in yerinde). */
 (function(){
-  var TAG='PERF-26.08-U5';
+  var TAG='PERF-26.08-U8';
   window.AYB_SURUM=TAG;
   function uygula(){
     try{

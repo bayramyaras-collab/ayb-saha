@@ -40,7 +40,9 @@ jobs:
               ("AYB_dosya", "BY_EDS_dosya"),
               ("AYB_Yedek_SON", "BY_EDS_Yedek_SON"),
               ("AYB_Tam_Yedek", "BY_EDS_Tam_Yedek"),
-              ("PERF-26.08-U5", "PERF-26.08-U6"),
+              ("PERF-26.08-U5", "PERF-26.08-U8"),
+              ("PERF-26.08-U6", "PERF-26.08-U8"),
+              ("PERF-26.08-U7", "PERF-26.08-U8"),
           ]
           for path in files:
               text = path.read_text(encoding="utf-8")
@@ -50,8 +52,8 @@ jobs:
 
           gradle = Path("app/build.gradle")
           text = gradle.read_text(encoding="utf-8")
-          text = text.replace("versionCode 1632", "versionCode 1633")
-          text = text.replace('versionName "16.32"', 'versionName "16.33"')
+          text = re.sub(r"versionCode\s+\d+", "versionCode 1635", text)
+          text = re.sub(r'versionName\s+"[^"]+"', 'versionName "16.35"', text)
           gradle.write_text(text, encoding="utf-8")
           PY
           sed -i 's/AYB Enerji/Bayram YARAŞ/g; s/AYB Saha/BY EDŞ Saha/g; s/AYB SAHA/BY EDŞ SAHA/g' app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js app/src/main/assets/ayb-backup.js app/src/main/assets/sw.js
@@ -77,11 +79,14 @@ jobs:
               raise SystemExit("\n".join(found))
           tablet = Path("app/src/main/assets/ayb-tablet.js").read_text(encoding="utf-8")
           gradle = Path("app/build.gradle").read_text(encoding="utf-8")
-          assert "PERF-26.08-U6" in tablet
-          assert 'versionName "16.33"' in gradle
+          assert "PERF-26.08-U8" in tablet
+          assert 'versionName "16.35"' in gradle
           assert "Bayram YARAŞ" in tablet
-          print("Marka taramasi temiz; U6/16.33 dogrulandi.")
+          print("Marka taramasi temiz; U8/16.35 dogrulandi.")
           PY
+
+      - name: U8 regresyon testleri
+        run: node tests/regression-u8.js
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
@@ -103,6 +108,6 @@ jobs:
       - name: APK yukle
         uses: actions/upload-artifact@v4
         with:
-          name: BAYRAM-YARAS-EDS-APK-U6
+          name: BAYRAM-YARAS-EDS-APK-U8
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

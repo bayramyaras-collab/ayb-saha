@@ -1,0 +1,54 @@
+{
+  "name": "by-eds-saha-programi",
+  "version": "16.35.0",
+  "description": "BY EDŞ Saha Programı",
+  "author": "Bayram YARAŞ",
+  "main": "main.js",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "prepare:font": "node scripts/embed-font.js",
+    "dist": "npm run prepare:font && electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "@electron/asar": "3.4.1",
+    "electron": "37.2.6",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.bayramyaras.byedssaha",
+    "productName": "BY EDŞ Saha Programı",
+    "copyright": "Copyright © 2026 Bayram YARAŞ",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/icons/icon.ico",
+      "artifactName": "BY_EDS_Saha_Programi_v16.35_U8_SETUP.${ext}",
+      "executableName": "BY_EDS_Saha",
+      "requestedExecutionLevel": "asInvoker",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "BY EDŞ Saha Programı",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "artifactName": "BY_EDS_Saha_Programi_v16.35_U8_SETUP.${ext}"
+    },
+    "extraMetadata": {
+      "companyName": "Bayram YARAŞ"
+    }
+  }
+}
