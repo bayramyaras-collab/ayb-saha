@@ -53,6 +53,7 @@ jobs:
           text = text.replace('versionName "16.32"', 'versionName "16.33"')
           gradle.write_text(text, encoding="utf-8")
           PY
+          sed -i 's/AYB Enerji/Bayram YARAŞ/g; s/AYB Saha/BY EDŞ Saha/g; s/AYB SAHA/BY EDŞ SAHA/g' app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js app/src/main/assets/ayb-backup.js app/src/main/assets/sw.js
 
       - name: Marka ve surum kontrolu
         shell: bash
