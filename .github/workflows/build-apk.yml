@@ -2,7 +2,7 @@ name: APK Olustur (AYB Saha)
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, ana ]
+    branches: [ main, master, ana, codex/u4-apk-build ]
 
 jobs:
   build:
