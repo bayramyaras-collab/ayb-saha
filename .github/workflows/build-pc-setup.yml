@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
