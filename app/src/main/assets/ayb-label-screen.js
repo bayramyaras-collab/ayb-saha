@@ -1,6 +1,6 @@
 /* ============================================================
    BY EDŞ Saha Programı — Hafif Ekran Etiket Çakışma Önleyici
-   Sürüm: PERF-26.08-U4
+   Sürüm: PERF-26.08-U8
 
    - Haritayı veya katmanları yeniden çizmez.
    - Sürekli tarama yapmaz; yalnız zoom/kaydırma bittikten veya çizilmiş

@@ -1,8 +1,10 @@
-name: APK Olustur (AYB Saha)
+name: APK Olustur (BY EDS Saha)
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, ana ]
+    branches: [ main, master, ana, codex/u4-pc-tablet-sync ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
@@ -10,6 +12,81 @@ jobs:
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
+
+      - name: Bayram YARAS markasini uygula
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = [
+              Path("app/src/main/assets/AYB_Saha_Harita.html"),
+              Path("app/src/main/assets/ayb-tablet.js"),
+              Path("app/src/main/assets/ayb-backup.js"),
+              Path("app/src/main/assets/sw.js"),
+          ]
+          replacements = [
+              ("AYB SAHA HARİTA METRAJ PROJE KLASÖRÜ", "BY EDŞ SAHA PROGRAMI PROJE KLASÖRÜ"),
+              ("AYB SAHA HARITA METRAJ PROJE KLASÖRÜ", "BY EDŞ SAHA PROGRAMI PROJE KLASÖRÜ"),
+              ("AYB SAHA HARİTA METRAJ", "BY EDŞ SAHA HARİTA METRAJ"),
+              ("AYB SAHA HARITA METRAJ", "BY EDŞ SAHA HARİTA METRAJ"),
+              ("AYB Saha Harita Metraj", "BY EDŞ Saha Programı"),
+              ("AYB Saha Harita", "BY EDŞ Saha Programı"),
+              ("AYB Saha Projesi", "BY EDŞ Saha Projesi"),
+              ("AYB Saha Veri", "BY EDŞ Saha Veri"),
+              ("AYB Saha", "BY EDŞ Saha"),
+              ("AYB Enerji", "Bayram YARAŞ"),
+              ("AYB_dosya", "BY_EDS_dosya"),
+              ("AYB_Yedek_SON", "BY_EDS_Yedek_SON"),
+              ("AYB_Tam_Yedek", "BY_EDS_Tam_Yedek"),
+              ("PERF-26.08-U5", "PERF-26.08-U8"),
+              ("PERF-26.08-U6", "PERF-26.08-U8"),
+              ("PERF-26.08-U7", "PERF-26.08-U8"),
+          ]
+          for path in files:
+              text = path.read_text(encoding="utf-8")
+              for old, new in replacements:
+                  text = re.sub(re.escape(old), new, text, flags=re.IGNORECASE)
+              path.write_text(text, encoding="utf-8")
+
+          gradle = Path("app/build.gradle")
+          text = gradle.read_text(encoding="utf-8")
+          text = re.sub(r"versionCode\s+\d+", "versionCode 1635", text)
+          text = re.sub(r'versionName\s+"[^"]+"', 'versionName "16.35"', text)
+          gradle.write_text(text, encoding="utf-8")
+          PY
+          sed -i 's/AYB Enerji/Bayram YARAŞ/g; s/AYB Saha/BY EDŞ Saha/g; s/AYB SAHA/BY EDŞ SAHA/g' app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js app/src/main/assets/ayb-backup.js app/src/main/assets/sw.js
+
+      - name: Marka ve surum kontrolu
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          roots = [Path("app/src/main/assets"), Path("app/src/main/java"), Path("app/src/main/res")]
+          forbidden = ("körfezim", "korfezim", "körfez", "korfez", "AYB Saha", "AYB SAHA", "AYB Enerji")
+          found = []
+          for root in roots:
+              for path in root.rglob("*"):
+                  if not path.is_file() or path.suffix.lower() in {".png", ".ico", ".ttf"}:
+                      continue
+                  text = path.read_text(encoding="utf-8", errors="ignore")
+                  for term in forbidden:
+                      if term.lower() in text.lower():
+                          found.append(f"{path}: {term}")
+          if found:
+              raise SystemExit("\n".join(found))
+          tablet = Path("app/src/main/assets/ayb-tablet.js").read_text(encoding="utf-8")
+          gradle = Path("app/build.gradle").read_text(encoding="utf-8")
+          assert "PERF-26.08-U8" in tablet
+          assert 'versionName "16.35"' in gradle
+          assert "Bayram YARAŞ" in tablet
+          print("Marka taramasi temiz; U8/16.35 dogrulandi.")
+          PY
+
+      - name: U8 regresyon testleri
+        run: node tests/regression-u8.js
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
@@ -26,11 +103,11 @@ jobs:
       - name: APK olustur
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: APK yukle
         uses: actions/upload-artifact@v4
         with:
-          name: AYB-Saha-APK
+          name: BAYRAM-YARAS-EDS-APK-U8
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

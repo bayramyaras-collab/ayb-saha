@@ -1,0 +1,53 @@
+name: PC Setup Olustur (BY EDS Saha U8)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master, ana, codex/u4-pc-tablet-sync ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Node 20 kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: U8 regresyon testleri
+        run: node tests/regression-u8.js
+
+      - name: PC kaynaklarini hazırla
+        shell: pwsh
+        run: |
+          if (Test-Path pc/assets) { Remove-Item pc/assets -Recurse -Force }
+          Copy-Item app/src/main/assets pc/assets -Recurse
+          python pc/scripts/prepare-assets.py
+
+      - name: PC bagimliliklarini kur
+        working-directory: pc
+        run: npm install --no-audit --no-fund
+
+      - name: Fontu gom ve Setup derle
+        working-directory: pc
+        run: npm run dist
+
+      - name: Kurulum icini dogrula
+        shell: pwsh
+        run: |
+          node -e "const a=require('./pc/node_modules/@electron/asar');a.extractAll('./pc/dist/win-unpacked/resources/app.asar','./pc/asar-check')"
+          python pc/scripts/validate-build.py
+
+      - name: PC Setup yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BAYRAM-YARAS-EDS-PC-SETUP-U8
+          path: pc/dist/BY_EDS_Saha_Programi_v16.35_U8_SETUP.exe
+          if-no-files-found: error
