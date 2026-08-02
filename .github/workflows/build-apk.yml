@@ -18,6 +18,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           files = [
               Path("app/src/main/assets/AYB_Saha_Harita.html"),
@@ -44,7 +45,7 @@ jobs:
           for path in files:
               text = path.read_text(encoding="utf-8")
               for old, new in replacements:
-                  text = text.replace(old, new)
+                  text = re.sub(re.escape(old), new, text, flags=re.IGNORECASE)
               path.write_text(text, encoding="utf-8")
 
           gradle = Path("app/build.gradle")
