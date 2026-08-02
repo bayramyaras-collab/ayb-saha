@@ -1,4 +1,4 @@
-// AYB Saha - uygulama modulu (Bayram YARAS - 0530 630 05 40)
+// BY EDS Saha - uygulama modulu (Bayram YARAS)
 plugins {
     id 'com.android.application'
 }
@@ -11,8 +11,8 @@ android {
         applicationId "com.bayramyaras.aybsaha"
         minSdk 23
         targetSdk 34
-        versionCode 1630
-        versionName "16.30"
+        versionCode 1631
+        versionName "16.31"
     }
 
     buildTypes {

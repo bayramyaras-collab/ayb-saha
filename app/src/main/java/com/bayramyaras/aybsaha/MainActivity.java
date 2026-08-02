@@ -1,7 +1,7 @@
 package com.bayramyaras.aybsaha;
 
-// AYB Saha Harita Metraj - Android WebView (veri guvenli)
-// Hazirlayan: Bayram YARAS  -  0530 630 05 40
+// BY EDS Saha - Android WebView (veri guvenli)
+// Hazirlayan: Bayram YARAS
 
 import android.Manifest;
 import android.app.Activity;

@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<!-- AYB Saha PWA / mobil-tablet ayarlari (Bayram YARAS 0530 630 05 40) -->
+<!-- AYB Saha PWA / mobil-tablet ayarları (Bayram YARAŞ 0530 630 05 40) -->
 <meta name="theme-color" content="#0d1b34" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="AYB Saha" />
-<meta name="author" content="Bayram YARAS - 0530 630 05 40" />
+<meta name="author" content="Bayram YARAŞ - 0530 630 05 40" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
@@ -2147,7 +2147,7 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
 </head>
 <body class="ayb-mode-office">
 <div class="app">
-  <div class="titlebar"><div class="logo"></div><div class="title">AYB Saha Harita Metraj v16.29</div><span class="small-muted" id="activeProjectName">Proje yok</span><div class="win-controls"><span id="aybWinMin" title="Küçült" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kucult')">—</span><span id="aybWinMax" title="Büyüt / Eski Boyut" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('buyut')">□</span><span id="aybWinClose" title="Kapat" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kapat')">×</span></div></div>
+  <div class="titlebar"><div class="logo"></div><div class="title">BY EDŞ Saha Programı v16.31</div><span class="small-muted" id="activeProjectName">Proje yok</span><div class="win-controls"><span id="aybWinMin" title="Küçült" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kucult')">—</span><span id="aybWinMax" title="Büyüt / Eski Boyut" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('buyut')">□</span><span id="aybWinClose" title="Kapat" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kapat')">×</span></div></div>
 <style>/* İSTEK (Bayram YARAŞ): OS başlık çubuğu kalktı — BY EDŞ barı pencereyi taşır, sağdaki düğmeler çalışır */
 .titlebar{-webkit-app-region:drag;user-select:none}
 .titlebar .win-controls,.titlebar .win-controls span,.titlebar img,.titlebar button,.titlebar select{-webkit-app-region:no-drag}
@@ -3003,6 +3003,7 @@ function openProject(p){
     const nameEl=$('#activeProjectName'); if(nameEl) nameEl.textContent=project.name;
     const ps=$('#projectScreen'); if(ps) ps.classList.remove('show');
     if(map) updateCoordInfo(map.getCenter());
+    try{ document.dispatchEvent(new CustomEvent('ayb:project-opened',{detail:{id:project.id}})); }catch(e){}
     setTimeout(()=>{try{renderAll(); toast('Proje açıldı: '+project.name)}catch(err){console.error(err); toast('Proje açıldı fakat çizim yenilenirken hata oluştu.')}} , 10);
   }catch(err){console.error(err); toast('Proje açılamadı: '+(err&&err.message?err.message:err)); showProjectScreen();}
 }
@@ -4979,6 +4980,89 @@ function aybHafifStil(o){
   }catch(e){}
   return {c:c,r:r};
 }
+
+/* HAT DUZENLEME CIFT TIK KORUMASI (Bayram YARAS)
+   Electron/Windows dokunmatik ve gorunmez genis secim cizgisi bazen tarayicinin
+   "dblclick" olayini uretmiyordu. Ayni hatta kisa aralikla gelen iki tik da
+   burada cift tik sayilir. Tek tikta form acilmaz; harita yeniden cizilmez. */
+var __aybHatCiftTik={id:'',at:0,x:0,y:0,openedId:'',openedAt:0};
+function aybHatOlayDurdur(e){
+  if(!e||!e.originalEvent) return;
+  try{L.DomEvent.preventDefault(e.originalEvent);}catch(_){}
+  try{L.DomEvent.stopPropagation(e.originalEvent);}catch(_){}
+}
+function aybHatOlayNokta(e){
+  try{if(e&&e.containerPoint) return {x:+e.containerPoint.x||0,y:+e.containerPoint.y||0};}catch(_){}
+  try{if(e&&e.originalEvent) return {x:+e.originalEvent.clientX||0,y:+e.originalEvent.clientY||0};}catch(_){}
+  try{if(e&&e.latlng&&map) {var p=map.latLngToContainerPoint(e.latlng); return {x:+p.x||0,y:+p.y||0};}}catch(_){}
+  return {x:0,y:0};
+}
+function aybHatFormuBirKezAc(line,e){
+  aybHatOlayDurdur(e);
+  if(!line||!line.id||!window.APP||typeof APP.editLine!=='function') return false;
+  var now=Date.now();
+  if(__aybHatCiftTik.openedId===line.id && now-__aybHatCiftTik.openedAt<750) return false;
+  try{var host=document.getElementById('modalHost'); if(host&&host.classList.contains('show')&&host.querySelector('#saveHat')) return false;}catch(_){}
+  __aybHatCiftTik.openedId=line.id; __aybHatCiftTik.openedAt=now;
+  try{APP.editLine(line.id); return true;}catch(err){try{console.error('Hat formu acilamadi',err);}catch(_){} return false;}
+}
+function aybHatIkiTikKontrol(line,e){
+  if(!line||!line.id) return false;
+  var now=Date.now(), pt=aybHatOlayNokta(e), prev=__aybHatCiftTik;
+  var dt=now-prev.at, dx=pt.x-prev.x, dy=pt.y-prev.y;
+  var same=(prev.id===line.id && dt>=25 && dt<=900 && (dx*dx+dy*dy)<=1600);
+  prev.id=line.id; prev.at=now; prev.x=pt.x; prev.y=pt.y;
+  if(!same) return false;
+  prev.id=''; prev.at=0;
+  return aybHatFormuBirKezAc(line,e);
+}
+function aybHatCiftTikBagla(layer,line,onSingle){
+  if(!layer||!layer.on||!line) return;
+  layer.on('click',function(e){
+    aybHatOlayDurdur(e);
+    var consumed=false;
+    try{consumed=(typeof onSingle==='function'&&onSingle(e)===true);}catch(err){try{console.error(err);}catch(_){}}
+    if(!consumed) aybHatIkiTikKontrol(line,e);
+  });
+  layer.on('dblclick',function(e){aybHatFormuBirKezAc(line,e);});
+}
+/* PC garantisi: SVG cizginin kendi dblclick olayina bagimli kalma. Fare cift
+   tikini harita kabinda yakala ve yalniz ekranda cizili en yakin hatti bul.
+   Bu kod yalniz kullanici cift tikladiginda calisir; render/tarayici yoktur. */
+function aybHatPikselUzakligi(poly,p){
+  try{
+    if(poly&&typeof poly.closestLayerPoint==='function'){
+      var q=poly.closestLayerPoint(p);
+      if(q&&Number.isFinite(q.distance)) return q.distance;
+      if(q&&typeof q.distanceTo==='function') return q.distanceTo(p);
+    }
+    var parts=poly&&poly._parts,best=Infinity;
+    (parts||[]).forEach(function(part){for(var i=1;i<part.length;i++){
+      var a=part[i-1],b=part[i],vx=b.x-a.x,vy=b.y-a.y,wx=p.x-a.x,wy=p.y-a.y;
+      var c2=vx*vx+vy*vy,t=c2?Math.max(0,Math.min(1,(vx*wx+vy*wy)/c2)):0;
+      best=Math.min(best,Math.hypot(p.x-(a.x+t*vx),p.y-(a.y+t*vy)));
+    }});
+    return best;
+  }catch(_){return Infinity;}
+}
+function aybHatMasaustuCiftTikBagla(){
+  if(!map||!map.getContainer) return;
+  var el=map.getContainer(); if(!el||el.__aybHatPcDblBound) return;
+  el.__aybHatPcDblBound=true;
+  el.addEventListener('dblclick',function(ev){
+    if(!project||activeTool||!lineLayers||!lineLayers.size) return;
+    try{if(ev.target&&ev.target.closest&&ev.target.closest('.leaflet-control,.leaflet-marker-icon,.modal-backdrop,.win-modal,button,input,select,textarea'))return;}catch(_){}
+    var r=el.getBoundingClientRect(),p=L.point(ev.clientX-r.left,ev.clientY-r.top),bestId='',best=24;
+    lineLayers.forEach(function(pack,id){
+      if(!pack||!pack.poly)return;
+      try{if(map.hasLayer&&!map.hasLayer(pack.poly))return;}catch(_){}
+      var d=aybHatPikselUzakligi(pack.poly,p);if(d<=best){best=d;bestId=id;}
+    });
+    if(!bestId)return;
+    var line=project.lines&&project.lines.find(function(x){return x.id===bestId;});
+    if(line){aybHatOlayDurdur({originalEvent:ev});aybHatFormuBirKezAc(line,{originalEvent:ev,containerPoint:p});}
+  },true);
+}
 /* UZAK GORUNUMDE DIREK: 14 parcali HTML sembol yerine tek kanvas noktasi.
    Renk lejantla ayni kalir; yakinlasinca tam sembol geri gelir. */
 function aybRenderObjectHafif(obj){
@@ -5003,8 +5087,7 @@ function aybRenderLineHafif(line){
         dashArray:st.dashArray,interactive:true}).addTo(map);
   poly.on('contextmenu',function(e){ if(e&&e.originalEvent){ try{L.DomEvent.preventDefault(e.originalEvent);}catch(_){} try{L.DomEvent.stopPropagation(e.originalEvent);}catch(_){} }
         try{ showLinePopup(line,e&&e.latlng); }catch(_){} });
-  poly.on('dblclick',function(e){ if(e&&e.originalEvent){ try{L.DomEvent.preventDefault(e.originalEvent);}catch(_){} try{L.DomEvent.stopPropagation(e.originalEvent);}catch(_){} }
-        try{ APP.editLine(line.id); }catch(_){} });
+  aybHatCiftTikBagla(poly,line,null);
   lineLayers.set(line.id,{poly:poly,hit:null,label:null,region:null});
 }
 
@@ -5986,7 +6069,7 @@ function aybContinueChannelFrom(id,side){
   tempPoints=[L.latLng(p0[0],p0[1])]; drawTemp();
   hint('Kanal çizimine bu uçtan devam ediyorsun. Yeni kırık noktalarına tıkla, sağ tık / Bitir ile tamamla.'); toast('Kanal devam modu açıldı.');
 }
-function renderLine(line){if(window.__aybUzakGorunum) return aybRenderLineHafif(line); const a=aybObjById(line.start), b=aybObjById(line.end); if(!a||!b)return; const st=aybLineVisualStyle(line); const pts=aybLinePathPoints(line,a,b); const poly=L.polyline(pts,{color:st.color,weight:st.weight,opacity:.95,dashArray:st.dashArray}).addTo(map); const hit=L.polyline(pts,{color:'#000',weight:26,opacity:0,interactive:true}).addTo(map); poly._aybHit=hit; const onClick=e=>{if(e&&e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent); if(window.__aybBendLineId===line.id && aybIsLineYerAlti(line)){aybAddLineBendAt(line,e.latlng); window.__aybBendLineId=null; if(typeof toast==='function')toast('Kırık nokta eklendi.'); return;} /* tek tık form/popup açmaz; çift tık=form, sağ tık=menü */}; const onCtx=e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(activeTool&&['hat','yeraltihat','abonehat'].includes(activeTool)){finishCurrentOperation(); return;} showLinePopup(line,e&&e.latlng);}; const onDbl=e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} APP.editLine(line.id)}; poly.on('click',onClick); hit.on('click',onClick); poly.on('contextmenu',onCtx); hit.on('contextmenu',onCtx); poly.on('dblclick',onDbl); hit.on('dblclick',onDbl); aybBindLongPress(poly,onCtx); aybBindLongPress(hit,onCtx); const len=polyLength(pts); line.length_m=len; const place=aybLineLabelPlacementFromPoints(pts); const lab=L.marker(place.latlng,{icon:makeLineLabelIcon(line,len,place.angle),interactive:false}).addTo(map); if(!aybLineLabelsVisible&&lab.setOpacity) lab.setOpacity(0); const pack={poly,hit,label:lab,region:null}; lineLayers.set(line.id,pack); updateLineRegionMarker(line,pack); aybRenderLineVertexHandles(line,pts,poly,lab);}
+function renderLine(line){if(window.__aybUzakGorunum) return aybRenderLineHafif(line); const a=aybObjById(line.start), b=aybObjById(line.end); if(!a||!b)return; const st=aybLineVisualStyle(line); const pts=aybLinePathPoints(line,a,b); const poly=L.polyline(pts,{color:st.color,weight:st.weight,opacity:.95,dashArray:st.dashArray}).addTo(map); const hit=L.polyline(pts,{color:'#000',weight:26,opacity:0,interactive:true}).addTo(map); poly._aybHit=hit; const onClick=e=>{if(window.__aybBendLineId===line.id && aybIsLineYerAlti(line)){aybAddLineBendAt(line,e.latlng); window.__aybBendLineId=null; if(typeof toast==='function')toast('Kırık nokta eklendi.'); return true;} return false; /* tek tık form/popup açmaz; çift tık=form, sağ tık=menü */}; const onCtx=e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(activeTool&&['hat','yeraltihat','abonehat'].includes(activeTool)){finishCurrentOperation(); return;} showLinePopup(line,e&&e.latlng);}; aybHatCiftTikBagla(poly,line,onClick); aybHatCiftTikBagla(hit,line,onClick); poly.on('contextmenu',onCtx); hit.on('contextmenu',onCtx); aybBindLongPress(poly,onCtx); aybBindLongPress(hit,onCtx); const len=polyLength(pts); line.length_m=len; const place=aybLineLabelPlacementFromPoints(pts); const lab=L.marker(place.latlng,{icon:makeLineLabelIcon(line,len,place.angle),interactive:false}).addTo(map); if(!aybLineLabelsVisible&&lab.setOpacity) lab.setOpacity(0); const pack={poly,hit,label:lab,region:null}; lineLayers.set(line.id,pack); updateLineRegionMarker(line,pack); aybRenderLineVertexHandles(line,pts,poly,lab);}
 function renderChannel(ch){const pts=(ch.points||[]).map(aybNormalizeLinePoint).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])); if(!pts.length)return; ch.points=pts; const poly=L.polyline(pts,{color:'#facc15',weight:5,dashArray:'7 5'}).addTo(map); const hit=L.polyline(pts,{color:'#000',weight:26,opacity:0,interactive:true}).addTo(map); poly._aybHit=hit; const onClick=e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(window.__aybBendChannelId===ch.id){aybAddChannelBendAt(ch,e.latlng); window.__aybBendChannelId=null; if(typeof toast==='function')toast('Kırık nokta eklendi.'); } return;}; const onCtx=e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} if(finishCurrentOperation()) return; showFreePopup(ch,'channel',poly)}; const onDbl=e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent); L.DomEvent.stopPropagation(e.originalEvent)} APP.editChannel(ch.id)}; poly.on('click',onClick); hit.on('click',onClick); poly.on('contextmenu',onCtx); hit.on('contextmenu',onCtx); poly.on('dblclick',onDbl); hit.on('dblclick',onDbl); const place=aybLineLabelPlacementFromPoints(pts); const len=polyLength(pts); const lab=L.marker(place.latlng,{icon:makeChannelLabelIcon(ch,len,place.angle),interactive:false}).addTo(map); otherLayers.push(poly,hit,lab); aybRenderChannelVertexHandles(ch,poly,lab)}
 function renderFreeLine(f){const color=f.kind==='ok'?'#fb923c':'#f97316'; const poly=L.polyline(f.points,{color,weight:4}).addTo(map); poly.on('click',e=>{if(e&&e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent); showFreePopup(f,'freeLine',poly)}); otherLayers.push(poly); if(f.kind==='ok' && f.points && f.points.length>=2){ try{ const A=f.points[f.points.length-2], B=f.points[f.points.length-1]; const la1=Array.isArray(A)?A[0]:A.lat, lo1=Array.isArray(A)?A[1]:A.lng, la2=Array.isArray(B)?B[0]:B.lat, lo2=Array.isArray(B)?B[1]:B.lng; const ang=Math.atan2(-(la2-la1),(lo2-lo1))*180/Math.PI; const aicon=L.divIcon({className:'',iconSize:[28,28],iconAnchor:[14,14],html:'<div style=\"transform:rotate('+ang+'deg);font-size:24px;line-height:28px;color:'+color+';text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff\">\u279C</div>'}); const amk=L.marker([la2,lo2],{icon:aicon,interactive:false,keyboard:false,zIndexOffset:800}).addTo(map); otherLayers.push(amk); }catch(e){} } }
 function renderArea(a){
@@ -7522,7 +7605,10 @@ function openLineForm(kind,start,end,existing=null,defaults=null,pathPoints=null
     $('#hat_alt_filter',host).onchange=fill;
     $('#chk_ag_hat',host).onchange=updateAgActive;
     fill(); updateYerAltiMetrajBox();
-    $('#saveHat',host).onclick=()=>{
+    const saveHatBtn=$('#saveHat',host);
+    saveHatBtn.onclick=()=>{
+      if(saveHatBtn.__aybSaving) return;
+      saveHatBtn.__aybSaving=true;
       const gen=isAboneHat?'ABONE':fieldValue(host,'hat_genel');
       const hyVal=getHy();
       const altVal=fieldValue(host,'hat_alt_filter');
@@ -7532,10 +7618,15 @@ function openLineForm(kind,start,end,existing=null,defaults=null,pathPoints=null
       const agDirekler=[start,end].filter(o=>o && o.type==='direk' && norm(o.props?.genel_tip)==='AG').map(o=>getObjectNo(o));
       if(!isAboneHat && gen==='OG' && agDirekler.length){
         const mesaj=`UYARI: ${agDirekler.join(', ')} direk genel tipi AG görünüyor. Seçilen hat tipi OG. Olası yanlış bağlantı yapılabilir. Yine de bağlansın mı?`;
-        if(!confirm(mesaj)) return;
+        if(!confirm(mesaj)){saveHatBtn.__aybSaving=false;return;}
       }
-      const mainText=mainRec['Sade Hat Tipi']||mainRec['AYB Hat Tipi']||'';
-      const agText=agAktif?(agRec['Sade Hat Tipi']||agRec['AYB Hat Tipi']||''):'';
+      const mainSel=$('#main_hat_tip',host), agSel=$('#ag_hat_tip',host);
+      const mainSecim=(mainSel&&mainSel.value&&mainSel.selectedOptions&&mainSel.selectedOptions[0])?mainSel.selectedOptions[0].textContent.trim():'';
+      const agSecim=(agSel&&agSel.value&&agSel.selectedOptions&&agSel.selectedOptions[0])?agSel.selectedOptions[0].textContent.trim():'';
+      /* Veritabanı kodu eski/yeni sürüm arasında değişse bile PC'de kullanıcının
+         seçtiği kesit metni kaybolmasın; seçili option güvenli geri dönüş yoludur. */
+      const mainText=mainRec['Sade Hat Tipi']||mainRec['AYB Hat Tipi']||mainSecim||p.main_hat_tipi||p.hat_tipi||'';
+      const agText=agAktif?(agRec['Sade Hat Tipi']||agRec['AYB Hat Tipi']||agSecim||p.ag_hat_tipi||''):'';
       const display=(mainText && agText)?`${mainText} + ${agText}`:(mainText||agText||'');
       const line=existing||{id:uid('HAT'),kind,start:start.id,end:end.id};
       line.kind=kind; line.start=start.id; line.end=end.id;
@@ -7602,6 +7693,7 @@ function openLineForm(kind,start,end,existing=null,defaults=null,pathPoints=null
         hint(`${lineLabels[kind]} kaydedildi. Yeni hat için başlangıç objesine dokun.`);
       }
     };
+    saveHatBtn.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();saveHatBtn.click();},{passive:false});
   });
 }
 function openChannelForm(points,existing=null){
@@ -8357,7 +8449,7 @@ function bindAYBShortcutKeys(){
   }
 }
 
-function setup(){bindProjectScreenButtons(); initMap(); if(map){ let __lblT=null; const __lblRun=()=>{ __lblT=null; if(project){ refreshLineLabels(); repositionPointLabels(); } }; map.on('zoomend moveend',()=>{ if(__lblT) clearTimeout(__lblT); __lblT=setTimeout(__lblRun,120); }); map.on('zoomstart movestart',()=>{ if(__lblT){ clearTimeout(__lblT); __lblT=null; } }); } ensureProject(); $$('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool)); $('#baseMapSelect').onchange=e=>switchBase(e.target.value);
+function setup(){bindProjectScreenButtons(); initMap(); aybHatMasaustuCiftTikBagla(); if(map){ let __lblT=null; const __lblRun=()=>{ __lblT=null; if(project){ refreshLineLabels(); repositionPointLabels(); } }; map.on('zoomend moveend',()=>{ if(__lblT) clearTimeout(__lblT); __lblT=setTimeout(__lblRun,120); }); map.on('zoomstart movestart',()=>{ if(__lblT){ clearTimeout(__lblT); __lblT=null; } }); } ensureProject(); $$('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool)); $('#baseMapSelect').onchange=e=>switchBase(e.target.value);
   window.aybSyncBaseToggleButton=function(){
     const s=$('#baseMapSelect'), b=$('#btnBaseOffToggle');
     if(!b||!s) return;
@@ -9334,6 +9426,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
   function clearAll(){
     if(!project) return;
     if(!confirm('Tüm raster/imar altlıklar silinsin mi?')) return;
+    try{if(window.aybUndoKaydet&&project.rasters&&project.rasters.length)window.aybUndoKaydet({kind:'raster',title:'Tüm raster/imar altlıklar',payload:{rasters:project.rasters}})}catch(e){}
     project.rasters=[]; saveProject(); renderAll(); renderRasterList(); toast('Raster altlıklar silindi.');
   }
   document.addEventListener('click',function(e){
@@ -9345,6 +9438,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
       const id=row.getAttribute('data-id');
       const r=project&&project.rasters&&project.rasters.find(x=>x.id===id);
       if(e.target.closest('[data-raster-del]')){
+        try{if(window.aybUndoKaydet&&r)window.aybUndoKaydet({kind:'raster',title:'Raster/imar altlık',payload:{rasters:[r]}})}catch(err){}
         project.rasters=project.rasters.filter(x=>x.id!==id); saveProject(); renderAll(); renderRasterList(); toast('Raster silindi.'); return;
       }
       if(e.target.closest('[data-raster-zoom]')&&r&&r.bounds){
@@ -9453,6 +9547,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
   function clearAll(){
     if(!project) return;
     if(!confirm('Tüm DXF/CAD altlıklar silinsin mi?')) return;
+    try{if(window.aybUndoKaydet&&project.cadLayers&&project.cadLayers.length)window.aybUndoKaydet({kind:'cad',title:'Tüm DXF/CAD altlıklar',payload:{cadLayers:project.cadLayers}})}catch(e){}
     project.cadLayers=[]; saveProject(); renderAll(); renderCadList(); toast('DXF/CAD altlıklar silindi.');
   }
   document.addEventListener('click',function(e){
@@ -9465,6 +9560,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
       const id=row.getAttribute('data-id');
       const layer=project.cadLayers&&project.cadLayers.find(x=>x.id===id);
       if(e.target.closest('[data-cad-del]')){
+        try{if(window.aybUndoKaydet&&layer)window.aybUndoKaydet({kind:'cad',title:'DXF/CAD altlık',payload:{cadLayers:[layer]}})}catch(err){}
         project.cadLayers=project.cadLayers.filter(x=>x.id!==id); saveProject(); renderAll(); renderCadList(); toast('DXF altlık silindi.'); return;
       }
       if(e.target.closest('[data-cad-zoom]')&&layer){
@@ -10664,6 +10760,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
   }
   window.aybResolveLabelOverlaps=function(){
     if(!hasMap()||!hasProject()) return;
+    try{if(window.aybScreenLabelReset)window.aybScreenLabelReset()}catch(e){}
     clearLeaders();
     let items=collectItems();
     solve(items);
@@ -10863,7 +10960,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
       <b>Çerçeve Seçimi</b>
       <div>${objCount} obje seçildi.</div>
       <div>${conCount} bağlı hat, ${lineCount} çerçeve içi hat, ${chCount} kanal bulundu.</div>
-      <div class="warn">Silme işlemi geri alınamaz. Önce proje yedeği almak önerilir.</div>
+      <div class="warn">Silinen kayıtlar, Silinenler / Geri Al bölümünden geri getirilebilir.</div>
       <button class="danger" onclick="AYBSelectDelete.deleteObjects()">Objeleri ve bağlı hatları sil</button>
       <button onclick="AYBSelectDelete.deleteAll()">Obje + Hat + Kanal sil</button>
       <button onclick="AYBSelectDelete.cancel()">İptal</button>
@@ -13182,7 +13279,7 @@ body .ayb-ico-frame{
       +'<button id="aybSilVaz" style="border:none;background:#e2e8f0;color:#0f172a;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer;">Vazgeç</button>'
       +'<button id="aybSilEvet" style="border:none;background:#dc2626;color:#fff;border-radius:9px;padding:10px 18px;font-weight:800;cursor:pointer;">EVET, SİL</button></div>';
     w.appendChild(kutu);
-    kutu.querySelector('#aybSilMsg').textContent='"'+ad+'" projesi KALICI olarak silinecek'+(say?(' (içinde '+say+' obje var)'):'')+'.\nBu işlem GERİ ALINAMAZ.\n\nSilmek istediğine emin misin?';
+    kutu.querySelector('#aybSilMsg').textContent='"'+ad+'" projesi silinecek'+(say?(' (içinde '+say+' obje var)'):'')+'.\nSilmeden önce otomatik olarak Silinenler bölümüne alınacak.\n\nSilmek istediğine emin misin?';
     /* İSTEK (Bayram YARAŞ): TABLET — düğmeler dokunmaya da bağlanır (yalnız click değil) */
     function aybDokunBagla(el,fn){ if(!el) return; var son=0; var h=function(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(_){} var t=Date.now(); if(t-son<500) return; son=t; fn(); }; el.addEventListener('click',h); el.addEventListener('touchend',h,{passive:false}); }
     aybDokunBagla(kutu.querySelector('#aybSilVaz'), function(){ w.remove(); });
@@ -13202,6 +13299,7 @@ body .ayb-ico-frame{
       const acikMi=!!(window.project && window.project.id===id);
       const say=(window.aybProjeObjeSayisi?window.aybProjeObjeSayisi(pr):(Array.isArray(pr.objects)?pr.objects.length:0));
       aybSilOnayPenceresi(ad+(acikMi?' — ŞU AN AÇIK PROJE':''), say, function(){
+        var __silmeIslemi=function(){
         delete all[id];
         writeProjects(all);
         /* KRİTİK (Bayram YARAŞ): gövde BÜYÜK DEPODA da silinmeli,
@@ -13233,6 +13331,18 @@ body .ayb-ico-frame{
         }
         try{ renderProjectCenter(); }catch(e){}
         try{ if(window.toast) toast('"'+ad+'" silindi.'); }catch(e){}
+        };
+        /* Proje gövdesi ayrı Silinenler deposuna TAM yazılmadan asıl silme başlamaz. */
+        var __koruma=null;
+        try{ if(window.aybUndoProjectBeforeDelete) __koruma=window.aybUndoProjectBeforeDelete(pr,id); }catch(e){}
+        if(__koruma&&__koruma.then){
+          __koruma.then(function(ok){
+            if(ok) __silmeIslemi();
+            else { try{ if(window.toast) toast('Proje Silinenler bölümüne kaydedilemedi; silme iptal edildi.'); }catch(e){} }
+          },function(){ try{ if(window.toast) toast('Proje yedeklenemedi; silme iptal edildi.'); }catch(e){} });
+        } else {
+          try{ if(window.toast) toast('Geri alma sistemi hazır değil; proje silme iptal edildi.'); }catch(e){}
+        }
       });
     }catch(err){ console.warn('proje silme',err); }
   }
@@ -14563,6 +14673,19 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     saveProject();
     redrawAll();
   }
+  function layerUndoSpec(ids,title){
+    try{
+      const set=new Set((ids||[]).map(String));
+      const imported=layers().filter(l=>l&&set.has(String(l.id)));
+      const tagged=x=>{const id=x&&(x._aybImportLayerId||(x.props&&x.props._aybImportLayerId));return id&&set.has(String(id));};
+      return {kind:'import-layer',title:title||'İçe aktarılan katman',payload:{
+        aybImportLayers:imported,
+        objects:(project.objects||[]).filter(tagged),
+        freeLines:(project.freeLines||[]).filter(tagged),
+        channels:(project.channels||[]).filter(tagged)
+      }};
+    }catch(e){return null;}
+  }
   /* Tek katmani veriden ve haritadan cikarir (soru sormaz, kaydetmez). */
   function katmaniCikar(id){
     const arr=layers();
@@ -14587,6 +14710,7 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     const l=layers().find(x=>x.id===id);
     if(!l)return;
     if(!confirm(`"${l.name}" katmanı programdan kaldırılsın mı?`))return;
+    try{const u=layerUndoSpec([id],'Katman: '+(l.name||id));if(u&&window.aybUndoKaydet)window.aybUndoKaydet(u);}catch(e){}
     katmaniCikar(id);
     saveProject();
     redrawAll();
@@ -14596,6 +14720,7 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     const arr=layers();
     if(!arr.length){ toast("Kaldırılacak katman yok."); return; }
     if(!confirm("İçeri alınan "+arr.length+" katmanın TAMAMI kaldırılsın mı?"))return;
+    try{const u=layerUndoSpec(arr.map(l=>l.id),'Tüm içe aktarılan katmanlar');if(u&&window.aybUndoKaydet)window.aybUndoKaydet(u);}catch(e){}
     arr.slice().forEach(l=>katmaniCikar(l.id));
     saveProject();
     redrawAll();
@@ -14605,7 +14730,9 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     const l=layers().find(x=>x.id===layerId);
     if(!l||!Array.isArray(l.features))return;
     if(!confirm("Bu altlık verisi silinsin mi?"))return;
-    l.features.splice(Number(index),1);
+    const ix=Number(index), feature=l.features[ix];
+    try{if(feature&&window.aybUndoKaydet)window.aybUndoKaydet({kind:'import-feature',title:'Altlık verisi: '+(l.name||layerId),payload:{importFeatures:[{layerId:l.id,index:ix,feature:feature}]}});}catch(e){}
+    l.features.splice(ix,1);
     saveProject();
     redrawAll();
   };
@@ -14758,16 +14885,28 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     /* --- 3) CIZ --- */
     for(let j=0;j<N.length;j++){
       const i=N[j], f=F[i], p=f.points[0];
-      L.circleMarker([p.lat,p.lng],{radius:5,color:"#f97316",weight:2,fillColor:"#fef3c7",fillOpacity:.9})
-        .bindPopup(altlikBalon(layer,f,i)).addTo(group);
+      const obj=kmzPointObject(f,i);
+      let marker=null;
+      try{if(obj&&typeof makeIcon==="function")marker=L.marker([p.lat,p.lng],{icon:makeIcon(obj),interactive:true,keyboard:false,riseOnHover:true});}catch(e){}
+      if(!marker)marker=L.circleMarker([p.lat,p.lng],{radius:5,color:"#334155",weight:2,fillColor:obj&&obj.type==="trafo"?"#4169ff":"#fef3c7",fillOpacity:.9});
+      marker.bindPopup(altlikBalon(layer,f,i)).addTo(group);
     }
     for(let j=0;j<C.length;j++){
       const i=C[j], f=F[i];
       const latlngs=f.points.map(p=>[p.lat,p.lng]);
+      const lm=kmzLineModel(f,i);
+      let st={color:"#1f7f00",weight:3,dashArray:null};
+      try{if(typeof aybLineVisualStyle==="function")st=aybLineVisualStyle(lm);}catch(e){}
       const obj=f.kind==="polygon"
-        ? L.polygon(latlngs,{color:"#f97316",weight:2,fillOpacity:.08})
-        : L.polyline(latlngs,{color:"#f97316",weight:3,dashArray:"7 5"});
+        ? L.polygon(latlngs,{color:st.color,weight:Math.max(2,st.weight||2),dashArray:st.dashArray,fillColor:st.color,fillOpacity:.08})
+        : L.polyline(latlngs,{color:st.color,weight:st.weight||3,dashArray:st.dashArray});
       obj.bindPopup(altlikBalon(layer,f,i)).addTo(group);
+      try{
+        if(map.getZoom()>=15&&typeof makeLineLabelIcon==="function"&&typeof aybLineLabelPlacementFromPoints==="function"){
+          const place=aybLineLabelPlacementFromPoints(latlngs),len=polyLength(latlngs);
+          L.marker(place.latlng,{icon:makeLineLabelIcon(lm,len,place.angle),interactive:false,keyboard:false}).addTo(group);
+        }
+      }catch(e){}
     }
     group.addTo(map);
     layerGroups.set(layer.id,group);
@@ -14808,6 +14947,7 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     if(typeof window.renderAll==="function")renderAll();
     renderPanel(true);
   }
+  window.aybImportLayersRedraw=redrawAll;
 
   function chooseMode(title){
     return new Promise(resolve=>{
@@ -14867,16 +15007,34 @@ body.ayb-layer-panel-open .ayb-layer-panel{
   function textContent(node,tag){const el=node.getElementsByTagName(tag)[0];return el?String(el.textContent||"").trim():"";}
   function stripHtml(h){const div=d.createElement("div");div.innerHTML=h||"";return (div.textContent||div.innerText||"").trim();}
   function coordText(text){return String(text||"").trim().split(/\s+/).map(x=>x.split(",").map(Number)).filter(p=>p.length>=2&&Number.isFinite(p[0])&&Number.isFinite(p[1])).map(p=>({lng:p[0],lat:p[1]}));}
+  function folderName(pm){let n=pm&&pm.parentNode;while(n&&n!==pm.ownerDocument){if(String(n.localName||n.nodeName).toLocaleUpperCase("tr-TR")==="FOLDER")return textContent(n,"name");n=n.parentNode;}return "";}
+  function styleInfo(pm,xml){
+    const url=textContent(pm,"styleUrl")||""; let id=url.replace(/^.*#/,"");
+    const styles=Array.from(xml.getElementsByTagName("Style"));
+    const maps=Array.from(xml.getElementsByTagName("StyleMap"));
+    const sm=maps.find(x=>String(x.getAttribute("id")||"")===id);
+    if(sm){const normal=Array.from(sm.getElementsByTagName("Pair")).find(x=>textContent(x,"key")==="normal")||sm.getElementsByTagName("Pair")[0];const u=normal&&textContent(normal,"styleUrl");if(u)id=u.replace(/^.*#/,"");}
+    const st=styles.find(x=>String(x.getAttribute("id")||"")===id);
+    return {url,icon:st?textContent(st,"href"):""};
+  }
+  function descriptionProps(raw){
+    const out={}; if(!raw)return out;
+    const div=d.createElement("div");div.innerHTML=raw;
+    Array.from(div.querySelectorAll("tr")).forEach(tr=>{const td=tr.querySelectorAll("th,td");if(td.length>=2){const k=(td[0].textContent||"").trim(),v=(td[1].textContent||"").trim();if(k&&v)out[k]=v;}});
+    return out;
+  }
   function parseKml(kml){
     const xml=new DOMParser().parseFromString(kml,"text/xml");
     const pms=Array.from(xml.getElementsByTagName("Placemark"));
     const items=[];
     for(const pm of pms){
       const name=textContent(pm,"name")||"KMZ";
-      const desc=stripHtml(textContent(pm,"description"));
+      const rawDesc=textContent(pm,"description"), desc=stripHtml(rawDesc);
       const props={name,description:desc};
       Array.from(pm.getElementsByTagName("Data")).forEach(x=>{const k=x.getAttribute("name")||"";const v=textContent(x,"value");if(k)props[k]=v;});
       Array.from(pm.getElementsByTagName("SimpleData")).forEach(x=>{const k=x.getAttribute("name")||"";const v=String(x.textContent||"").trim();if(k)props[k]=v;});
+      Object.entries(descriptionProps(rawDesc)).forEach(([k,v])=>{if(props[k]==null||props[k]==="")props[k]=v;});
+      const si=styleInfo(pm,xml); props._kml_folder=folderName(pm); props._kml_style_url=si.url; props._kml_icon_href=si.icon;
       const point=pm.getElementsByTagName("Point")[0], line=pm.getElementsByTagName("LineString")[0], poly=pm.getElementsByTagName("Polygon")[0];
       if(point){const pts=coordText(textContent(point,"coordinates"));if(pts[0])items.push({kind:"point",name,desc,props,points:[pts[0]]});}
       else if(line){const pts=coordText(textContent(line,"coordinates"));if(pts.length)items.push({kind:"line",name,desc,props,points:pts});}
@@ -14910,14 +15068,104 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     return items;
   }
 
+  function importKey(v){return String(v||"").toLocaleUpperCase("tr-TR").replace(/[İI]/g,"I").replace(/[Ğ]/g,"G").replace(/[Ü]/g,"U").replace(/[Ş]/g,"S").replace(/[Ö]/g,"O").replace(/[Ç]/g,"C").replace(/[^A-Z0-9]/g,"");}
+  function propIndex(props){const out={};Object.keys(props||{}).forEach(k=>{const nk=importKey(k);if(nk&&out[nk]==null)out[nk]=props[k];});return out;}
+  function pget(ix,names){for(const n of names){const v=ix[importKey(n)];if(v!=null&&String(v).trim()!=="")return String(v).trim();}return "";}
+  function exactType(v){const k=importKey(v);return ({DIREK:"direk",POLE:"direk",TRAFO:"trafo",TRANSFORMER:"trafo",KOFRE:"kofre",BOX:"box",SDK:"box",ABONE:"abone",EKMUF:"ekmuf",MUF:"ekmuf"})[k]||"";}
   function guessType(name,props){
-    const t=(name+" "+JSON.stringify(props||{})).toLocaleUpperCase("tr-TR");
-    if(t.includes("TRAFO")||/\bTR[A-Z0-9]/.test(t))return "trafo";
-    if(t.includes("KOFRE"))return "kofre";
-    if(t.includes("BOX")||t.includes("SDK"))return "box";
-    if(t.includes("ABONE"))return "abone";
+    const ix=propIndex(props), ad=String(name||"").toLocaleUpperCase("tr-TR"), style=(pget(ix,["_kml_style_url","_kml_icon_href"])).toLocaleUpperCase("tr-TR");
+    /* Direk kanıtı, bağlı olduğu trafonun adı/no'sundan daha güçlüdür. Böylece her
+       direkte bulunan trafo_adi / trafo_no alanı objeyi TRAFO'ya çeviremez. */
+    const poleNo=pget(ix,["direk_no","direkno","pole_no","poleno"]);
+    const poleType=pget(ix,["direk_tipi","direktipi","dr_gentip_kod","drgentipkod"]);
+    const poleName=/\bSB\s*[-_.]?\s*\d+\b/i.test(ad)||/\bAD\d+\s*[-/]/i.test(ad)||/\bD[İI]REK\b/i.test(ad);
+    if(poleNo||poleType||poleName)return "direk";
+    const explicit=exactType(pget(ix,["obje_tipi","objetype","object_type","objecttype","tip","type","katman","layer"]));
+    if(explicit)return explicit;
+    if(pget(ix,["kofre_no","kofreno"]))return "kofre";
+    if(pget(ix,["box_no","boxno","sdk_no","sdkno"]))return "box";
+    if(pget(ix,["abone_no","aboneno"]))return "abone";
+    if(pget(ix,["muf_no","mufno","ekmuf_no","ekmufno"]))return "ekmuf";
+    if(pget(ix,["trafo_turu","trafoturu","trafo_tipi","trafotipi","trafo_gucu","trafogucu"]))return "trafo";
+    if(/(^|[\s._-])(KOFRE|KÖFRE)([\s._-]|$)/i.test(ad+" "+style))return "kofre";
+    if(/(^|[\s._-])(BOX|SDK)([\s._-]|$)/i.test(ad+" "+style))return "box";
+    if(/(^|[\s._-])ABONE([\s._-]|$)/i.test(ad+" "+style))return "abone";
+    if(/^\s*TR\s*[-_.]?\s*\d+\b/i.test(ad)||/(^|[\s._-])TRAFO([\s._-]|$)/i.test(ad+" "+style))return "trafo";
     return "direk";
   }
+  function normalizePointProps(type,name,props){
+    const out={...(props||{})}, ix=propIndex(out), ad=String(name||"").trim();
+    const take=(names)=>pget(ix,names);
+    const durum=take(["durum","status","mevcut_yeni","mevcutyeni"]); if(durum&&!out.durum)out.durum=durum;
+    if(type==="direk"){
+      const sb=ad.match(/\bSB\s*[-_.]?\s*(\d+)\b/i), first=ad.split(/[•|;]/)[0].trim();
+      const no=take(["direk_no","direkno","pole_no","poleno","no","numara"])||(sb?("SB"+sb[1]):"");
+      const dt=take(["direk_tipi","direktipi","dr_gentip_kod","drgentipkod","tipadi"])||(/^TAF\s*\d+/i.test(first)?first.match(/^TAF\s*\d+/i)[0].replace(/\s+/g,""):"");
+      const gt=take(["genel_tip","geneltip","dr_agog_enh_sinif","dragog_enh_sinif","agog","sinif"]);
+      const alt=take(["alt_tip","alttip","alt_cins","altcins","direk_alt_tip","direkalttip"]);
+      out.direk_no=no||ad; if(dt)out.direk_tipi=dt; if(alt)out.alt_tip=alt;
+      if(gt)out.genel_tip=gt; else if(/\bAD\d+\s*[-/]/i.test(ad)||/\b\d+\s*W\b/i.test(ad))out.genel_tip="AYD";
+      const wm=ad.match(/\b(\d{1,3})\s*W\b/i); if(wm&&!out.lamba_gucu&&!out.guc)out.lamba_gucu=wm[1];
+      if(wm&&!Array.isArray(out.lambalar))out.lambalar=[{cins:"LED",guc:wm[1],armatur:wm[1]+" W",durum:out.durum||"MEVCUT",adet:"1"}];
+      const raw=exactType(out.tip); if(raw&&raw!=="direk"){out.ithal_tip_ham=out.tip;delete out.tip;}
+    }else if(type==="trafo"){out.trafo_no=take(["trafo_no","trafono","no","numara"])||ad;}
+    else if(type==="box"){out.box_no=take(["box_no","boxno","sdk_no","sdkno","no","numara"])||ad;}
+    else if(type==="kofre"){out.kofre_no=take(["kofre_no","kofreno","no","numara"])||ad;}
+    else if(type==="abone"){out.abone_no=take(["abone_no","aboneno","no","numara"])||ad;}
+    else if(type==="ekmuf"){out.muf_no=take(["muf_no","mufno","ekmuf_no","ekmufno","no","numara"])||ad;}
+    /* B_CAD/B-PRO cizimi objenin tipi + genel/alt tip + durumdan otomatik secilir. */
+    out.__aybTipOk=true; out.__aybTipOkV2=true;
+    return out;
+  }
+  window.aybKmzGuessPointType=guessType;
+  window.aybKmzNormalizePointProps=normalizePointProps;
+  function kmzPointObject(f,index){
+    const pt=f&&f.points&&f.points[0]; if(!pt)return null;
+    const type=guessType(f.name,f.props),props=normalizePointProps(type,f.name,f.props);
+    return {id:"ALTLIK_"+(index||0),type,lat:+pt.lat,lng:+pt.lng,props};
+  }
+  function kmzLineModel(f,index){
+    const raw={...((f&&f.props)||{})},ix=propIndex(raw),ad=String(f&&f.name||"");
+    const take=names=>pget(ix,names);
+    let gen=take(["genel_tip","geneltip","hat_genel_tip","hatgeneltip","main_hat_genel","mainhatgenel"]);
+    const n=importKey(ad+" "+gen);
+    if(!gen)gen=n.includes("AYD")||n.includes("AYDINLATMA")?"AYD":n.includes("ENH")||n.includes("BAHH")?"ENH":n.includes("OG")?"OG":"AG";
+    let hy=take(["hy","havai_yeralti","havaiyeralti","yeraltihavai","hat_yeri","hatyeri"]);
+    if(!hy)hy=n.includes("YERALTI")||n.includes("YERALTIKABLO")?"YER ALTI":"HAVAİ";
+    const kesit=take(["hat_tipi","hattipi","kesit","kablo_kesit","kablokesit","main_hat_tipi","mainhattipi"])||ad;
+    const props={...raw,genel_tip:gen,main_hat_genel:gen,hy,hat_tipi:kesit};
+    const yer=importKey(hy).includes("YERALTI");
+    return {id:"ALTLIK_HAT_"+(index||0),kind:yer?"yeraltihat":"hat",props};
+  }
+  window.aybKmzPointObject=kmzPointObject;
+  window.aybKmzLineModel=kmzLineModel;
+  function kmzPointEvidence(f){
+    const ix=propIndex((f&&f.props)||{}),ad=String(f&&f.name||"").toLocaleUpperCase("tr-TR"),style=pget(ix,["_kml_style_url","_kml_icon_href"]);
+    if(pget(ix,["direk_no","direk_tipi","pole_no","obje_tipi","object_type","tip","type","katman","layer","kofre_no","box_no","sdk_no","abone_no","muf_no","trafo_turu","trafo_tipi","trafo_gucu"]))return true;
+    return /\b(SB\s*[-_.]?\s*\d+|AD\d+\s*[-/]|D[İI]REK|KOFRE|KÖFRE|BOX|SDK|ABONE|TRAFO|TR\s*[-_.]?\s*\d+)\b/i.test(ad+" "+style);
+  }
+  function kmzImportReport(features){
+    const r={toplam:0,direk:0,trafo:0,box:0,kofre:0,abone:0,ekmuf:0,hat:0,alan:0,tanimsiz:0,tanimsizAdlar:[]};
+    (features||[]).forEach((f,i)=>{
+      r.toplam++;
+      if(f&&f.kind==="point"){
+        const t=guessType(f.name,f.props);
+        if(!kmzPointEvidence(f)){r.tanimsiz++;if(r.tanimsizAdlar.length<5)r.tanimsizAdlar.push(String(f.name||("Nokta "+(i+1))));}
+        else if(Object.prototype.hasOwnProperty.call(r,t))r[t]++;
+        else r.tanimsiz++;
+      }else if(f&&f.kind==="line")r.hat++;
+      else if(f&&f.kind==="polygon")r.alan++;
+      else r.tanimsiz++;
+    });
+    return r;
+  }
+  function showKmzImportReport(r){
+    if(!r)return;
+    const sat=["KMZ İÇE ALMA KONTROLÜ","",`Toplam: ${r.toplam}`,`Direk: ${r.direk}`,`Trafo: ${r.trafo}`,`SDK / Box: ${r.box}`,`Kofre: ${r.kofre}`,`Abone: ${r.abone}`,`Ek muf: ${r.ekmuf}`,`Hat: ${r.hat}`,`Alan: ${r.alan}`,`Tanımlanamayan: ${r.tanimsiz}`];
+    if(r.tanimsizAdlar.length)sat.push("","Kontrol edilecek ilk kayıtlar:",...r.tanimsizAdlar.map(x=>"• "+x));
+    setTimeout(()=>alert(sat.join("\n")),0);
+  }
+  window.aybKmzImportReport=kmzImportReport;
   function noProps(type,name,i){
     const n=String(name||"").trim()||("ITHAL-"+i);
     if(type==="trafo")return {trafo_no:n,ad:n};
@@ -14927,7 +15175,8 @@ body.ayb-layer-panel-open .ayb-layer-panel{
   }
   function addLayer(source,fileName,mode,features){
     if(!ensureProject())return null;
-    const layer={id:nowId(),name:fileName,source,mode,visible:true,createdAt:new Date().toISOString(),features};
+    const rapor=kmzImportReport(features);
+    const layer={id:nowId(),name:fileName,source,mode,visible:true,createdAt:new Date().toISOString(),features,importReport:rapor};
     project.aybImportLayers.unshift(layer);
     if(mode==="project"){
       let objN=0,lineN=0,chanN=0;
@@ -14937,7 +15186,8 @@ body.ayb-layer-panel-open .ayb-layer-panel{
           const type=guessType(f.name,f.props);
           const id=(typeof window.uid==="function")?uid(type.toUpperCase()):("IMP_"+Date.now()+"_"+idx);
           const p=pts[0];
-          const obj={id,type,lat:p.lat,lng:p.lng,_aybImportLayerId:layer.id,props:{...noProps(type,f.name,idx+1),...f.props,_aybImportLayerId:layer.id,ithal_kaynak:source,ithal_dosya:fileName,not:f.desc||""}};
+          const fixed=normalizePointProps(type,f.name,f.props);
+          const obj={id,type,lat:p.lat,lng:p.lng,_aybImportLayerId:layer.id,props:{...noProps(type,f.name,idx+1),...fixed,_aybImportLayerId:layer.id,ithal_kaynak:source,ithal_dosya:fileName,not:fixed.not||f.desc||""}};
           if(typeof window.applyDefaultSymbolIfNeeded==="function")applyDefaultSymbolIfNeeded(obj,true);
           project.objects.push(obj); objN++;
         }else if((f.kind==="line"||f.kind==="polygon")&&pts.length>=2){
@@ -14957,6 +15207,8 @@ body.ayb-layer-panel-open .ayb-layer-panel{
     }
     saveProject();
     redrawAll();
+    try{ document.dispatchEvent(new CustomEvent('ayb:imported',{detail:{source:source,mode:mode,count:features.length}})); }catch(e){}
+    if(String(source||"").toLocaleUpperCase("tr-TR").includes("KMZ"))showKmzImportReport(rapor);
     setPanel(true);
     return layer;
   }
@@ -15010,11 +15262,9 @@ body.ayb-layer-panel-open .ayb-layer-panel{
   /* Panel KAPALIYKEN DOM'u yeniden kurmanin hicbir faydasi yoktu; tek
      sonucu, acikken de dugmeleri kullanicinin parmagi altindan cekmekti.
      Artik yalniz panel ACIKKEN ve icerik GERCEKTEN degistiyse kurulur. */
-  setInterval(()=>{
-    wrapRenderAll();
-    altlikKancaBagla();
-    if(d.body.classList.contains("ayb-layer-panel-open")) renderPanel();
-  },2500);
+  /* Sürekli 2,5 saniyelik panel/katman taraması kaldırıldı. İçe alma ve panel
+     etkileşimleri gerektiğinde tek sefer tazeler. */
+  d.addEventListener('ayb:imported',()=>{wrapRenderAll();altlikKancaBagla();if(d.body.classList.contains("ayb-layer-panel-open"))renderPanel();});
 })();
 </script>
 
@@ -16839,7 +17089,7 @@ body.ayb-energy-active.ayb-og-active #btnOGEnergy{
 </script>
 
 
-<div id="aybSahaImza">Hazirlayan: Bayram YARAS · 0530 630 05 40</div>
+<div id="aybSahaImza">Hazırlayan: Bayram YARAŞ · 0530 630 05 40</div>
 <script>
 /* İSTEK (Bayram YARAŞ): yeni sürüm konunca tablet ESKİ dosyada takılı kalmasın.
    sw.js önbelleği artık SÜRÜM DAMGALIDIR (eski önbellek otomatik silinir) ve sembol
@@ -16865,7 +17115,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){
 });}
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__aybInstallEvt=e;try{var b=document.createElement('button');b.textContent='\uD83D\uDCF2 Uygulamayi Yukle';b.style.cssText='position:fixed;right:8px;bottom:8px;z-index:99999;padding:9px 14px;border:0;border-radius:10px;background:#388cff;color:#fff;font:700 13px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.35)';b.onclick=function(){b.remove();window.__aybInstallEvt.prompt();};document.body.appendChild(b);}catch(_){}});
 </script>
+<script id="ayb-tablet-loader" src="ayb-tablet.js"></script>
+<script src="ayb-undo.js"></script>
+<script src="ayb-label-screen.js"></script>
 <script src="ayb-backup.js"></script>
-<script src="ayb-tablet.js"></script>
 </body>
 </html>
