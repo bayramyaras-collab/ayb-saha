@@ -14,7 +14,7 @@
   function bkToast(msg){
     try{
       var t=document.createElement('div'); t.textContent=msg;
-      t.style.cssText='position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:100050;background:#0d1b34;color:#e7eeff;border:1px solid #3a6ad4;border-radius:10px;padding:12px 16px;font:600 14px system-ui;max-width:90vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+      t.style.cssText='position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:100050;background:#0d1b34;color:#e7eeff;border:1px solid #3a6ad4;border-radius:10px;padding:12px 16px;font:600 14px system-ui;max-width:90vw;text-align:center;white-space:pre-line;word-break:break-word;box-shadow:0 8px 30px rgba(0,0,0,.5)';
       document.body.appendChild(t);
       setTimeout(function(){ try{ t.style.transition='opacity .5s'; t.style.opacity='0'; setTimeout(function(){t.remove();},500); }catch(e){} },5000);
     }catch(e){}
@@ -66,6 +66,12 @@
     for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0;
     return h+'_'+s.length;
   }
+  function nativeBackupSave(name,json){
+    try{
+      if(window.AYBNative&&typeof AYBNative.saveBackup==='function') return String(AYBNative.saveBackup(name,json)||'');
+    }catch(e){}
+    return '';
+  }
 
   function openDB(){
     return new Promise(function(res,rej){
@@ -116,7 +122,7 @@
       var p=await pkg(), h=hashOf(p);
       if(!force&&h===lastHash) return false;
       var ok=await idbPut(p); if(ok){lastHash=h;lastAuto=Date.now();}
-      try{if(ok&&window.AYBNative&&AYBNative.saveBackup)AYBNative.saveBackup('AYB_Yedek_SON.json',JSON.stringify(p));}catch(e){}
+      if(ok) nativeBackupSave('AYB_Yedek_SON.json',JSON.stringify(p));
       return ok;
     })();
     try{return await busy;}finally{busy=null;}
@@ -137,9 +143,14 @@
     try{
       var p=await pkg(), json=JSON.stringify(p,null,2), fname='AYB_Tam_Yedek_'+p.ts.slice(0,10)+'.json';
       await idbPut(p); lastHash=hashOf(p); lastAuto=Date.now();
-      try{if(window.AYBNative&&AYBNative.saveBackup){AYBNative.saveBackup(fname,json);AYBNative.saveBackup('AYB_Yedek_SON.json',json);}}catch(e){}
-      var blob=new Blob([json],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){try{URL.revokeObjectURL(a.href);a.remove();}catch(e){}},1500);
-      bkToast('Tam yedek alındı: '+(p.projects||[]).length+' proje.');
+      var nativeResult=nativeBackupSave(fname,json);
+      if(nativeResult.indexOf('OK|')===0){
+        nativeBackupSave('AYB_Yedek_SON.json',json);
+        bkToast('Tam yedek kaydedildi ✓\n'+nativeResult.slice(3));
+      }else{
+        var blob=new Blob([json],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){try{URL.revokeObjectURL(a.href);a.remove();}catch(e){}},1500);
+        bkToast('Tam yedek alındı: '+(p.projects||[]).length+' proje.');
+      }
     }catch(err){alert('Yedek hatası: '+(err&&err.message?err.message:err));}
   }
   function restoreFromFile(){

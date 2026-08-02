@@ -2147,7 +2147,7 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
 </head>
 <body class="ayb-mode-office">
 <div class="app">
-  <div class="titlebar"><div class="logo"></div><div class="title">BY EDŞ Saha Programı v16.31</div><span class="small-muted" id="activeProjectName">Proje yok</span><div class="win-controls"><span id="aybWinMin" title="Küçült" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kucult')">—</span><span id="aybWinMax" title="Büyüt / Eski Boyut" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('buyut')">□</span><span id="aybWinClose" title="Kapat" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kapat')">×</span></div></div>
+  <div class="titlebar"><div class="logo"></div><div class="title">BY EDŞ Saha Programı v16.32</div><span class="small-muted" id="activeProjectName">Proje yok</span><div class="win-controls"><span id="aybWinMin" title="Küçült" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kucult')">—</span><span id="aybWinMax" title="Büyüt / Eski Boyut" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('buyut')">□</span><span id="aybWinClose" title="Kapat" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kapat')">×</span></div></div>
 <style>/* İSTEK (Bayram YARAŞ): OS başlık çubuğu kalktı — BY EDŞ barı pencereyi taşır, sağdaki düğmeler çalışır */
 .titlebar{-webkit-app-region:drag;user-select:none}
 .titlebar .win-controls,.titlebar .win-controls span,.titlebar img,.titlebar button,.titlebar select{-webkit-app-region:no-drag}
@@ -3139,7 +3139,7 @@ function aybMobileOpenFile(){
         var r=new FileReader();
         r.onload=function(){
           try{
-            var data=JSON.parse(r.result);
+            var data=JSON.parse(r.result); if(data&&data.project) data=data.project;
             if(typeof openProject==='function'){ openProject(data); if(typeof toast==='function') toast('Proje dosyadan açıldı.'); }
           }catch(e){ if(typeof toast==='function') toast('Dosya okunamadı: geçerli proje (.json) değil.'); }
           inp.value='';
@@ -3151,15 +3151,28 @@ function aybMobileOpenFile(){
     inp.click();
   }catch(e){ if(typeof toast==='function') toast('Dosya açma desteklenmiyor: '+(e&&e.message||e)); }
 }
+function aybSaveLocationNotice(ok,msg){
+  try{
+    var n=document.getElementById('aybSaveLocationNotice');
+    if(!n){n=document.createElement('div');n.id='aybSaveLocationNotice';n.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483000;max-width:min(92vw,760px);background:#0f172a;color:#fff;border:2px solid #22c55e;border-radius:14px;padding:13px 42px 13px 15px;font:700 13px system-ui;box-shadow:0 16px 42px rgba(0,0,0,.45);white-space:pre-line;word-break:break-word;';var x=document.createElement('button');x.type='button';x.textContent='×';x.style.cssText='position:absolute;right:8px;top:7px;border:0;background:transparent;color:#fff;font-size:22px;cursor:pointer';x.onclick=function(){n.style.display='none';};n.appendChild(x);var t=document.createElement('div');t.className='ayb-save-location-text';n.appendChild(t);document.body.appendChild(n);}
+    n.style.borderColor=ok?'#22c55e':'#ef4444';n.querySelector('.ayb-save-location-text').textContent=(ok?'KAYDEDİLDİ ✓\n':'KAYDETME BAŞARISIZ ✕\n')+msg;n.style.display='block';clearTimeout(n.__tmr);n.__tmr=setTimeout(function(){n.style.display='none';},12000);
+  }catch(e){ if(typeof toast==='function') toast(msg); }
+}
 function aybMobileSaveFile(){
-  // iOS/Android: proje.json'u indir (cihaz "Dosyalara Kaydet" sunar)
+  // Android: gorunur Dosyalarim > Belgeler > BY_EDS_Saha; diger mobilde indirme.
   try{
     if(!window.project){ if(typeof toast==='function') toast('Kaydedilecek proje yok.'); return; }
     try{ window.project.updated=new Date().toISOString(); if(typeof saveProject==='function') saveProject(); }catch(e){}
     var name=(typeof aybSafeFileName==='function'?aybSafeFileName(window.project.name):'proje');
-    var content=JSON.stringify(window.project,null,2);
-    if(typeof aybDownloadFile==='function'){ aybDownloadFile(name+'.json', content, 'application/json'); if(typeof toast==='function') toast('Proje indirildi. "Dosyalara Kaydet" ile saklayabilirsin.'); }
-  }catch(e){ if(typeof toast==='function') toast('Kaydetme hatası: '+(e&&e.message||e)); }
+    var content=JSON.stringify({app:'BY EDŞ Saha Programı',preparedBy:'Bayram YARAŞ',format:'AYB-PROJE-V1',savedAt:new Date().toISOString(),project:window.project},null,2);
+    if(window.AYBNative&&typeof AYBNative.saveProjectFile==='function'){
+      var res=String(AYBNative.saveProjectFile(name+'.json',content)||'ERR|Android kayıt sonucu alınamadı.');
+      if(res.indexOf('OK|')===0) aybSaveLocationNotice(true,res.slice(3));
+      else aybSaveLocationNotice(false,res.replace(/^ERR\|/,''));
+      return;
+    }
+    if(typeof aybDownloadFile==='function'){ aybDownloadFile(name+'.json', content, 'application/json'); aybSaveLocationNotice(true,'Proje indirildi. Dosyalar uygulamasından konumunu seç.'); }
+  }catch(e){ aybSaveLocationNotice(false,'Kaydetme hatası: '+(e&&e.message||e)); }
 }
 function aybKillLegend(){
   // Lejant ve Katman göstergesini DOM'dan TAMAMEN kaldır (kullanıcı isteği - kalıcı).
@@ -13662,6 +13675,9 @@ Kanal: ${((window.project&&window.project.channels)||[]).length}
 
   function overrideProjectFunctions(){
     window.showProjectScreen=showScreen;
+    /* Android'de Aç/Kaydet düğmelerini aybMobileOpenFile/aybMobileSaveFile yönetir.
+       Proje merkezi korunur; eski tarayıcı-klasör dinleyicisi yeniden bağlanmaz. */
+    if(window.AYBNative) return;
     const openBtn=$("#btnOpen");
     if(openBtn && !openBtn.__aybV13){
       openBtn.__aybV13=true;
