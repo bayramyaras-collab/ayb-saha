@@ -1,0 +1,62 @@
+name: Build PC Setup U7
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "pc/**"
+      - "app/src/main/assets/**"
+      - ".github/workflows/build-pc-setup.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-setup:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: pc
+
+    steps:
+      - name: Kaynağı al
+        uses: actions/checkout@v4
+
+      - name: Node.js 22 kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Electron bağımlılıklarını kur
+        run: npm install --no-audit --no-fund
+
+      - name: Gerçek Windows Setup EXE oluştur
+        run: npm run dist
+
+      - name: Kurulum ve gömülü fontu doğrula
+        shell: pwsh
+        run: |
+          $setup = "dist/BY_EDS_Saha_Programi_v16.34_SETUP.exe"
+          if (-not (Test-Path $setup)) { throw "Setup EXE oluşmadı." }
+          if ((Get-Item $setup).Length -lt 20MB) { throw "Setup EXE beklenenden küçük." }
+
+          npx asar extract "dist/win-unpacked/resources/app.asar" "dist/asar-check"
+          $css = Get-Content "dist/asar-check/assets/embedded-bcad.css" -Raw
+          $html = Get-Content "dist/asar-check/assets/AYB_Saha_Harita.html" -Raw
+          if ($css -notmatch "data:font/ttf;base64,") { throw "B_CAD fontu uygulamaya gömülmemiş." }
+          if ($html -notmatch "embedded-bcad.css") { throw "Gömülü font sayfaya bağlanmamış." }
+          if ($html -match "src:url\('B_CAD.ttf'\)") { throw "Harici font bağlantısı kaldı." }
+
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash
+          Write-Host "SETUP_OK=$setup"
+          Write-Host "SHA256=$hash"
+
+      - name: Setup EXE dosyasını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-Saha-Programi-v16.34-U7-SETUP
+          path: pc/dist/BY_EDS_Saha_Programi_v16.34_SETUP.exe
+          if-no-files-found: error
+          retention-days: 30
