@@ -36,6 +36,7 @@ import android.util.Base64;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 
 public class MainActivity extends Activity {
 
@@ -52,12 +53,14 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         if (Build.VERSION.SDK_INT >= 23) {
-            String[] perms = { Manifest.permission.ACCESS_FINE_LOCATION,
-                               Manifest.permission.ACCESS_COARSE_LOCATION };
-            boolean need = false;
+            ArrayList<String> perms = new ArrayList<String>();
+            perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            perms.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+            if (Build.VERSION.SDK_INT <= 28) perms.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            ArrayList<String> missing = new ArrayList<String>();
             for (String p : perms)
-                if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) need = true;
-            if (need) requestPermissions(perms, REQ_PERM);
+                if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) missing.add(p);
+            if (!missing.isEmpty()) requestPermissions(missing.toArray(new String[missing.size()]), REQ_PERM);
         }
 
         web = new WebView(this);
@@ -290,36 +293,75 @@ public class MainActivity extends Activity {
         }, 1500);
     }
 
+    // Dosyalarim > Belgeler > BY_EDS_Saha altina gorunur dosya yazar.
+    private String saveVisibleJson(String filename, String content, String subFolder) {
+        String safe = filename == null ? "AYB_Proje.json" : filename.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (!safe.toLowerCase().endsWith(".json")) safe += ".json";
+        String sub = (subFolder == null || subFolder.isEmpty()) ? "" : ("/" + subFolder.replaceAll("[^A-Za-z0-9_-]", "_"));
+        String relative = Environment.DIRECTORY_DOCUMENTS + "/BY_EDS_Saha" + sub + "/";
+        String shown = "Dosyalarım > Belgeler > BY_EDS_Saha" + sub.replace("/", " > ") + " > " + safe;
+        try {
+            byte[] bytes = String.valueOf(content == null ? "" : content).getBytes(StandardCharsets.UTF_8);
+            if (Build.VERSION.SDK_INT >= 29) {
+                Uri filesUri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                try {
+                    getContentResolver().delete(filesUri,
+                        MediaStore.MediaColumns.DISPLAY_NAME + "=? AND " + MediaStore.MediaColumns.RELATIVE_PATH + "=?",
+                        new String[]{safe, relative});
+                } catch (Exception ignored) {}
+                ContentValues cv = new ContentValues();
+                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, safe);
+                cv.put(MediaStore.MediaColumns.MIME_TYPE, "application/json");
+                cv.put(MediaStore.MediaColumns.RELATIVE_PATH, relative);
+                cv.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                Uri u = getContentResolver().insert(filesUri, cv);
+                if (u == null) throw new Exception("Dosya kaydı oluşturulamadı");
+                try {
+                    OutputStream os = getContentResolver().openOutputStream(u, "w");
+                    if (os == null) throw new Exception("Dosya açılamadı");
+                    os.write(bytes); os.flush(); os.close();
+                    ContentValues done = new ContentValues(); done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                    getContentResolver().update(u, done, null, null);
+                } catch (Exception writeErr) {
+                    try { getContentResolver().delete(u, null, null); } catch (Exception ignored) {}
+                    throw writeErr;
+                }
+            } else {
+                if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
+                    return "ERR|Dosyalarım yazma izni verilmedi.";
+                File root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
+                File dir = new File(root, "BY_EDS_Saha" + sub);
+                if (!dir.exists() && !dir.mkdirs()) throw new Exception("Klasör oluşturulamadı");
+                FileOutputStream fo = new FileOutputStream(new File(dir, safe));
+                fo.write(bytes); fo.flush(); fo.close();
+            }
+            return "OK|" + shown;
+        } catch (Exception e) {
+            return "ERR|" + (e.getMessage() == null ? "Dosyaya yazılamadı" : e.getMessage());
+        }
+    }
+
     // ---- JS'ten cagrilan yedekleme koprusu ----
     public class BackupBridge {
-        // Yedegi hem uygulama klasorune hem de Belgeler/Indirilenler'e yazar.
+        // Projeyi Dosyalarim > Belgeler > BY_EDS_Saha klasorune yazar ve tam yolu dondurur.
+        @JavascriptInterface
+        public String saveProjectFile(String filename, String content) {
+            return saveVisibleJson(filename, content, "Projeler");
+        }
+
+        // Yedegi hem uygulama klasorune hem de gorunur Belgeler klasorune yazar.
         @JavascriptInterface
         public String saveBackup(String filename, String content) {
             String safe = filename == null ? "AYB_Yedek.json" : filename.replaceAll("[^A-Za-z0-9._-]", "_");
-            boolean ok = false;
             // 1) Uygulamaya ozel klasor (izin gerektirmez, guncelleme/temizlikte kalir)
             try {
                 File dir = new File(getExternalFilesDir(null), "AYB_Yedek");
                 if (!dir.exists()) dir.mkdirs();
                 FileOutputStream fo = new FileOutputStream(new File(dir, safe));
                 fo.write(content.getBytes(StandardCharsets.UTF_8)); fo.close();
-                ok = true;
             } catch (Exception e) {}
-            // 2) Herkesin gorebilecegi Belgeler/Indirilenler (Android 10+ MediaStore)
-            try {
-                if (Build.VERSION.SDK_INT >= 29) {
-                    ContentValues cv = new ContentValues();
-                    cv.put(MediaStore.Downloads.DISPLAY_NAME, safe);
-                    cv.put(MediaStore.Downloads.MIME_TYPE, "application/json");
-                    cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AYB_Saha_Yedek");
-                    Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
-                    if (u != null) {
-                        OutputStream os = getContentResolver().openOutputStream(u, "wt");
-                        if (os != null) { os.write(content.getBytes(StandardCharsets.UTF_8)); os.close(); ok = true; }
-                    }
-                }
-            } catch (Exception e) {}
-            return ok ? "ok" : "err";
+            // 2) Herkesin gorebilecegi Dosyalarim > Belgeler > BY_EDS_Saha > Yedek
+            return saveVisibleJson(safe, content, "Yedek");
         }
 
         // Programi tamamen kapat (once JS yedek alir, sonra bunu cagirir)

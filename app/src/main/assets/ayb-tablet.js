@@ -2155,7 +2155,7 @@
 (function(){
   "use strict";
   var d=document;
-  var SURUM="PERF-26.08-U4";
+  var SURUM="PERF-26.08-U5";
   var TARIH="02.08.2026";
   window.AYB_SURUM=SURUM;
   function make(){
@@ -8594,7 +8594,7 @@
    Sol alttaki rozet KALDIRILDI. Sürüm etiketi üst başlıkta "BY EDŞ Saha Programı"
    yanında görünür (eski v111'in yerinde). */
 (function(){
-  var TAG='PERF-26.08-U4';
+  var TAG='PERF-26.08-U5';
   window.AYB_SURUM=TAG;
   function uygula(){
     try{

@@ -9,7 +9,7 @@
       dosyaları saklanır. Böylece tabletin deposu döşeme resimleriyle şişmez.
    NOT: Sürüm değişince aşağıdaki SURUM satırı da değişmelidir. */
 
-const SURUM  = 'PERF-26.08-U4';
+const SURUM  = 'PERF-26.08-U5';
 const CACHE  = 'ayb-saha-' + SURUM;
 
 /* Programın çevrimdışı çalışması için gereken KENDİ dosyaları */
