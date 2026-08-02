@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, master, ana, codex/u4-pc-tablet-sync ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
