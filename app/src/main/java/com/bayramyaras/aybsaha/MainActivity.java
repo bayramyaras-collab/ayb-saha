@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
 
         web = new WebView(this);
         setContentView(web);
+        try { web.clearCache(true); } catch (Exception ignored) {}
         web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
@@ -82,7 +83,7 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(false);
         s.setTextZoom(100);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         s.setMediaPlaybackRequiresUserGesture(false);
         if (Build.VERSION.SDK_INT >= 21)
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
@@ -96,11 +97,6 @@ public class MainActivity extends Activity {
 
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView v, String url) {
-                // Tablet arayuz eklentisini (ekrana sigdir + Programi Kapat) yukle
-                v.evaluateJavascript(
-                  "(function(){if(document.getElementById('ayb-tablet-loader'))return;" +
-                  "var s=document.createElement('script');s.id='ayb-tablet-loader';" +
-                  "s.src='file:///android_asset/ayb-tablet.js';document.body.appendChild(s);})();", null);
                 // WhatsApp vb. uygulamadan gelen DXF varsa programa aktar
                 maybeInjectIncoming();
             }
@@ -185,10 +181,10 @@ public class MainActivity extends Activity {
                 Intent cameraIntent = null;
                 try {
                     android.content.ContentValues cv = new android.content.ContentValues();
-                    cv.put(MediaStore.Images.Media.DISPLAY_NAME, "AYB_" + System.currentTimeMillis() + ".jpg");
+                    cv.put(MediaStore.Images.Media.DISPLAY_NAME, "BY_EDS_" + System.currentTimeMillis() + ".jpg");
                     cv.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
                     if (android.os.Build.VERSION.SDK_INT >= 29)
-                        cv.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AYB_Saha");
+                        cv.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/BY_EDS_Saha");
                     cameraOutputUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
                     if (cameraOutputUri != null) {
                         cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);

@@ -848,7 +848,7 @@
     <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
       <name>${aybXml(project.name||'AYB Saha Projesi')}</name>
-      <description>AYB Saha Harita Metraj dışa aktarımı. Objelere tıklayınca direk/travers/izolatör/hırdavat/poz listeleri görünür.</description>
+      <description>BY EDŞ SAHA dışa aktarımı. Objelere tıklayınca direk/travers/izolatör/hırdavat/poz listeleri görünür.</description>
       ${styles}
       <Folder><name>Objeler</name>${objPlacemarks}</Folder>
       <Folder><name>Hatlar</name>${linePlacemarks}</Folder>
@@ -8780,16 +8780,23 @@
     if(!aktif)return; var b=e.target&&e.target.closest?e.target.closest('.toolbtn,.palette-btn'):null;
     if(b&&b.id!==BTN_ID&&!b.closest('#'+MODAL_ID))kapat(false);
   },true);
-  if(d.readyState==='loading')d.addEventListener('DOMContentLoaded',boot);else boot();
+  function aybYolRenderBagla(){
+    var cur=window.renderAll;
+    if(typeof cur==='function'&&!cur.__aybYolOlcuRender){
+      var wrap=function(){var r=cur.apply(this,arguments);try{setTimeout(tumunuCiz,0);}catch(e){}return r;};
+      try{for(var k in cur)if(Object.prototype.hasOwnProperty.call(cur,k))wrap[k]=cur[k];}catch(e){}
+      wrap.__aybYolOlcuRender=true; window.renderAll=wrap;
+    }
+  }
+  function aybYolIlkKur(){
+    boot(); aybYolRenderBagla();
+    var n=0,iv=setInterval(function(){boot();aybYolRenderBagla();if((bagliMap&&d.getElementById(BTN_ID)&&setToolSarildi)||++n>40)clearInterval(iv);},250);
+  }
+  if(d.readyState==='loading')d.addEventListener('DOMContentLoaded',aybYolIlkKur);else aybYolIlkKur();
   window.addEventListener('load',function(){setTimeout(boot,100);setTimeout(boot,800);});
-  setInterval(boot,700);
 
   window.aybYolOlcu={
     toggle:toggle, ac:ac, kapat:kapat, render:tumunuCiz, duzenle:duzenle,
     yarimaYuvarla:yarimaYuvarla, veri:function(){return kopya(liste(false));}
   };
 })();
-
-
-/* === v16.58: Çizim Araçları sırası sabit === */
-(function(){function fix(){var row=document.querySelector('.ayb-pro-group.draw .ayb-pro-row');if(!row)return false;var find=function(sel){return row.querySelector(sel)||document.querySelector(sel)};var order=['[data-tool="direk"]','[data-tool="trafo"]','[data-tool="yeraltihat"]','[data-tool="hat"]','[data-tool="abonehat"]','[data-tool="kanal"]','[data-tool="kofre"]','[data-tool="bina"]','[data-tool="box"]','[data-tool="sahanot"]','#aybYolOlcBtn','#kfMeasureToolBtn','[data-tool="cizgi"]','[data-tool="ok"]','#aybTopluSilBtn'];order.forEach(function(sel){var el=find(sel);if(el&&el.parentNode===row)row.appendChild(el);});var h=row.querySelector('[data-tool="hat"] small');if(h)h.textContent='Havai Hat';var y=row.querySelector('[data-tool="yeraltihat"] small');if(y)y.textContent='Yeraltı Hat';return true;}var tries=0,iv=setInterval(function(){fix();if(++tries>80)clearInterval(iv);},250);document.addEventListener('DOMContentLoaded',fix);try{new MutationObserver(function(){fix();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}})();
