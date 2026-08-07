@@ -13523,15 +13523,20 @@ Kanal: ${((window.project&&window.project.channels)||[]).length}
       }
       const p=window.newProject(name);
       window.openProject(p);
-      const dir=await makeProjectFolder(name);
-      currentHandle=dir;
-      await idbSet(String(p.id||p.name),dir);
-      await saveToFolder(dir);
       hideScreen();
-      toast("Yeni proje açıldı ve klasörüne kaydedildi.");
+      try{ if(typeof window.saveProject==="function") window.saveProject(); }catch(_){}
+      toast("Yeni proje açıldı: "+name);
+      try{
+        const dir=await makeProjectFolder(name);
+        if(dir){
+          currentHandle=dir;
+          try{ await idbSet(String(p.id||p.name),dir); }catch(_){}
+          try{ await saveToFolder(dir); }catch(_){}
+        }
+      }catch(_){ }
     }catch(err){
-      if(err && err.name==="AbortError") toast("Klasör seçimi iptal edildi.");
-      else alert("Yeni proje oluşturulamadı: "+(err&&err.message?err.message:err));
+      console.error("Yeni proje açılış hatası:",err);
+      alert("Yeni proje oluşturulamadı: "+(err&&err.message?err.message:err));
     }
   }
   async function openExisting(p){
