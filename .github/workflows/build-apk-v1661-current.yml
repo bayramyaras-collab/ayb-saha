@@ -1,0 +1,62 @@
+name: APK Olustur (BY EDS Saha v16.61 Current)
+
+on:
+  push:
+    branches: [ apk-v1661-current ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Kaynak dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'id="aybRibbonTabs"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'ayb_current_green_ui_v1661_js' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'data-tool="sahanot"' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'aybV28MobileDock' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-v28-mobile' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'applicationId "com.bayramyaras.aybsaha.current"' app/build.gradle
+          grep -q 'versionCode 1661' app/build.gradle
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk
+          unzip -t store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.current' versionCode='1661' versionName='16.61'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk 'assets/AYB_Saha_Harita.html' -d /tmp/apkcheck
+          grep -q 'id="aybRibbonTabs"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'aybV28MobileDock' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk | tee store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk.sha256
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.61-GUNCEL-YENI
+          path: |
+            store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk
+            store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk.sha256
+          if-no-files-found: error
