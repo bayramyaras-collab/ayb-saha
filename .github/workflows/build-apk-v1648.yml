@@ -1,0 +1,78 @@
+name: APK Olustur (BY EDS Saha v16.48)
+
+on:
+  push:
+    branches: [ apk-v1648 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Proje acilis duzeltmesini uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1648.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q 'toast("Yeni proje açıldı: "+name)' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'hideScreen();' app/src/main/assets/AYB_Saha_Harita.html
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.48-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.48-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.48-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.48-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1648' versionName='16.48'" /tmp/badging.txt
+          sha256sum store/BY-EDS-SAHA-v16.48-TABLET.apk | tee store/BY-EDS-SAHA-v16.48-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.48\nProje acilis akisi duzeltildi.\n' > store/BY-EDS-SAHA-v16.48-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.48-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.48-TABLET.apk
+            store/BY-EDS-SAHA-v16.48-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.48-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html store/BY-EDS-SAHA-v16.48-TABLET.apk store/BY-EDS-SAHA-v16.48-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.48-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.48 proje acilisi + APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
