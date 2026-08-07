@@ -2,7 +2,7 @@ name: APK Olustur (AYB Saha)
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, ana, apk-tablet-v1640 ]
+    branches: [ main, master, ana ]
 
 permissions:
   contents: read
