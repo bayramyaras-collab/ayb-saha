@@ -2,7 +2,10 @@ name: APK Olustur (AYB Saha)
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, ana ]
+    branches: [ main, master, ana, apk-tablet-v1640 ]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -10,6 +13,21 @@ jobs:
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
+
+      - name: Mevcut web varliklarini arsivle
+        run: |
+          tar -C app/src/main/assets -czf AYB-current-assets.tar.gz \
+            AYB_Saha_Harita.html ayb-tablet.js ayb-label-screen.js ayb-undo.js
+          sha256sum AYB-current-assets.tar.gz > AYB-current-assets.sha256
+
+      - name: Mevcut web varliklarini yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: AYB-current-assets
+          path: |
+            AYB-current-assets.tar.gz
+            AYB-current-assets.sha256
+          if-no-files-found: error
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
