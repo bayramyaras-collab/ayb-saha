@@ -1,0 +1,74 @@
+name: APK Olustur (BY EDS Saha v16.60 Temiz Kurulum)
+
+on:
+  push:
+    branches: [ apk-v1660-cleaninstall ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Eski arayuzu fiziksel temizle ve temiz paket yap
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1660_fullclean.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('app/build.gradle')
+          s=g.read_text(encoding='utf-8')
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.aybsaha.clean1660"',s,count=1)
+          s=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1660',s,count=1)
+          s=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.60"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          st=Path('app/src/main/res/values/strings.xml')
+          x=st.read_text(encoding='utf-8')
+          x=re.sub(r'<string name="app_name">.*?</string>','<string name="app_name">BY EDŞ SAHA TEMİZ 16.60</string>',x,count=1)
+          st.write_text(x,encoding='utf-8')
+          PY
+          node --check app/src/main/assets/ayb-tablet.js
+          ! grep -q 'aybV28MobileDock' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-v28-mobile' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-mode-field' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb_ui_mode_v1' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'AYB Saha Harita Metraj v16.40' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q '\.ribbon{display:none}' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="aybOfficeRibbon"' app/src/main/assets/AYB_Saha_Harita.html
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: SDK
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk
+          unzip -t store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.clean1660' versionCode='1660' versionName='16.60'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA TEMİZ 16.60'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk 'assets/AYB_Saha_Harita.html' -d /tmp/apkcheck
+          ! grep -q 'aybV28MobileDock' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-mode-field' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q '\.ribbon{display:none}' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk > store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.60-TEMIZ-KURULUM
+          path: |
+            store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk
+            store/BY-EDS-SAHA-v16.60-TEMIZ-KURULUM.apk.sha256
