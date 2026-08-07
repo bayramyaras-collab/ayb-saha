@@ -1,9 +1,9 @@
-name: APK Olustur (AYB Saha v16.40 Tablet)
+name: APK Olustur (AYB Saha v16.41 Tablet)
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, ana, apk-tablet-v1640 ]
+    branches: [ main ]
 
 permissions:
   contents: write
@@ -20,122 +20,77 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Yama araclarini kur
+      - name: Yol olcusu ve trafo etiket duzeltmesini uygula
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v zstd >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y zstd xz-utils
-          fi
+          python3 - <<'PY_PATCH'
+          import base64, zlib
+          exec(zlib.decompress(base64.b64decode("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")).decode("utf-8"), {"__name__": "__main__"})
+          PY_PATCH
 
-      - name: En guncel arayuzu birebir yerlestir ve dogrula
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          python3 - <<'PY'
-          from hashlib import sha256
-          from pathlib import Path
-
-          expected = {
-              "AYB_Saha_Harita.html": "aec96adbbc8076453438d5f47b0567d97c569e2036c9cafff8361fa130a8637e",
-              "ayb-tablet.js": "748affc36cc6d69b36318f26257d22d2c3cb802323a4eb9ea88c06ef7fa9a946",
-              "ayb-label-screen.js": "654763216f531e6d78fd6b6ea00047cccb541a3b6efda6b319b559bd61cc010a",
-              "ayb-undo.js": "ad3ef71cf7ceec8e9c92781209bd25449bde10f9e18ddf0b6dcf3bd6a8a37cfe",
-          }
-          root = Path("app/src/main/assets")
-          ok = all((root / name).is_file() and sha256((root / name).read_bytes()).hexdigest() == digest
-                   for name, digest in expected.items())
-          Path("/tmp/ayb-assets-current").write_text("1" if ok else "0", encoding="ascii")
-          print("Arayuz zaten guncel." if ok else "Arayuz yamasi uygulanacak.")
-          PY
-
-          if [ "$(cat /tmp/ayb-assets-current)" != "1" ]; then
-            cat app/latest-web-zstdpatch/part-*.b64 | tr -d '\r\n' | base64 --decode > /tmp/AYB-v1640-zstdpatch.tar.xz
-            echo "0d8cfdcfd3ccc52392a4df2c3a4a5e96cd9d568ff4281bcca7a77be2697551ff  /tmp/AYB-v1640-zstdpatch.tar.xz" | sha256sum -c -
-
-            cat > /tmp/ayb-baseline.sha256 <<'EOF'
-          e1b4d888ba859234d6788d147481c4526229382cb0a08f689c62bce79fb56915  app/src/main/assets/AYB_Saha_Harita.html
-          12a431d4a3a8f275808c77407974df5d134c6f5d65b73ce4f92ceb179027be60  app/src/main/assets/ayb-tablet.js
-          9a90f027cc4a60ed702cad7ee720bbfb7f4a89facbeca842fe462fbb49d5cf84  app/src/main/assets/ayb-label-screen.js
-          ca5cc71f67a29261ec5602ee5d6aada14c821c38facbef4bf08d39f38ac4a7b0  app/src/main/assets/ayb-undo.js
-          EOF
-            sha256sum -c /tmp/ayb-baseline.sha256
-
-            rm -rf /tmp/ayb-v1640-patches
-            mkdir -p /tmp/ayb-v1640-patches
-            tar -xJf /tmp/AYB-v1640-zstdpatch.tar.xz -C /tmp/ayb-v1640-patches
-
-            for file in AYB_Saha_Harita.html ayb-tablet.js ayb-label-screen.js ayb-undo.js; do
-              zstd --quiet --decompress \
-                --patch-from="app/src/main/assets/${file}" \
-                "/tmp/ayb-v1640-patches/${file}.zstpatch" \
-                -o "/tmp/${file}"
-              mv "/tmp/${file}" "app/src/main/assets/${file}"
-            done
-          fi
-
-          cat > /tmp/ayb-target.sha256 <<'EOF'
-          aec96adbbc8076453438d5f47b0567d97c569e2036c9cafff8361fa130a8637e  app/src/main/assets/AYB_Saha_Harita.html
-          748affc36cc6d69b36318f26257d22d2c3cb802323a4eb9ea88c06ef7fa9a946  app/src/main/assets/ayb-tablet.js
-          654763216f531e6d78fd6b6ea00047cccb541a3b6efda6b319b559bd61cc010a  app/src/main/assets/ayb-label-screen.js
-          ad3ef71cf7ceec8e9c92781209bd25449bde10f9e18ddf0b6dcf3bd6a8a37cfe  app/src/main/assets/ayb-undo.js
-          EOF
-          sha256sum -c /tmp/ayb-target.sha256
-
-      - name: Android v16.40 ve tablet ekran ayarlari
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re
 
-          gradle = Path("app/build.gradle")
-          text = gradle.read_text(encoding="utf-8")
-          text, n1 = re.subn(r"(?m)^(\s*)versionCode\s+\d+\s*$", r"\1versionCode 1640", text, count=1)
-          text, n2 = re.subn(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$', r'\1versionName "16.40"', text, count=1)
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text(encoding='utf-8')
+          text, n1 = re.subn(r'(?m)^(\s*)versionCode\s+\d+\s*$', r'\1versionCode 1641', text, count=1)
+          text, n2 = re.subn(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$', r'\1versionName "16.41"', text, count=1)
           if n1 != 1 or n2 != 1:
-              raise SystemExit("build.gradle surum satirlari bulunamadi")
-          gradle.write_text(text, encoding="utf-8")
+              raise SystemExit('build.gradle surum satirlari bulunamadi')
+          gradle.write_text(text, encoding='utf-8')
 
-          java = Path("app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java")
-          text = java.read_text(encoding="utf-8")
-          text = text.replace("s.setBuiltInZoomControls(true);", "s.setBuiltInZoomControls(false);")
-          if "s.setSupportZoom(false);" not in text:
-              text = text.replace("s.setBuiltInZoomControls(false);", "s.setBuiltInZoomControls(false);\n        s.setSupportZoom(false);")
-          text = text.replace("s.setLoadWithOverviewMode(true);", "s.setLoadWithOverviewMode(false);")
-          if "s.setTextZoom(100);" not in text:
-              text = text.replace("s.setLoadWithOverviewMode(false);", "s.setLoadWithOverviewMode(false);\n        s.setTextZoom(100);")
-          if "web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);" not in text:
-              text = text.replace("setContentView(web);", "setContentView(web);\n        web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);\n        web.setVerticalScrollBarEnabled(false);\n        web.setHorizontalScrollBarEnabled(false);")
+          java = Path('app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java').read_text(encoding='utf-8')
           required = [
-              "s.setBuiltInZoomControls(false);",
-              "s.setSupportZoom(false);",
-              "s.setLoadWithOverviewMode(false);",
-              "s.setTextZoom(100);",
-              "web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);",
+              's.setBuiltInZoomControls(false);',
+              's.setSupportZoom(false);',
+              's.setLoadWithOverviewMode(false);',
+              's.setTextZoom(100);',
+              'web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);',
           ]
-          if not all(item in text for item in required):
-              raise SystemExit("Tablet WebView ayarlari uygulanamadi")
-          java.write_text(text, encoding="utf-8")
+          if not all(item in java for item in required):
+              raise SystemExit('Tablet WebView ayarlari eksik')
 
-          manifest = Path("app/src/main/AndroidManifest.xml")
-          text = manifest.read_text(encoding="utf-8")
-          if 'android:largeHeap="true"' not in text:
-              text = text.replace('android:hardwareAccelerated="true"', 'android:hardwareAccelerated="true"\n        android:largeHeap="true"')
-          if 'android:windowSoftInputMode="adjustResize"' not in text:
-              text = text.replace('android:screenOrientation="fullUser">', 'android:screenOrientation="fullUser"\n            android:windowSoftInputMode="adjustResize">')
-          if 'android:largeHeap="true"' not in text or 'android:windowSoftInputMode="adjustResize"' not in text:
-              raise SystemExit("Android tablet manifest ayarlari uygulanamadi")
-          manifest.write_text(text, encoding="utf-8")
+          manifest = Path('app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          if 'android:largeHeap="true"' not in manifest or 'android:windowSoftInputMode="adjustResize"' not in manifest:
+              raise SystemExit('Tablet manifest ayarlari eksik')
           PY
 
-          grep -nE 'versionCode|versionName' app/build.gradle
-          grep -nE 'setBuiltInZoomControls|setSupportZoom|setLoadWithOverviewMode|setTextZoom|setOverScrollMode' \
-            app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
-          grep -nE 'largeHeap|windowSoftInputMode' app/src/main/AndroidManifest.xml
+      - name: JavaScript ve regresyon kontrolu
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app/src/main/assets/ayb-tablet.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          html = Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', html, flags=re.S|re.I)
+          main = next((s for s in scripts if 'function getObjectLabelHTML' in s), None)
+          if main is None:
+              raise SystemExit('Ana arayuz JavaScript blogu bulunamadi')
+          Path('/tmp/ayb-main-inline.js').write_text(main, encoding='utf-8')
+
+          js = Path('app/src/main/assets/ayb-tablet.js').read_text(encoding='utf-8')
+          checks = {
+              'Yol olcusu buyuk sayi saga hizali': "txtEnt('YOL_OLCU',anaX,anaY,hAna,String(ana),'Standard',null,0,2,2)",
+              'Yol olcusu ondalik sola hizali': "txtEnt('YOL_OLCU',ondX,ondY,hOnd,ond,'Standard',null,0,0,2)",
+              'Yol olcusu guvenli bosluk': 'var bosluk=Math.max(0.18,hOnd*0.24);',
+              'Trafo etiket katmani': "['TRAFO_ETIKET',5]",
+              'Trafo tip satiri': "txtEnt('TRAFO_ETIKET',c.y,trY,trBinaH,trBina",
+              'Trafo ad satiri': "txtEnt('TRAFO_ETIKET',c.y,trY,1.45,trBaslik",
+              'Trafo guc satiri': "txtEnt('TRAFO_ETIKET',c.y,trY,1.30,trGuc",
+          }
+          for name, token in checks.items():
+              if token not in js:
+                  raise SystemExit(f'Eksik kontrol: {name}')
+          if html.index('binaTipi?') > html.index('<span>${esc(baslik)}</span>'):
+              raise SystemExit('Arayuz trafo etiket satir sirasi yanlis')
+          print('Regresyon kontrolleri basarili.')
+          PY
+          node --check /tmp/ayb-main-inline.js
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
@@ -164,14 +119,14 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          TEST_APK="store/AYB-SAHA-v16.40-TABLET.apk"
+          OUT="store/AYB-SAHA-v16.41-TABLET.apk"
           mkdir -p store
-          cp "$APK" "$TEST_APK"
+          cp "$APK" "$OUT"
 
-          unzip -t "$TEST_APK" >/dev/null
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$TEST_APK"
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$TEST_APK" | tee /tmp/ayb-badging.txt
-          grep -q "package: name='com.bayramyaras.aybsaha' versionCode='1640' versionName='16.40'" /tmp/ayb-badging.txt
+          unzip -t "$OUT" >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$OUT"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$OUT" | tee /tmp/ayb-badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha' versionCode='1641' versionName='16.41'" /tmp/ayb-badging.txt
           grep -q "sdkVersion:'23'" /tmp/ayb-badging.txt
           grep -q "targetSdkVersion:'34'" /tmp/ayb-badging.txt
 
@@ -180,68 +135,59 @@ jobs:
           from pathlib import Path
           from zipfile import ZipFile
 
-          apk = Path("store/AYB-SAHA-v16.40-TABLET.apk")
+          apk = Path('store/AYB-SAHA-v16.41-TABLET.apk')
           expected = {
-              "AYB_Saha_Harita.html": "aec96adbbc8076453438d5f47b0567d97c569e2036c9cafff8361fa130a8637e",
-              "ayb-tablet.js": "748affc36cc6d69b36318f26257d22d2c3cb802323a4eb9ea88c06ef7fa9a946",
-              "ayb-label-screen.js": "654763216f531e6d78fd6b6ea00047cccb541a3b6efda6b319b559bd61cc010a",
-              "ayb-undo.js": "ad3ef71cf7ceec8e9c92781209bd25449bde10f9e18ddf0b6dcf3bd6a8a37cfe",
+              'AYB_Saha_Harita.html': '9c419a253fb7c33e323698ed3aa6ec5ffcb39270bb0efd0d481fa078ba4d7886',
+              'ayb-tablet.js': '04d42bce4c56e4a000b9caac70f87c35affd315efbba3a21d2d646d04cb4c866',
+              'ayb-label-screen.js': '654763216f531e6d78fd6b6ea00047cccb541a3b6efda6b319b559bd61cc010a',
+              'ayb-undo.js': 'ad3ef71cf7ceec8e9c92781209bd25449bde10f9e18ddf0b6dcf3bd6a8a37cfe',
           }
           with ZipFile(apk) as zf:
               for name, digest in expected.items():
-                  actual = sha256(zf.read("assets/" + name)).hexdigest()
+                  actual = sha256(zf.read('assets/' + name)).hexdigest()
                   if actual != digest:
-                      raise SystemExit(f"APK icindeki {name} hash uyusmazligi: {actual}")
-                  print(f"APK asset OK: {name} {actual}")
+                      raise SystemExit(f'APK icindeki {name} hash uyusmazligi: {actual}')
+                  print(f'APK asset OK: {name} {actual}')
           PY
 
-          sha256sum "$TEST_APK" | tee store/AYB-SAHA-v16.40-TABLET.apk.sha256
+          sha256sum "$OUT" | tee store/AYB-SAHA-v16.41-TABLET.apk.sha256
           {
             echo "AYB SAHA Tablet APK"
-            echo "Surum: 16.40"
+            echo "Surum: 16.41"
             echo "Paket: com.bayramyaras.aybsaha"
             echo "Min SDK: 23"
             echo "Target SDK: 34"
+            echo "Duzeltme: Yol olcusu 33,50 ayrik TEXT; trafo tip/ad/guc etiketi arayuz + DXF"
             echo "Olusturan commit: ${GITHUB_SHA}"
             echo
-            cat store/AYB-SAHA-v16.40-TABLET.apk.sha256
-          } > store/AYB-SAHA-v16.40-TABLET-BILGI.txt
+            cat store/AYB-SAHA-v16.41-TABLET.apk.sha256
+          } > store/AYB-SAHA-v16.41-TABLET-BILGI.txt
 
       - name: APK'yi indirilebilir paket olarak yukle
         uses: actions/upload-artifact@v4
         with:
-          name: AYB-SAHA-v16.40-TABLET
+          name: AYB-SAHA-v16.41-TABLET
           path: |
-            store/AYB-SAHA-v16.40-TABLET.apk
-            store/AYB-SAHA-v16.40-TABLET.apk.sha256
-            store/AYB-SAHA-v16.40-TABLET-BILGI.txt
+            store/AYB-SAHA-v16.41-TABLET.apk
+            store/AYB-SAHA-v16.41-TABLET.apk.sha256
+            store/AYB-SAHA-v16.41-TABLET-BILGI.txt
           if-no-files-found: error
           retention-days: 90
 
-      - name: Dogrulanmis kaynak ve APK'yi dala kaydet
+      - name: Dogrulanmis kaynak ve APK'yi ana dala kaydet
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add \
             app/build.gradle \
-            app/src/main/AndroidManifest.xml \
-            app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java \
             app/src/main/assets/AYB_Saha_Harita.html \
             app/src/main/assets/ayb-tablet.js \
-            app/src/main/assets/ayb-label-screen.js \
-            app/src/main/assets/ayb-undo.js \
-            store/AYB-SAHA-v16.40-TABLET.apk \
-            store/AYB-SAHA-v16.40-TABLET.apk.sha256 \
-            store/AYB-SAHA-v16.40-TABLET-BILGI.txt
-
-          if [ -d app/latest-web-zstdpatch ]; then
-            git rm -r app/latest-web-zstdpatch
-          fi
-
+            store/AYB-SAHA-v16.41-TABLET.apk \
+            store/AYB-SAHA-v16.41-TABLET.apk.sha256 \
+            store/AYB-SAHA-v16.41-TABLET-BILGI.txt
           if ! git diff --cached --quiet; then
-            git commit -m "APK v16.40 tablet: guncel arayuz ve dogrulanmis APK [skip ci]"
+            git commit -m "APK v16.41: yol olcusu ve trafo tip-ad-guc etiketi [skip ci]"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
