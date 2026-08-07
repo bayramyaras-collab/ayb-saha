@@ -7207,7 +7207,7 @@
   function KAT(){
     var L=[
       ['DIREK_MEVCUT',4],['DIREK_YENI',3],['TRAFO_MEVCUT',5],['TRAFO_YENI',5],['TRAFO_YAKIN',5],['TRAFO_ILERDE',5],['TRAFO_TADILAT_BYSK',5],['KOFRE_MEVCUT',6],['BOX_MEVCUT',5],
-      ['ABONE_MEVCUT',2],['EK_MUF',8],['LAMBA_SEMBOL',4],['LAMBA_GUCU',4],['ETIKET_OK',7],['YOL_OLCU',8],
+      ['ABONE_MEVCUT',2],['EK_MUF',8],['LAMBA_SEMBOL',4],['LAMBA_GUCU',4],['ETIKET_OK',7],['TRAFO_ETIKET',5],['YOL_OLCU',8],
       ['HAT_AYD_HAVAI',150],['HAT_AYD_YERALTI',5],['HAT_ABONE',2],['KANAL',40],['CIZGI',7],['ALAN',3],['TOPRAKLAMA',1]
     ];
     /* B PRO KATMANLARI BİREBİR (LAYER tablosu) — B Pro içeri alırken kendi katmanlarını tanır */
@@ -7221,12 +7221,16 @@
     return L;
   }
   function g(kod,deger){ return kod+'\n'+deger+'\n'; }
-  function txtEnt(katman,x,y,h,metin,stil,renk,aci){
+  function txtEnt(katman,x,y,h,metin,stil,renk,aci,hizYatay,hizDikey){
     var s=g(0,'TEXT')+g(8,katman);
     if(renk!=null) s+=g(62,renk);
+    var ha=(hizYatay==null)?1:Math.max(0,Math.min(5,Math.trunc(+hizYatay||0)));
+    var va=(hizDikey==null)?2:Math.max(0,Math.min(3,Math.trunc(+hizDikey||0)));
     s+=g(10,x.toFixed(3))+g(20,y.toFixed(3))+g(30,'0.0')+g(40,(h||2).toFixed(3))+g(1,String(metin));
     s+=g(50,(aci?(+aci):0).toFixed(2))+g(7,stil||'Standard');
-    s+=g(72,'1')+g(11,x.toFixed(3))+g(21,y.toFixed(3))+g(31,'0.0')+g(73,'2');
+    s+=g(72,String(ha));
+    if(ha||va) s+=g(11,x.toFixed(3))+g(21,y.toFixed(3))+g(31,'0.0');
+    s+=g(73,String(va));
     return s;
   }
   function noktaEnt(katman,x,y){ return g(0,'POINT')+g(8,katman)+g(10,x.toFixed(3))+g(20,y.toFixed(3))+g(30,'0.0'); }
@@ -7354,12 +7358,19 @@
       if(ondalik>=100){ ana++; ondalik=0; }
       if(ondalik<0) ondalik=0;
       var ond=String(ondalik).padStart(2,'0');
-      var hAna=Math.max(1.20,yaricap*0.92), hOnd=Math.max(0.70,yaricap*0.43);
-      /* Referans AutoCAD sembolü: büyük tam sayı, sağ üstte küçük iki hane ve alt çizgi. */
+      var hAna=Math.max(1.20,yaricap*(String(ana).length>=3?0.68:0.82));
+      var hOnd=Math.max(0.70,Math.min(hAna*0.42,yaricap*0.38));
+      /* Büyük tam sayı sağa, küçük ondalık iki hane sola hizalanır. Ortak ayırma
+         ekseninin iki tarafındaki fiziksel boşluk 33 / 50 TEXT'lerini ayırır. */
+      var ayirX=yc.y+yaricap*0.10;
+      var bosluk=Math.max(0.18,hOnd*0.24);
+      var anaX=ayirX-bosluk, ondX=ayirX+bosluk;
+      var anaY=yc.x-hAna*0.08, ondY=yc.x+hAna*0.30;
+      var altY=yc.x+hAna*0.04;
       s+=daireEnt('YOL_OLCU',yc.y,yc.x,yaricap); say.n++;
-      s+=txtEnt('YOL_OLCU',yc.y-yaricap*0.20,yc.x-yaricap*0.05,hAna,String(ana),'Standard',null,0); say.t++;
-      s+=txtEnt('YOL_OLCU',yc.y+yaricap*0.43,yc.x+yaricap*0.29,hOnd,ond,'Standard',null,0); say.t++;
-      s+=cizgiEnt('YOL_OLCU',{y:yc.y+yaricap*0.18,x:yc.x+yaricap*0.08},{y:yc.y+yaricap*0.78,x:yc.x+yaricap*0.08},null,null); say.l++;
+      s+=txtEnt('YOL_OLCU',anaX,anaY,hAna,String(ana),'Standard',null,0,2,2); say.t++;
+      s+=txtEnt('YOL_OLCU',ondX,ondY,hOnd,ond,'Standard',null,0,0,2); say.t++;
+      s+=cizgiEnt('YOL_OLCU',{y:ondX-hOnd*0.05,x:altY},{y:ondX+hOnd*1.18,x:altY},null,null); say.l++;
       sinirGuncelle({y:yc.y-yaricap,x:yc.x-yaricap});
       sinirGuncelle({y:yc.y+yaricap,x:yc.x+yaricap});
     });
@@ -7415,10 +7426,34 @@
       else if(o.type==='box'){ var xkat='DIREK_BOX_'+bproDurumAdi(pr.durum||''); s+=txtEnt(xkat, c.y, c.x, 2.5, boxKarakter(pr.durum||''), 'Direk', null, 0); if(sokulenmi(pr.durum||'')) s+=sokulenX(xkat,c,2.0); say.t++; }
       else if(o.type==='abone'){ s+=daireEnt('ABONE_MEVCUT', c.y, c.x, 0.7); say.n++; }
       else { s+=kareEnt('EK_MUF', c.y, c.x, 0.6); say.n++; }
-      /* numara + tip etiketi */
+      /* Trafo etiketi: Bina/Köşk tipi -> Trafo adı -> Güç. Diğer objelerde eski no/tip düzeni korunur. */
       var tip=''; try{ tip=(window.getObjectTip?window.getObjectTip(o):'')||''; }catch(e){}
-      if(no){ s+=txtEnt('ETIKET_OK', c.y, c.x-2.2, 1.8, String(no), 'Standard', null, 0); say.t++; }
-      if(tip && tip!==no){ s+=txtEnt('ETIKET_OK', c.y, c.x-4.2, 1.5, String(tip), 'Standard', null, 0); say.t++; }
+      if(o.type==='trafo'){
+        var trNo=String(pr.trafo_no||pr.no||no||'').trim();
+        var trAdi=String(pr.trafo_adi||pr.adi||'').trim();
+        var trBaslik=trAdi||trNo||'TRAFO';
+        var trGuc=String(pr.trafo_guc||pr.trafo_gucu||'').trim();
+        var trSayi=trGuc.match(/-?\d+(?:[.,]\d+)?/)?.[0];
+        if(trSayi&&Number(trSayi.replace(',','.'))>0) trGuc=Number(trSayi.replace(',','.')).toLocaleString('tr-TR',{maximumFractionDigits:2})+'kVA';
+        else if(/KVA\b/i.test(trGuc)) trGuc=trGuc.replace(/\s*KVA\b/i,'kVA');
+        else if(!trGuc||Number(trGuc)===0) trGuc='';
+        var trTur=String(pr.trafo_turu||pr.TRAFO_TURU||'').trim();
+        var trTip=String(pr.trafo_tipi||pr.TRAFO_TIPI||tip||'').trim();
+        var trNorm=function(v){return String(v||'').toLocaleUpperCase('tr').replace(/\s+/g,' ').trim();};
+        if(trNorm(trTur)==='DIREK'){
+          var trd=pr.trafo_direk_bilgileri||{};
+          trTip=String(trd.direk_tipi||trd.direk_tipi_kod||trTip||'').trim();
+        }
+        var trBina=(trTip&&trNorm(trTip)!=='TRAFO'&&trNorm(trTip)!==trNorm(trTur))?trTip:trTur;
+        var trY=c.x-3.45;
+        var trBinaH=trBina.length>24?1.05:(trBina.length>16?1.20:1.45);
+        if(trBina){ s+=txtEnt('TRAFO_ETIKET',c.y,trY,trBinaH,trBina,'Standard',5,0,1,2); say.t++; trY-=1.65; }
+        if(trBaslik){ s+=txtEnt('TRAFO_ETIKET',c.y,trY,1.45,trBaslik,'Standard',5,0,1,2); say.t++; trY-=1.65; }
+        if(trGuc){ s+=txtEnt('TRAFO_ETIKET',c.y,trY,1.30,trGuc,'Standard',5,0,1,2); say.t++; }
+      } else {
+        if(no){ s+=txtEnt('ETIKET_OK', c.y, c.x-2.2, 1.8, String(no), 'Standard', null, 0); say.t++; }
+        if(tip && tip!==no){ s+=txtEnt('ETIKET_OK', c.y, c.x-4.2, 1.5, String(tip), 'Standard', null, 0); say.t++; }
+      }
     });
     lines.forEach(function(l){
       if(!l) return;

@@ -1,0 +1,9 @@
+AYB SAHA Tablet APK
+Surum: 16.41
+Paket: com.bayramyaras.aybsaha
+Min SDK: 23
+Target SDK: 34
+Duzeltme: Yol olcusu 33,50 ayrik TEXT; trafo tip/ad/guc etiketi arayuz + DXF
+Olusturan commit: 2c7b335cbad2eff819694bd8afe27063fff45019
+
+fdce8401aaa328dc5321c204c221917e8c22ebf7dd64df07fa33c966af5a26f7  store/AYB-SAHA-v16.41-TABLET.apk

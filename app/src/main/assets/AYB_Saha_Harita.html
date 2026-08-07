@@ -5468,13 +5468,32 @@ function repositionPointLabels(){
     symEl.__aybLblK=__zKey;
   }
 }
-function getObjectLabelHTML(obj,no,tip){
-  const p=obj.props||{};
-  if(obj.type==='trafo' && norm(p.trafo_turu)==='DIREK'){
+function aybTrafoGucLabel(o){
+  const raw=String(o?.props?.trafo_guc??o?.props?.trafo_gucu??'').trim();
+  if(!raw||Number(raw)===0) return '';
+  const sayi=raw.match(/-?\d+(?:[.,]\d+)?/)?.[0];
+  if(sayi&&Number(sayi.replace(',','.'))>0) return `${Number(sayi.replace(',','.')).toLocaleString('tr-TR',{maximumFractionDigits:2})}kVA`;
+  return /KVA\b/i.test(raw)?raw.replace(/\s*KVA\b/i,'kVA'):raw;
+}
+function aybTrafoBinaTipiLabel(o){
+  const p=o?.props||{};
+  const tur=String(p.trafo_turu||p.TRAFO_TURU||'').trim();
+  let tip=String(p.trafo_tipi||p.TRAFO_TIPI||'').trim();
+  if(norm(tur)==='DIREK'){
     const d=p.trafo_direk_bilgileri||{};
-    const direkTip=d.direk_tipi||tip||'';
-    const guc=p.trafo_guc?String(p.trafo_guc)+' kVA':'';
-    return `<span>${no}</span>${direkTip?`<span>${esc(direkTip)}</span>`:''}${guc?`<span>${esc(guc)}</span>`:''}`;
+    tip=String(d.direk_tipi||d.direk_tipi_kod||tip||'').trim();
+  }
+  if(tip&&norm(tip)!=='TRAFO'&&norm(tip)!==norm(tur)) return tip;
+  return tur||'';
+}
+function getObjectLabelHTML(obj,no,tip){
+  if(obj.type==='trafo'){
+    const trNo=String(aybTrafoNo(obj)||no||'').trim();
+    const trAdi=String(aybTrafoAdi(obj)||'').trim();
+    const baslik=trAdi||trNo||'TRAFO';
+    const binaTipi=aybTrafoBinaTipiLabel(obj);
+    const guc=aybTrafoGucLabel(obj);
+    return `${binaTipi?`<span>${esc(binaTipi)}</span>`:''}<span>${esc(baslik)}</span>${guc?`<span>${esc(guc)}</span>`:''}`;
   }
   return `<span>${no}</span><span>${tip}</span>`;
 }
