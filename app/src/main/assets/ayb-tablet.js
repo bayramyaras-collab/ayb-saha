@@ -7983,12 +7983,12 @@
   var d=document;
   window.aybSnapPanel=function(){
     var eski=d.getElementById('aybSnapPanel'); if(eski) eski.remove();
-    var mev=0.75; try{ var v=parseFloat(localStorage.getItem('ayb_snap_m')||''); if(isFinite(v)&&v>0) mev=v; }catch(e){}
+    var mev=2.25; try{ var v=parseFloat(localStorage.getItem('ayb_snap_m')||''); if(isFinite(v)&&v>0) mev=v; }catch(e){}
     var el=d.createElement('div'); el.id='aybSnapPanel';
     el.style.cssText='position:fixed;inset:0;z-index:6300;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
     el.innerHTML='<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.45);">'+
       '<div style="font-size:16px;font-weight:800;color:#0f766e;margin-bottom:6px;">🧲 Snap (Yapışma) Ayarı</div>'+
-      '<div style="font-size:12.5px;color:#475569;margin-bottom:12px;line-height:1.5;">Hat çizerken direğe YAPIŞMA mesafesi — GERÇEK METRE cinsinden, zoomdan bağımsız. Bu mesafenin İÇİNE tek tık = direğe bağlanır; DIŞINA tek tık = kırık nokta. Varsayılan: 0.75 m.</div>'+
+      '<div style="font-size:12.5px;color:#475569;margin-bottom:12px;line-height:1.5;">Hat çizerken direğe YAPIŞMA mesafesi — GERÇEK METRE cinsinden, zoomdan bağımsız. Bu mesafenin İÇİNE tek tık = direğe bağlanır; DIŞINA tek tık = kırık nokta. Varsayılan: 2.25 m.</div>'+
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">'+
         '<input id="aybSnapRange" type="range" min="0.25" max="5" step="0.25" value="'+mev+'" style="flex:1;">'+
         '<div id="aybSnapVal" style="width:64px;text-align:center;font-weight:800;font-size:16px;color:#0f172a;">'+mev+' m</div>'+
@@ -8002,8 +8002,8 @@
     var rg=el.querySelector('#aybSnapRange'), vl=el.querySelector('#aybSnapVal');
     rg.addEventListener('input', function(){ vl.textContent=rg.value+' m'; });
     el.querySelector('#aybSnapKapat').onclick=function(){ el.remove(); };
-    el.querySelector('#aybSnapSifirla').onclick=function(){ try{ localStorage.removeItem('ayb_snap_m'); }catch(e){} el.remove(); try{ (window.hint||function(){})('Snap varsayılana döndü (0.75 m)'); }catch(e){} };
-    el.querySelector('#aybSnapKaydet').onclick=function(){ try{ localStorage.setItem('ayb_snap_m', String(parseFloat(rg.value)||0.75)); }catch(e){} el.remove(); try{ (window.hint||function(){})('Snap: '+rg.value+' metre olarak kaydedildi'); }catch(e){} };
+    el.querySelector('#aybSnapSifirla').onclick=function(){ try{ localStorage.setItem('ayb_snap_m','2.25'); }catch(e){} el.remove(); try{ (window.hint||function(){})('Snap varsayılana döndü (2.25 m)'); }catch(e){} };
+    el.querySelector('#aybSnapKaydet').onclick=function(){ try{ localStorage.setItem('ayb_snap_m', String(parseFloat(rg.value)||2.25)); }catch(e){} el.remove(); try{ (window.hint||function(){})('Snap: '+rg.value+' metre olarak kaydedildi'); }catch(e){} };
   };
   function inj(){
     if(d.getElementById('aybSnapBtn')) return true;

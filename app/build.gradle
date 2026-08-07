@@ -11,8 +11,8 @@ android {
         applicationId "com.bayramyaras.aybsaha"
         minSdk 23
         targetSdk 34
-        versionCode 1652
-        versionName "16.52"
+        versionCode 1653
+        versionName "16.53"
     }
 
     buildTypes {
