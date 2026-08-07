@@ -1,0 +1,87 @@
+name: APK Olustur (BY EDS Saha v16.59 Stable)
+
+on:
+  push:
+    branches: [ apk-v1659-stable ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Eski arayuz ve cache kalintilarini temizle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1659_clean_legacy.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q 'AYB_V1659_LEGACY_CLEAN' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'BY EDŞ Saha Programı PERF-25.07-AT-U2' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'AYB Saha Harita Metraj v16.40' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'LOAD_NO_CACHE' app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
+          grep -q 'clearCache(true)' app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
+          grep -q 'BY EDŞ SAHA GÜNCEL' app/src/main/res/values/strings.xml
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.stable' versionCode='1659' versionName='16.59'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA GÜNCEL'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          grep -q 'AYB_V1659_LEGACY_CLEAN' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'AYB Saha Harita Metraj v16.40' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'data-tool="sahanot"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'aybSahaNotGit' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk | tee store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk.sha256
+          printf 'BY EDS SAHA GUNCEL Stable Tablet APK\nSurum: 16.59\nEski v16.40 arayuz/cache kalintilari temizlendi; proje verileri korunur.\n' > store/BY-EDS-SAHA-v16.59-STABLE-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.59-STABLE-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk
+            store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.59-STABLE-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis kaynagi dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java app/src/main/res/values/strings.xml store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk store/BY-EDS-SAHA-v16.59-STABLE-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.59-STABLE-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.59 eski arayuz kalintilari temizlendi [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
