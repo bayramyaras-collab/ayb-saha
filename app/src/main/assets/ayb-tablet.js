@@ -7262,7 +7262,7 @@
   }
   function polyEnt(katman,pts,kapali,ltype,renk,lw){
     /* R12 uyumlu: POLYLINE + VERTEX + SEQEND. renk=ACI (62), lw=çizgi kalınlığı (370). */
-    var s=g(0,'POLYLINE')+g(8,katman)+(ltype?g(6,ltype):'')+(renk!=null?g(62,String(renk)):'')+(lw!=null?g(370,String(lw)):'')+g(66,'1')+g(70,kapali?'1':'0')+g(10,'0.0')+g(20,'0.0')+g(30,'0.0');
+    var s=g(0,'POLYLINE')+g(8,katman)+(ltype?g(6,ltype):'')+(renk!=null?g(62,String(renk)):'')+g(66,'1')+g(70,kapali?'1':'0')+g(10,'0.0')+g(20,'0.0')+g(30,'0.0');
     for(var i=0;i<pts.length;i++){
       s+=g(0,'VERTEX')+g(8,katman)+g(10,pts[i].y.toFixed(3))+g(20,pts[i].x.toFixed(3))+g(30,'0.0')+g(70,'0');
     }
@@ -7290,7 +7290,7 @@
       +g(13,p4.y.toFixed(3))+g(23,p4.x.toFixed(3))+g(33,'0.0');
   }
   function cizgiEnt(katman,a,b,ltype,renk,lw){
-    return g(0,'LINE')+g(8,katman)+(ltype?g(6,ltype):'')+(renk!=null?g(62,String(renk)):'')+(lw!=null?g(370,String(lw)):'')
+    return g(0,'LINE')+g(8,katman)+(ltype?g(6,ltype):'')+(renk!=null?g(62,String(renk)):'')
       +g(10,a.y.toFixed(3))+g(20,a.x.toFixed(3))+g(30,'0.0')
       +g(11,b.y.toFixed(3))+g(21,b.x.toFixed(3))+g(31,'0.0');
   }
@@ -7330,6 +7330,7 @@
     return s2;
   }
 
+  /* v16.46: strict AC1009/R12 — AutoCAD APPID table uyumsuzluğu giderildi */
   function uret(){
     var p=window.project;
     if(!p){ try{ if(window.toast) toast('Önce proje aç.'); }catch(e){} return null; }
@@ -7337,7 +7338,7 @@
     var say={n:0,l:0,t:0};
     var s='';
     /* HEADER */
-    s+=g(0,'SECTION')+g(2,'HEADER')+g(9,'$ACADVER')+g(1,'AC1018')+g(9,'$INSUNITS')+g(70,'6')+g(9,'$PDMODE')+g(70,'34')+g(9,'$PDSIZE')+g(40,'-2.0');
+    s+=g(0,'SECTION')+g(2,'HEADER')+g(9,'$ACADVER')+g(1,'AC1009')+g(9,'$PDMODE')+g(70,'34')+g(9,'$PDSIZE')+g(40,'-2.0');
     s+='__SINIR__'+g(0,'ENDSEC');
     /* TABLES: LTYPE + LAYER + STYLE(B_CAD) */
     s+=g(0,'SECTION')+g(2,'TABLES');
