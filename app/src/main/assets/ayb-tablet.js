@@ -529,22 +529,8 @@
       css2.textContent='.ayb-project-folder-status,.ayb-project-note,#aybOpenFromFolder{display:none!important;}';
       (document.head||document.documentElement).appendChild(css2);
     }catch(e){}
-    /* "Olustur" (yeni proje) -> KLASORSUZ olustur (window.newProject + openProject) */
-    try{
-      document.addEventListener('click', function(e){
-        var btn = e.target && e.target.closest ? e.target.closest('#aybCreateProject') : null;
-        if(!btn) return;
-        e.preventDefault(); e.stopImmediatePropagation();
-        var inp=document.getElementById('aybNewProjectName');
-        var name=(inp && inp.value ? inp.value.trim() : '') || 'Saha Projesi';
-        try{
-          if(typeof window.newProject==='function' && typeof window.openProject==='function'){
-            window.openProject(window.newProject(name));
-            var ps=document.getElementById('projectScreen'); if(ps) ps.classList.remove('show');
-          }
-        }catch(err){}
-      }, true);
-    }catch(e){}
+    /* v16.49: eski #aybCreateProject capture engelleyicisi kaldırıldı.
+       Proje Oluştur tıklaması yalnız ana proje merkezi tarafından yönetilir. */
     ready(killFolder);
     setTimeout(killFolder,600); setTimeout(killFolder,1800); setTimeout(killFolder,4000); setTimeout(killFolder,8000);
   })();
