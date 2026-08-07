@@ -2156,7 +2156,7 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
   function temiz(){
     try{
       var t=document.querySelector('.title');
-      if(t && /AYB Saha Harita Metraj|v16\.40/i.test(t.textContent||'')) t.textContent='BY EDŞ Saha Programı PERF-25.07-AT-U2';
+      if(t && /BY EDŞ Saha Programı|v16\.40/i.test(t.textContent||'')) t.textContent='BY EDŞ Saha Programı PERF-25.07-AT-U2';
       document.querySelectorAll('[data-ayb-legacy-ui]').forEach(function(x){x.remove();});
       try{localStorage.setItem('ayb_ui_mode_v1','office');}catch(e){}
     }catch(e){}
