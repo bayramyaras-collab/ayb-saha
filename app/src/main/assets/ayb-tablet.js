@@ -7204,6 +7204,25 @@
     return yeni?'DIREK_AG_YENI':'DIREK_AG_MEVCUT';
   }
 
+  function aybDxfAciFromColor(color,fallback){
+    var c=String(color||'').toLowerCase().replace(/\s+/g,'');
+    var m={'#1f7f00':84,'#1aa260':84,'#008000':84,'#ff0000':1,'#dc2626':1,
+           '#00ffff':4,'#06b6d4':4,'#00b8b8':4,'#ff00ff':6,'#0000ff':5,
+           '#ffff00':2,'#f59e0b':2,'#b58900':2};
+    return m[c]!=null?m[c]:(fallback==null?7:fallback);
+  }
+  function aybDxfLineweight(px){
+    var n=Math.max(1,Math.min(9,Number(px)||3));
+    var tab=[13,18,25,30,35,40,50,60,70];
+    return tab[Math.max(0,Math.min(tab.length-1,Math.round(n)-1))];
+  }
+  function aybDxfLtypeFromDash(dash){
+    var d=String(dash||'').replace(/,/g,' ').replace(/\s+/g,' ').trim();
+    if(!d) return null;
+    if(/^3(?:\.0+)? 8(?:\.0+)?$/.test(d)) return 'AYB_SEYREK';
+    return 'AYB_KESIK';
+  }
+
   function KAT(){
     var L=[
       ['DIREK_MEVCUT',4],['DIREK_YENI',3],['TRAFO_MEVCUT',5],['TRAFO_YENI',5],['TRAFO_YAKIN',5],['TRAFO_ILERDE',5],['TRAFO_TADILAT_BYSK',5],['KOFRE_MEVCUT',6],['BOX_MEVCUT',5],
@@ -7227,7 +7246,8 @@
     var ha=(hizYatay==null)?1:Math.max(0,Math.min(5,Math.trunc(+hizYatay||0)));
     var va=(hizDikey==null)?2:Math.max(0,Math.min(3,Math.trunc(+hizDikey||0)));
     s+=g(10,x.toFixed(3))+g(20,y.toFixed(3))+g(30,'0.0')+g(40,(h||2).toFixed(3))+g(1,String(metin));
-    s+=g(50,(aci?(+aci):0).toFixed(2))+g(7,stil||'Standard');
+    var st=(!stil||stil==='Standard')?'Arial':stil; /* tüm normal etiketler gerçek Arial */
+    s+=g(50,(aci?(+aci):0).toFixed(2))+g(7,st);
     s+=g(72,String(ha));
     if(ha||va) s+=g(11,x.toFixed(3))+g(21,y.toFixed(3))+g(31,'0.0');
     s+=g(73,String(va));
@@ -7321,13 +7341,18 @@
     s+='__SINIR__'+g(0,'ENDSEC');
     /* TABLES: LTYPE + LAYER + STYLE(B_CAD) */
     s+=g(0,'SECTION')+g(2,'TABLES');
-    s+=g(0,'TABLE')+g(2,'LTYPE')+g(70,'2')+g(0,'LTYPE')+g(2,'CONTINUOUS')+g(70,'0')+g(3,'Solid line')+g(72,'65')+g(73,'0')+g(40,'0.0')+g(0,'LTYPE')+g(2,'DASHED')+g(70,'0')+g(3,'Dashed line')+g(72,'65')+g(73,'2')+g(40,'1.2')+g(49,'0.8')+g(49,'-0.4')+g(0,'ENDTAB');
+    s+=g(0,'TABLE')+g(2,'LTYPE')+g(70,'3')
+      +g(0,'LTYPE')+g(2,'CONTINUOUS')+g(70,'0')+g(3,'Solid line')+g(72,'65')+g(73,'0')+g(40,'0.0')
+      +g(0,'LTYPE')+g(2,'AYB_KESIK')+g(70,'0')+g(3,'AYB dashed 7-5')+g(72,'65')+g(73,'2')+g(40,'1.20')+g(49,'0.72')+g(49,'-0.48')
+      +g(0,'LTYPE')+g(2,'AYB_SEYREK')+g(70,'0')+g(3,'AYB sparse dashed 3-8')+g(72,'65')+g(73,'2')+g(40,'1.65')+g(49,'0.45')+g(49,'-1.20')
+      +g(0,'ENDTAB');
     var kats=KAT();
     s+=g(0,'TABLE')+g(2,'LAYER')+g(70,String(kats.length));
     kats.forEach(function(k){ s+=g(0,'LAYER')+g(2,k[0])+g(70,'0')+g(62,String(k[1]))+g(6,'CONTINUOUS'); });
     s+=g(0,'ENDTAB');
     /* STYLE: Direk -> B_CAD (sembol fontu), Standard -> arial */
-    s+=g(0,'TABLE')+g(2,'STYLE')+g(70,'2');
+    s+=g(0,'TABLE')+g(2,'STYLE')+g(70,'3');
+    s+=g(0,'STYLE')+g(2,'Arial')+g(70,'0')+g(40,'0.0')+g(41,'1.0')+g(50,'0.0')+g(71,'0')+g(42,'2.5')+g(3,'arial.ttf')+g(4,'');
     s+=g(0,'STYLE')+g(2,'Standard')+g(70,'0')+g(40,'0.0')+g(41,'1.0')+g(50,'0.0')+g(71,'0')+g(42,'2.5')+g(3,'arial.ttf')+g(4,'');
     s+=g(0,'STYLE')+g(2,'Direk')+g(70,'0')+g(40,'0.0')+g(41,'1.0')+g(50,'0.0')+g(71,'0')+g(42,'2.5')+g(3,'B_CAD')+g(4,'');
     s+=g(0,'ENDTAB')+g(0,'ENDSEC');
@@ -7338,6 +7363,7 @@
     /* ENTITIES */
     s+=g(0,'SECTION')+g(2,'ENTITIES');
     var koord={}, minY=Infinity, minX=Infinity, maxY=-Infinity, maxX=-Infinity;
+    var trafoEtiketUst=''; /* DXF draw order: trafo etiketi hatlardan sonra */
     function sinirGuncelle(c){ if(!c) return; if(c.y<minY)minY=c.y; if(c.y>maxY)maxY=c.y; if(c.x<minX)minX=c.x; if(c.x>maxX)maxX=c.x; }
     /* YOL ÖLÇÜLERİ: gerçek CAD CIRCLE + TEXT + LINE entity'leri.
        Önce yazılır; direk/hat/diğer çizimler daha sonra geldiği için AutoCAD çizim sırası
@@ -7360,13 +7386,11 @@
       var ond=String(ondalik).padStart(2,'0');
       var hAna=Math.max(1.00,yaricap*(String(ana).length>=3?0.50:(String(ana).length===2?0.60:0.66)));
       var hOnd=Math.max(0.56,Math.min(hAna*0.32,yaricap*0.22));
-      /* Büyük tam sayı sağa, küçük ondalık iki hane sola hizalanır. Ortak ayırma
-         ekseninin iki tarafındaki fiziksel boşluk 33 / 50 TEXT'lerini ayırır. */
-      var ayirX=yc.y+yaricap*0.04;
-      var bosluk=Math.max(0.14,hOnd*0.16);
-      var anaX=ayirX-bosluk, ondX=ayirX+bosluk;
-      var anaY=yc.x-hAna*0.05, ondY=yc.x+hAna*0.22;
-      var altY=yc.x+hAna*0.01;
+      var anaW=hAna*0.56*Math.max(1,String(ana).length), ondW=hOnd*0.56*2;
+      var bosluk=Math.max(0.14,hOnd*0.18), toplamW=anaW+bosluk+ondW;
+      var basX=yc.y-toplamW/2, anaX=basX+anaW, ondX=anaX+bosluk;
+      var anaY=yc.x, ondY=yc.x+hAna*0.28;
+      var altY=yc.x+hAna*0.04;
       s+=daireEnt('YOL_OLCU',yc.y,yc.x,yaricap); say.n++;
       s+=txtEnt('YOL_OLCU',anaX,anaY,hAna,String(ana),'Standard',null,0,2,2); say.t++;
       s+=txtEnt('YOL_OLCU',ondX,ondY,hOnd,ond,'Standard',null,0,0,2); say.t++;
@@ -7447,9 +7471,9 @@
         var trBina=(trTip&&trNorm(trTip)!=='TRAFO'&&trNorm(trTip)!==trNorm(trTur))?trTip:trTur;
         var trY=c.x-3.45;
         var trBinaH=trBina.length>24?1.05:(trBina.length>16?1.20:1.45);
-        if(trBina){ s+=txtEnt('TRAFO_ETIKET',c.y,trY,trBinaH,trBina,'Standard',5,0,1,2); say.t++; trY-=1.65; }
-        if(trBaslik){ s+=txtEnt('TRAFO_ETIKET',c.y,trY,1.45,trBaslik,'Standard',5,0,1,2); say.t++; trY-=1.65; }
-        if(trGuc){ s+=txtEnt('TRAFO_ETIKET',c.y,trY,1.30,trGuc,'Standard',5,0,1,2); say.t++; }
+        if(trBina){ trafoEtiketUst+=txtEnt('TRAFO_ETIKET',c.y,trY,trBinaH,trBina,'Arial',5,0,1,2); say.t++; trY-=1.65; }
+        if(trBaslik){ trafoEtiketUst+=txtEnt('TRAFO_ETIKET',c.y,trY,1.45,trBaslik,'Arial',5,0,1,2); say.t++; trY-=1.65; }
+        if(trGuc){ trafoEtiketUst+=txtEnt('TRAFO_ETIKET',c.y,trY,1.30,trGuc,'Arial',5,0,1,2); say.t++; }
       } else {
         if(no){ s+=txtEnt('ETIKET_OK', c.y, c.x-2.2, 1.8, String(no), 'Standard', null, 0); say.t++; }
         if(tip && tip!==no){ s+=txtEnt('ETIKET_OK', c.y, c.x-4.2, 1.5, String(tip), 'Standard', null, 0); say.t++; }
@@ -7474,9 +7498,13 @@
       var yerH=(kind.indexOf('yeralti')>=0)||hyH.indexOf('YER')>=0;
       var duH=String((l.props||{}).durum||'').toLocaleUpperCase('tr');
       var ilerdeH=(duH.indexOf('İLER')>=0||duH.indexOf('ILER')>=0);
-      var renkH=({AG:84,OG:1,AYD:4,ENH:6,ABONE:2,BOX:5})[genelH]||84;
-      var ltH=(yerH||ilerdeH)?'DASHED':null;
-      var lwH=(genelH==='OG'||genelH==='ENH')?35:null;
+      var varsRenk=({AG:84,OG:1,AYD:4,ENH:6,ABONE:2,BOX:5})[genelH]||84;
+      var ekranStil=null;
+      try{ if(typeof window.aybLineVisualStyle==='function') ekranStil=window.aybLineVisualStyle(l); }catch(e){}
+      var renkH=aybDxfAciFromColor(ekranStil&&ekranStil.color,varsRenk);
+      var ltH=aybDxfLtypeFromDash(ekranStil&&ekranStil.dashArray);
+      if(!ekranStil) ltH=(yerH||ilerdeH)?(ilerdeH?'AYB_SEYREK':'AYB_KESIK'):null;
+      var lwH=aybDxfLineweight(ekranStil&&ekranStil.weight!=null?ekranStil.weight:((genelH==='OG'||genelH==='ENH')?4:3));
       /* B PRO HAT KATMANI BİREBİR: HAT_{GRUP}_{HAVAI|YERALTI}_{DURUM} (TADILAT BYSK -> BYSK) */
       var kat='HAT_'+genelH+'_'+(yerH?'YERALTI':'HAVAI')+'_'+bproDurumAdiHat((l.props||{}).durum||'');
       s+=polyEnt(kat, pts, false, ltH, renkH, lwH); say.l++;
@@ -7503,6 +7531,8 @@
         if(uzTxt){ s+=txtEnt('ETIKET_OK', mx-px*1.6, my-pyv*1.6, 1.4, uzTxt, 'Standard', null, ang); say.t++; }
       }
     });
+    /* Trafo etiketi hatların üstünde / en üst draw-order. */
+    s+=trafoEtiketUst;
     (p.channels||[]).forEach(function(c2){ if(!c2||!c2.points) return; var pts=[]; c2.points.forEach(function(q){ var t2=tm(q[0],q[1]); if(t2) pts.push({y:t2.y,x:t2.x}); }); if(pts.length>1){ s+=polyEnt('KANAL',pts,false); say.l++; } });
     (p.freeLines||[]).forEach(function(c2){ if(!c2||!c2.points) return; var pts=[]; c2.points.forEach(function(q){ var t2=tm(q[0],q[1]); if(t2) pts.push({y:t2.y,x:t2.x}); }); if(pts.length>1){ s+=polyEnt('CIZGI',pts,false); say.l++; } });
     (p.areas||[]).forEach(function(c2){ if(!c2||!c2.points) return; var pts=[]; c2.points.forEach(function(q){ var t2=tm(q[0],q[1]); if(t2) pts.push({y:t2.y,x:t2.x}); }); if(pts.length>2){ s+=polyEnt('ALAN',pts,true); say.l++; } });
@@ -8539,13 +8569,16 @@
     var NS='http://www.w3.org/2000/svg', svg=d.createElementNS(NS,'svg'), p=parcalar(r.value_m);
     var anaBoy=p.ana.length>=3?58:(p.ana.length===2?72:84);
     var ondBoy=p.ana.length>=3?24:(p.ana.length===2?28:30);
+    /* Tam sayı + ondalık grubu dairenin tam merkezine göre hesaplanır. */
+    var anaW=anaBoy*0.56*Math.max(1,p.ana.length), ondW=ondBoy*0.56*Math.max(2,p.ond.length), gap=8;
+    var bas=110-(anaW+gap+ondW)/2, anaX=bas+anaW, ondX=anaX+gap, altSon=ondX+ondW;
     svg.setAttribute('viewBox','0 0 220 220'); svg.setAttribute('preserveAspectRatio','xMidYMid meet'); svg.setAttribute('class','ayb-yol-olcu-svg');
     svg.setAttribute('role','button'); svg.setAttribute('aria-label','Yol genişliği '+metreMetni(r.value_m)+'. Düzenlemek için tıklayın.');
-    svg.innerHTML='<title>Yol genişliği: '+esc(metreMetni(r.value_m))+' — düzenlemek için tıkla</title>'+
-      '<text class="ayb-yol-ana" x="116" y="144" text-anchor="end" font-size="'+anaBoy+'">'+esc(p.ana)+'</text>'+
-      '<text class="ayb-yol-ond" x="124" y="100" text-anchor="start" font-size="'+ondBoy+'">'+esc(p.ond)+'</text>'+
-      '<line class="ayb-yol-alt-koyu" x1="123" y1="109" x2="168" y2="109"></line>'+
-      '<line class="ayb-yol-alt" x1="123" y1="109" x2="168" y2="109"></line>';
+    svg.innerHTML='<title>Yol genişliği: '+esc(metreMetni(r.value_m))+' — düzenlemek için tıkla</title>'+ 
+      '<text class="ayb-yol-ana" x="'+anaX.toFixed(1)+'" y="143" text-anchor="end" font-size="'+anaBoy+'">'+esc(p.ana)+'</text>'+ 
+      '<text class="ayb-yol-ond" x="'+ondX.toFixed(1)+'" y="100" text-anchor="start" font-size="'+ondBoy+'">'+esc(p.ond)+'</text>'+ 
+      '<line class="ayb-yol-alt-koyu" x1="'+ondX.toFixed(1)+'" y1="109" x2="'+altSon.toFixed(1)+'" y2="109"></line>'+ 
+      '<line class="ayb-yol-alt" x1="'+ondX.toFixed(1)+'" y1="109" x2="'+altSon.toFixed(1)+'" y2="109"></line>';
     return svg;
   }
   function olayKes(e){
