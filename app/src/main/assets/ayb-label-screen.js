@@ -89,6 +89,12 @@
     rings.forEach(function(r){dirs.forEach(function(d){out.push([d[0]*r,d[1]*r])})});
     return out;
   })();
+  var trafoOffsets=(function(){
+    /* Trafo etiketi uzun olabildiği için daha geniş çevrede boş yer aranır. */
+    var out=[[0,0]], rings=[18,34,52,72,96,124,154,188], dirs=[[0,-1],[1,0],[0,1],[-1,0],[1,-1],[1,1],[-1,1],[-1,-1]];
+    rings.forEach(function(r){dirs.forEach(function(d){out.push([d[0]*r,d[1]*r])})});
+    return out;
+  })();
   var lineOffsets=(function(){
     var out=[[0,0]], rings=[14,28,44,62,82,104], dirs=[[0,-1],[0,1],[1,0],[-1,0],[1,-1],[-1,-1],[1,1],[-1,1]];
     rings.forEach(function(r){dirs.forEach(function(d){out.push([d[0]*r,d[1]*r])})});
@@ -170,7 +176,7 @@
         var sym=mk._icon.querySelector('.symbol'),label=sym&&sym.querySelector('.sym-label');if(!sym||!label)return;
         if(sym.__aybScreenBaseDx==null){sym.__aybScreenBaseDx=px(sym.style.getPropertyValue('--lbl-dx'));sym.__aybScreenBaseDy=px(sym.style.getPropertyValue('--lbl-dy'))}
         sym.style.setProperty('--lbl-dx',sym.__aybScreenBaseDx+'px');sym.style.setProperty('--lbl-dy',sym.__aybScreenBaseDy+'px');clearClass(label);
-        items.push({kind:'object',priority:o.type==='trafo'?0:1,sym:sym,label:label,el:label,baseDx:sym.__aybScreenBaseDx,baseDy:sym.__aybScreenBaseDy,obj:o});
+        items.push({kind:'object',priority:o.type==='trafo'?5:1,sym:sym,label:label,el:label,baseDx:sym.__aybScreenBaseDx,baseDy:sym.__aybScreenBaseDy,obj:o});
       });
     }catch(e){}
     try{
@@ -178,8 +184,8 @@
       if(lineStore&&lineStore.forEach)lineStore.forEach(function(pack,id){
         var line=lineById(id);if(!line||!pack)return;
         var base=lineBase(line,pack.label);
-        if(pack.label&&base){pack.label.setLatLng(base);var el=pack.label._icon&&pack.label._icon.querySelector('.line-label-wrap,.ayb-line-label,.line-region-wrap');if(el){clearClass(el);items.push({kind:'line',priority:2,marker:pack.label,el:el,base:cloneLL(base)})}}
-        if(pack.region){var rb=base||lineBase(line,pack.region);if(rb){pack.region.setLatLng(rb);var re=pack.region._icon&&pack.region._icon.querySelector('.line-region-wrap,.ayb-region-label-svg');if(re){clearClass(re);items.push({kind:'region',priority:3,marker:pack.region,el:re,base:cloneLL(rb)})}}}
+        if(pack.label&&base){pack.label.setLatLng(base);var el=pack.label._icon&&pack.label._icon.querySelector('.line-label-wrap,.ayb-line-label,.line-region-wrap');if(el){clearClass(el);items.push({kind:'line',priority:0,marker:pack.label,el:el,base:cloneLL(base)})}}
+        if(pack.region){var rb=base||lineBase(line,pack.region);if(rb){pack.region.setLatLng(rb);var re=pack.region._icon&&pack.region._icon.querySelector('.line-region-wrap,.ayb-region-label-svg');if(re){clearClass(re);items.push({kind:'region',priority:0,marker:pack.region,el:re,base:cloneLL(rb)})}}}
       });
     }catch(e){}
     try{
@@ -187,7 +193,7 @@
       if(Array.isArray(others))others.forEach(function(mk){
         if(!mk||!mk._icon||!mk.getLatLng||!mk.setLatLng)return;var el=mk._icon.querySelector('.line-label-wrap,.ayb-line-label');if(!el)return;
         if(!mk.__aybScreenBaseLatLng)mk.__aybScreenBaseLatLng=cloneLL(mk.getLatLng());mk.setLatLng(mk.__aybScreenBaseLatLng);clearClass(el);
-        items.push({kind:'channel',priority:4,marker:mk,el:el,base:cloneLL(mk.__aybScreenBaseLatLng)});
+        items.push({kind:'channel',priority:0,marker:mk,el:el,base:cloneLL(mk.__aybScreenBaseLatLng)});
       });
     }catch(e){}
     return items;
@@ -210,14 +216,14 @@
     measured.sort(function(a,b){return a.priority-b.priority});
     var grid=new Map(),placed=[],seen=[],stamp=0,moved=0,hidden=0;
     for(var n=0;n<measured.length;n++){
-      var it=measured[n],cands=it.kind==='object'?objectOffsets:lineOffsets,best=null;
+      var it=measured[n],cands=it.kind==='object'?(it.obj&&it.obj.type==='trafo'?trafoOffsets:objectOffsets):lineOffsets,best=null;
       for(var c=0;c<cands.length;c++){
         var dx=cands[c][0],dy=cands[c][1],r=shifted(it.baseRect,dx,dy),rr=expanded(r,PAD),ov=overlapGrid(grid,placed,rr,seen,++stamp),outside=viewportPenalty(r,v);
         var score=ov*100000+outside*20+Math.hypot(dx,dy);
         if(!best||score<best.score)best={dx:dx,dy:dy,r:r,rr:rr,ov:ov,outside:outside,score:score};
         if(ov===0&&outside===0)break;
       }
-      var mustHide=best&&best.ov>0&&it.priority>0;
+      var mustHide=best&&best.ov>0&&it.priority>0&&!(it.kind==='object'&&it.obj&&it.obj.type==='trafo');
       if(mustHide){apply(it,0,0,true);hidden++;continue}
       if(!best)continue;
       apply(it,best.dx,best.dy,false);if(best.dx||best.dy)moved++;
