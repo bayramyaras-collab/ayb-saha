@@ -7289,8 +7289,8 @@
       +g(12,p3.y.toFixed(3))+g(22,p3.x.toFixed(3))+g(32,'0.0')
       +g(13,p4.y.toFixed(3))+g(23,p4.x.toFixed(3))+g(33,'0.0');
   }
-  function cizgiEnt(katman,a,b,ltype,renk){
-    return g(0,'LINE')+g(8,katman)+(ltype?g(6,ltype):'')+(renk?g(62,renk):'')
+  function cizgiEnt(katman,a,b,ltype,renk,lw){
+    return g(0,'LINE')+g(8,katman)+(ltype?g(6,ltype):'')+(renk!=null?g(62,String(renk)):'')+(lw!=null?g(370,String(lw)):'')
       +g(10,a.y.toFixed(3))+g(20,a.x.toFixed(3))+g(30,'0.0')
       +g(11,b.y.toFixed(3))+g(21,b.x.toFixed(3))+g(31,'0.0');
   }
@@ -7337,7 +7337,7 @@
     var say={n:0,l:0,t:0};
     var s='';
     /* HEADER */
-    s+=g(0,'SECTION')+g(2,'HEADER')+g(9,'$ACADVER')+g(1,'AC1009')+g(9,'$INSUNITS')+g(70,'6')+g(9,'$PDMODE')+g(70,'34')+g(9,'$PDSIZE')+g(40,'-2.0');
+    s+=g(0,'SECTION')+g(2,'HEADER')+g(9,'$ACADVER')+g(1,'AC1018')+g(9,'$INSUNITS')+g(70,'6')+g(9,'$PDMODE')+g(70,'34')+g(9,'$PDSIZE')+g(40,'-2.0');
     s+='__SINIR__'+g(0,'ENDSEC');
     /* TABLES: LTYPE + LAYER + STYLE(B_CAD) */
     s+=g(0,'SECTION')+g(2,'TABLES');
@@ -7507,7 +7507,10 @@
       var lwH=aybDxfLineweight(ekranStil&&ekranStil.weight!=null?ekranStil.weight:((genelH==='OG'||genelH==='ENH')?4:3));
       /* B PRO HAT KATMANI BİREBİR: HAT_{GRUP}_{HAVAI|YERALTI}_{DURUM} (TADILAT BYSK -> BYSK) */
       var kat='HAT_'+genelH+'_'+(yerH?'YERALTI':'HAVAI')+'_'+bproDurumAdiHat((l.props||{}).durum||'');
-      s+=polyEnt(kat, pts, false, ltH, renkH, lwH); say.l++;
+      /* AutoCAD 2004: her hat kirimi gercek LINE entity. */
+      for(var hi=0;hi<pts.length-1;hi++){
+        s+=cizgiEnt(kat,pts[hi],pts[hi+1],ltH,renkH,lwH); say.l++;
+      }
       /* DÜZELTME (Bayram YARAŞ): HAT KESİTİ artık programın haritada gösterdiği
          metinle aynı alınır (main_hat_tipi/og_hat_tipi/hat_tipi + AG eki).
          Eski kod var olmayan 'kesit'/'cins' anahtarlarına bakıyordu → hep boştu. */
@@ -7531,11 +7534,11 @@
         if(uzTxt){ s+=txtEnt('ETIKET_OK', mx-px*1.6, my-pyv*1.6, 1.4, uzTxt, 'Standard', null, ang); say.t++; }
       }
     });
-    /* Trafo etiketi hatların üstünde / en üst draw-order. */
-    s+=trafoEtiketUst;
     (p.channels||[]).forEach(function(c2){ if(!c2||!c2.points) return; var pts=[]; c2.points.forEach(function(q){ var t2=tm(q[0],q[1]); if(t2) pts.push({y:t2.y,x:t2.x}); }); if(pts.length>1){ s+=polyEnt('KANAL',pts,false); say.l++; } });
     (p.freeLines||[]).forEach(function(c2){ if(!c2||!c2.points) return; var pts=[]; c2.points.forEach(function(q){ var t2=tm(q[0],q[1]); if(t2) pts.push({y:t2.y,x:t2.x}); }); if(pts.length>1){ s+=polyEnt('CIZGI',pts,false); say.l++; } });
     (p.areas||[]).forEach(function(c2){ if(!c2||!c2.points) return; var pts=[]; c2.points.forEach(function(q){ var t2=tm(q[0],q[1]); if(t2) pts.push({y:t2.y,x:t2.x}); }); if(pts.length>2){ s+=polyEnt('ALAN',pts,true); say.l++; } });
+    /* Trafo etiketi tum geometrilerden sonra: en ust draw-order. */
+    s+=trafoEtiketUst;
     s+=g(0,'ENDSEC')+g(0,'EOF');
     var sinir='';
     if(isFinite(minY)&&isFinite(minX)){
