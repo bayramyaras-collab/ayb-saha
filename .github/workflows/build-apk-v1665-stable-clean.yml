@@ -1,0 +1,153 @@
+name: APK Olustur (BY EDS Saha v16.65 Stabil Temiz)
+
+on:
+  push:
+    branches: [ apk-v1665-stable-clean-final ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: v16.58 stabil tabani fiziksel temizle
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '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' | base64 -d | gzip -d > /tmp/patch_v1665.py
+          python3 /tmp/patch_v1665.py app/src/main/assets
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # Android: HTML zaten ayb-tablet.js'i yukluyor; ikinci kez enjekte eden kodu kaldir.
+          p=Path('app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java')
+          s=p.read_text(encoding='utf-8')
+          start=s.find('                // Tablet arayuz eklentisini')
+          end=s.find('                // WhatsApp vb. uygulamadan gelen DXF varsa programa aktar', start)
+          if start<0 or end<0: raise SystemExit('Cift ayb-tablet yukleme blogu bulunamadi')
+          s=s[:start]+s[end:]
+          s=s.replace('s.setCacheMode(WebSettings.LOAD_DEFAULT);','s.setCacheMode(WebSettings.LOAD_NO_CACHE);')
+          s=s.replace('setContentView(web);','setContentView(web);\n        try { web.clearCache(true); } catch (Exception ignored) {}',1)
+          s=s.replace('"AYB_" + System.currentTimeMillis()', '"BY_EDS_" + System.currentTimeMillis()')
+          s=s.replace('Environment.DIRECTORY_PICTURES + "/AYB_Saha"', 'Environment.DIRECTORY_PICTURES + "/BY_EDS_Saha"')
+          p.write_text(s,encoding='utf-8')
+
+          g=Path('app/build.gradle')
+          x=g.read_text(encoding='utf-8')
+          x=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.aybsaha.cleanstable"',x,count=1)
+          x=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1665',x,count=1)
+          x=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.65"',x,count=1)
+          g.write_text(x,encoding='utf-8')
+
+          r=Path('app/src/main/res/values/strings.xml')
+          y=r.read_text(encoding='utf-8')
+          y=re.sub(r'<string name="app_name">.*?</string>','<string name="app_name">BY EDŞ SAHA</string>',y,count=1)
+          r.write_text(y,encoding='utf-8')
+          PY
+          rm -f app/src/main/assets/sw.js
+
+      - name: Temizlik ve islev dogrulama
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          J=app/src/main/assets/ayb-tablet.js
+          grep -q 'BY EDŞ Saha Programı PERF-25.07-AT-U2' "$F"
+          grep -q 'data-tool="sahanot"' "$F"
+          grep -q 'aybSahaNotKmzFiles' "$F"
+          grep -q 'aybSahaNotGit' "$F"
+          grep -q 'ayb_label_size_settings_v3' "$F"
+          ! grep -q 'ayb_v28_same_program_mobile' "$F"
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'aybV28ExportSheet' "$F"
+          ! grep -q 'serviceWorker.register' "$F"
+          ! grep -q 'beforeinstallprompt' "$F"
+          ! grep -q 'AYB Saha Harita Metraj' "$F"
+          ! grep -q 'v16.58: Çizim Araçları sırası sabit' "$J"
+          ! grep -q 'setInterval(boot,700)' "$J"
+          ! grep -q 'ayb-tablet-loader' app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
+          test ! -e app/src/main/assets/sw.js
+          node --check "$J"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          g=s[s.index('<div class="ayb-pro-group draw">'):]
+          g=g[:g.index('<div class="ayb-pro-title">Çizim Araçları</div>')]
+          blocks=re.findall(r'<button\b[^>]*>.*?</button>',g,re.S|re.I)
+          order=[]
+          for b in blocks:
+              m=re.search(r'data-tool="([^"]+)"',b) or re.search(r'id="([^"]+)"',b)
+              if m: order.append(m.group(1))
+          expected=['direk','trafo','yeraltihat','hat','abonehat','kanal','kofre','bina','box','sahanot','kfMeasureToolBtn','cizgi','ok']
+          if order!=expected: raise SystemExit('Cizim sirasi hatali: '+repr(order))
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          for i,code in enumerate(scripts):
+              if 'V16.56: FOTOĞRAFLI SAHA NOTU' in code or 'ayb_v1665' in code:
+                  q=Path('/tmp')/f'inline_{i}.js';q.write_text(code,encoding='utf-8');subprocess.run(['node','--check',str(q)],check=True)
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve icerigini dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk
+          unzip -t store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.cleanstable' versionCode='1665' versionName='16.65'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'data-tool="sahanot"' "$F"
+          grep -q 'aybSahaNotKmzFiles' "$F"
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'serviceWorker.register' "$F"
+          ! grep -q 'AYB Saha Harita Metraj' "$F"
+          sha256sum store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk | tee store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk.sha256
+          printf 'BY EDŞ SAHA v16.65\nTaban: v16.58 stabil / v16.57 arayüz\nEski v28 mobil arayüz fiziksel olarak kaldırıldı.\nÇift ayb-tablet yükleme ve service worker kaldırıldı.\n' > store/TEMIZLIK_RAPORU.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.65-STABIL-TEMIZ
+          path: |
+            store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk
+            store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-UNSIGNED.apk.sha256
+            store/TEMIZLIK_RAPORU.txt
+          if-no-files-found: error
+
+      - name: Temiz kaynagi dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A app/build.gradle app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java app/src/main/res/values/strings.xml app/src/main/assets
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDŞ Saha v16.65 stabil temiz kaynak [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
