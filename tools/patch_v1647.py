@@ -5,7 +5,7 @@ html=Path('app/src/main/assets/AYB_Saha_Harita.html')
 s=html.read_text(encoding='utf-8')
 pat=r"function getLineDisplayText\(line\)\{.*?\}"
 new="function getLineDisplayText(line){const p=line?.props||{}; const main=(p.main_hat_tipi||p.og_hat_tipi||p.hat_tipi||'').trim(); const ag=(p.ag_hat_aktif?(p.ag_hat_tipi||'').trim():''); let base=''; if(main&&ag) base=main+'+'+ag; else base=main||ag||(p.hat_tipi||p.tip||'Hat'); const d=String(p.durum||p.Durumu||'').toLocaleUpperCase('tr').replace(/\\s+/g,' '); if(d.includes('BYSK')||d.includes('BSYK')) return '['+base+']'; if(d.includes('YENİ')||d.includes('YENI')) return base; if(d.includes('MEVCUT')) return '('+base+')'; return base}"
-s,n=re.subn(pat,new,s,count=1,flags=re.S)
+s,n=re.subn(pat,lambda m:new,s,count=1,flags=re.S)
 if n!=1: raise SystemExit('getLineDisplayText bulunamadi')
 html.write_text(s,encoding='utf-8')
 
