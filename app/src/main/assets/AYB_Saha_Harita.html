@@ -3026,6 +3026,7 @@ function normalizeProject(p){
   return p;
 }
 function newProject(name='Saha Metraj Projesi'){const id='P'+Date.now(); return normalizeProject({id,name:name||'Saha Metraj Projesi',stage:'Etap 1',user:'Bayram YARAŞ',created:new Date().toISOString(),updated:new Date().toISOString(),objects:[],lines:[],areas:[],freeLines:[],channels:[]})}
+try{ window.newProject=newProject; window.openProject=openProject; window.saveProject=saveProject; }catch(e){}
 function openProject(p){
   /* GÜVENLİK (Bayram YARAŞ): gövdesi büyük depoda olan proje, gövdesi
      yüklenmeden AÇILMAZ. Yoksa boş açılır ve ilk kayıtta gerçek veri silinirdi. */
@@ -3047,6 +3048,7 @@ function openProject(p){
     setTimeout(()=>{try{renderAll(); toast('Proje açıldı: '+project.name)}catch(err){console.error(err); toast('Proje açıldı fakat çizim yenilenirken hata oluştu.')}} , 10);
   }catch(err){console.error(err); toast('Proje açılamadı: '+(err&&err.message?err.message:err)); showProjectScreen();}
 }
+try{ window.newProject=newProject; window.openProject=openProject; window.saveProject=saveProject; }catch(e){}
 function startNewProjectFromScreen(){
   const input=$('#projectNameInput');
   const name=(input&&input.value?input.value.trim():'')||'Saha Metraj Projesi';
@@ -11844,14 +11846,19 @@ Kanal sayısı: ${((window.project&&window.project.channels)||[]).length}
       }catch(_){}
       const name=prompt("Yeni proje adı",def);
       if(!name || !name.trim()) return;
-      if(typeof window.newProject==="function" && typeof window.openProject==="function"){
-        window.openProject(window.newProject(name.trim()));
-      }else{
-        alertLong("Proje motoru hazır değil. Sayfa tamamen yüklendikten sonra tekrar dene.");
-        return;
+      if(typeof window.newProject!=="function" || typeof window.openProject!=="function"){
+        try{ window.newProject=newProject; window.openProject=openProject; window.saveProject=saveProject; }catch(_e){}
       }
+      if(typeof window.newProject!=="function" || typeof window.openProject!=="function") throw new Error("Proje motoru yüklenemedi");
+      window.openProject(window.newProject(name.trim()));
       currentProjectDir=null;
       currentProjectFolderName="";
+      if(!window.showDirectoryPicker){
+        try{ if(typeof window.saveProject==="function") window.saveProject(); }catch(_e){}
+        const apn=$("#activeProjectName"); if(apn) apn.textContent=name.trim();
+        toast("Yeni proje açıldı: "+name.trim());
+        return;
+      }
       await pickProjectFolder(name.trim());
       try{
         if(typeof window.saveProject==="function") window.saveProject();

@@ -529,8 +529,33 @@
       css2.textContent='.ayb-project-folder-status,.ayb-project-note,#aybOpenFromFolder{display:none!important;}';
       (document.head||document.documentElement).appendChild(css2);
     }catch(e){}
-    /* v16.49: eski #aybCreateProject capture engelleyicisi kaldırıldı.
-       Proje Oluştur tıklaması yalnız ana proje merkezi tarafından yönetilir. */
+    /* v16.50: TABLET yeni proje motoru — klasorsuz ve tek akis. */
+    try{
+      function aybTabletYeniProje(name){
+        name=String(name||'Saha Projesi').trim()||'Saha Projesi';
+        try{
+          if(typeof window.newProject!=='function' && typeof newProject==='function') window.newProject=newProject;
+          if(typeof window.openProject!=='function' && typeof openProject==='function') window.openProject=openProject;
+          if(typeof window.saveProject!=='function' && typeof saveProject==='function') window.saveProject=saveProject;
+        }catch(_){}
+        if(typeof window.newProject!=='function' || typeof window.openProject!=='function') throw new Error('Proje motoru yüklenemedi');
+        var p=window.newProject(name);
+        window.openProject(p);
+        try{ if(typeof window.saveProject==='function') window.saveProject(); }catch(_){}
+        var ps=document.getElementById('projectScreen'); if(ps) ps.classList.remove('show');
+        return p;
+      }
+      window.aybTabletYeniProje=aybTabletYeniProje;
+      document.addEventListener('click', function(e){
+        var btn=e.target&&e.target.closest?e.target.closest('#aybCreateProject,#newProjectBtn,#btnNew'):null;
+        if(!btn) return;
+        try{ e.preventDefault(); e.stopPropagation(); if(e.stopImmediatePropagation)e.stopImmediatePropagation(); }catch(_){}
+        var inp=document.getElementById('aybNewProjectName')||document.getElementById('projectNameInput');
+        var name=(inp&&inp.value?inp.value.trim():'')||'Saha Projesi';
+        try{ aybTabletYeniProje(name); if(window.toast) toast('Yeni proje açıldı: '+name); }
+        catch(err){ alert('Yeni proje oluşturulamadı: '+(err&&err.message?err.message:err)); }
+      },true);
+    }catch(e){}
     ready(killFolder);
     setTimeout(killFolder,600); setTimeout(killFolder,1800); setTimeout(killFolder,4000); setTimeout(killFolder,8000);
   })();
