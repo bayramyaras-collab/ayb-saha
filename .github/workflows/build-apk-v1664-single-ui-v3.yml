@@ -1,0 +1,100 @@
+name: APK Olustur (BY EDS Saha v16.64 Tek Arayuz V3)
+
+on:
+  push:
+    branches: [ apk-v1664-single-ui ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Kaynak basligini normalize et
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/src/main/assets/AYB_Saha_Harita.html')
+          s=p.read_text(encoding='utf-8')
+          pat=r'<div class="titlebar">.*?<span class="small-muted" id="activeProjectName">'
+          rep='<div class="titlebar"><div class="logo"></div><div class="title">BY EDŞ Saha v16.57</div><span class="small-muted" id="activeProjectName">'
+          s,n=re.subn(pat,rep,s,count=1,flags=re.S)
+          if n!=1: raise SystemExit('titlebar normalize edilemedi')
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Eski arayuzu fiziksel temizle ve tek arayuzu kur
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1664_single_ui.py
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="aybModernToolbar"' "$F"
+          grep -q 'id="aybModernTabs"' "$F"
+          grep -q 'BY EDŞ Saha Programı PERF-25.07-AT-U2' "$F"
+          grep -q 'data-tool="sahanot"' "$F"
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'ayb-v28-mobile' "$F"
+          ! grep -q 'ayb-mode-office' "$F"
+          ! grep -q 'aybOfficeRibbon' "$F"
+          ! grep -q 'ayb-pro-ribbon' "$F"
+          ! grep -q 'ribbon-body' "$F"
+          node --check app/src/main/assets/ayb-tablet.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          m=re.search(r'<script id="ayb_modern_single_ui_v164_js">(.*?)</script>',s,re.S)
+          if not m: raise SystemExit('modern UI script yok')
+          Path('/tmp/modern.js').write_text(m.group(1),encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/modern.js'],check=True)
+          if s.count('class="ayb-modern-tab') != 8: raise SystemExit('8 sekme yok')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk
+          unzip -t store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.singleui' versionCode='1664' versionName='16.64'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'id="aybModernToolbar"' "$F"
+          grep -q 'id="aybModernTabs"' "$F"
+          grep -q 'BY EDŞ Saha Programı PERF-25.07-AT-U2' "$F"
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'ayb-mode-office' "$F"
+          ! grep -q 'aybOfficeRibbon' "$F"
+          ! grep -q 'ayb-pro-ribbon' "$F"
+          ! grep -q 'ribbon-body' "$F"
+          sha256sum store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk | tee store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk.sha256
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.64-TEK-ARAYUZ
+          path: |
+            store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk
+            store/BY-EDS-SAHA-v16.64-TEK-ARAYUZ.apk.sha256
+          if-no-files-found: error
