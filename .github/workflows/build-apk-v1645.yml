@@ -1,0 +1,95 @@
+name: APK Olustur (BY EDS Saha v16.45)
+
+on:
+  push:
+    branches: [ apk-v1645 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: DXF 2004 duzeltmesini uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1645.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q "g(1,'AC1018')" app/src/main/assets/ayb-tablet.js
+          grep -q "function cizgiEnt(katman,a,b,ltype,renk,lw)" app/src/main/assets/ayb-tablet.js
+          grep -q "for(var hi=0;hi<pts.length-1;hi++)" app/src/main/assets/ayb-tablet.js
+          grep -q "arial.ttf" app/src/main/assets/ayb-tablet.js
+          grep -q "AYB_KESIK" app/src/main/assets/ayb-tablet.js
+          grep -nE 'versionCode|versionName' app/build.gradle
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.45-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.45-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.45-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.45-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1645' versionName='16.45'" /tmp/badging.txt
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          apk='store/BY-EDS-SAHA-v16.45-TABLET.apk'
+          with ZipFile(apk) as z:
+              js=z.read('assets/ayb-tablet.js').decode('utf-8')
+              assert "g(1,'AC1018')" in js
+              assert "function cizgiEnt(katman,a,b,ltype,renk,lw)" in js
+              assert "for(var hi=0;hi<pts.length-1;hi++)" in js
+              assert "arial.ttf" in js
+              assert "AYB_KESIK" in js
+          print('APK DXF motoru OK')
+          PY
+          sha256sum store/BY-EDS-SAHA-v16.45-TABLET.apk | tee store/BY-EDS-SAHA-v16.45-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.45\nDXF: AutoCAD 2004 AC1018, real LINE + lineweight + Arial\n' > store/BY-EDS-SAHA-v16.45-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.45-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.45-TABLET.apk
+            store/BY-EDS-SAHA-v16.45-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.45-TABLET-BILGI.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/ayb-tablet.js store/BY-EDS-SAHA-v16.45-TABLET.apk store/BY-EDS-SAHA-v16.45-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.45-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.45 DXF 2004 + APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
