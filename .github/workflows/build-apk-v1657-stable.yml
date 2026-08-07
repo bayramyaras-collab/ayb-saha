@@ -1,0 +1,102 @@
+name: APK Olustur (BY EDS Saha v16.57 Stable)
+
+on:
+  push:
+    branches: [ apk-v1657-stable ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fotoğraflı saha notu modülünü uygula ve doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1657_note.py
+          grep -q 'data-tool="sahanot"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'capture="environment"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q '<name>Saha Notları</name>' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'aybSahaNotKmzFiles' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'icons/saha_not.png' app/src/main/assets/AYB_Saha_Harita.html
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          p=Path('app/src/main/assets/AYB_Saha_Harita.html')
+          s=p.read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          found=False
+          for i,code in enumerate(scripts):
+              if 'V16.56: FOTOĞRAFLI SAHA NOTU' in code:
+                  f=Path('/tmp')/f'note_main_{i}.js'; f.write_text(code,encoding='utf-8')
+                  subprocess.run(['node','--check',str(f)],check=True)
+                  found=True
+          if not found: raise SystemExit('Saha notu ana scripti bulunamadı')
+          g=Path('app/build.gradle')
+          x=g.read_text(encoding='utf-8')
+          x=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1657',x,count=1)
+          x=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.57"',x,count=1)
+          g.write_text(x,encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bileşenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK oluştur ve doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.stable' versionCode='1657' versionName='16.57'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk 'assets/AYB_Saha_Harita.html' -d /tmp/apkcheck
+          grep -q 'data-tool="sahanot"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'capture="environment"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q '<name>Saha Notları</name>' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk | tee store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk.sha256
+          printf 'BY EDS SAHA STABLE Tablet APK\nSurum: 16.57\nFotografli saha notu + KMZ sari not + fotograf\n' > store/BY-EDS-SAHA-v16.57-STABLE-TABLET-BILGI.txt
+
+      - name: Artifact yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.57-STABLE-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk
+            store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.57-STABLE-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Doğrulanmış kaynağı dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk store/BY-EDS-SAHA-v16.57-STABLE-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.57-STABLE-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.57 fotoğraflı saha notu [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
