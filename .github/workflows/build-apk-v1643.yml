@@ -1,0 +1,212 @@
+name: APK Olustur (BY EDS Saha v16.43)
+
+on:
+  push:
+    branches: [ apk-v1643 ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: DXF adlandirma ve yol olcusu duzeltmesi
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('app/src/main/assets/ayb-tablet.js')
+          t=p.read_text(encoding='utf-8')
+
+          old1="""      var ond=String(ondalik).padStart(2,'0');
+      var hAna=Math.max(1.20,yaricap*(String(ana).length>=3?0.68:0.82));
+      var hOnd=Math.max(0.70,Math.min(hAna*0.42,yaricap*0.38));
+      /* Büyük tam sayı sağa, küçük ondalık iki hane sola hizalanır. Ortak ayırma
+         ekseninin iki tarafındaki fiziksel boşluk 33 / 50 TEXT'lerini ayırır. */
+      var ayirX=yc.y+yaricap*0.10;
+      var bosluk=Math.max(0.18,hOnd*0.24);
+      var anaX=ayirX-bosluk, ondX=ayirX+bosluk;
+      var anaY=yc.x-hAna*0.08, ondY=yc.x+hAna*0.30;
+      var altY=yc.x+hAna*0.04;
+      s+=daireEnt('YOL_OLCU',yc.y,yc.x,yaricap); say.n++;
+      s+=txtEnt('YOL_OLCU',anaX,anaY,hAna,String(ana),'Standard',null,0,2,2); say.t++;
+      s+=txtEnt('YOL_OLCU',ondX,ondY,hOnd,ond,'Standard',null,0,0,2); say.t++;
+      s+=cizgiEnt('YOL_OLCU',{y:ondX-hOnd*0.05,x:altY},{y:ondX+hOnd*1.18,x:altY},null,null); say.l++;
+"""
+          new1="""      var ond=String(ondalik).padStart(2,'0');
+      /* DXF görünümü: yazı daire içinde daha kompakt dursun, dışarı taşmasın. */
+      var hAna=Math.max(1.00,yaricap*(String(ana).length>=3?0.50:(String(ana).length===2?0.60:0.66)));
+      var hOnd=Math.max(0.56,Math.min(hAna*0.32,yaricap*0.22));
+      var ayirX=yc.y+yaricap*0.04;
+      var bosluk=Math.max(0.14,hOnd*0.16);
+      var anaX=ayirX-bosluk, ondX=ayirX+bosluk;
+      var anaY=yc.x-hAna*0.05, ondY=yc.x+hAna*0.22;
+      var altY=yc.x+hAna*0.01;
+      s+=daireEnt('YOL_OLCU',yc.y,yc.x,yaricap); say.n++;
+      s+=txtEnt('YOL_OLCU',anaX,anaY,hAna,String(ana),'Standard',null,0,2,2); say.t++;
+      s+=txtEnt('YOL_OLCU',ondX,ondY,hOnd,ond,'Standard',null,0,0,2); say.t++;
+      s+=cizgiEnt('YOL_OLCU',{y:ondX-hOnd*0.04,x:altY},{y:ondX+hOnd*0.90,x:altY},null,null); say.l++;
+"""
+          if old1 in t:
+              t=t.replace(old1,new1,1)
+          elif new1 not in t:
+              raise SystemExit('DXF yol olcusu blogu bulunamadi')
+
+          old2="""  function svgHazirla(r){
+    var NS='http://www.w3.org/2000/svg', svg=d.createElementNS(NS,'svg'), p=parcalar(r.value_m);
+    var anaBoy=p.ana.length>=3?82:(p.ana.length===2?108:122);
+    svg.setAttribute('viewBox','0 0 220 220'); svg.setAttribute('preserveAspectRatio','xMidYMid meet'); svg.setAttribute('class','ayb-yol-olcu-svg');
+    svg.setAttribute('role','button'); svg.setAttribute('aria-label','Yol genişliği '+metreMetni(r.value_m)+'. Düzenlemek için tıklayın.');
+    svg.innerHTML='<title>Yol genişliği: '+esc(metreMetni(r.value_m))+' — düzenlemek için tıkla</title>'+\
+      '<text class=\"ayb-yol-ana\" x=\"119\" y=\"151\" text-anchor=\"end\" font-size=\"'+anaBoy+'\">'+esc(p.ana)+'</text>'+\
+      '<text class=\"ayb-yol-ond\" x=\"128\" y=\"96\" text-anchor=\"start\" font-size=\"49\">'+esc(p.ond)+'</text>'+\
+      '<line class=\"ayb-yol-alt-koyu\" x1=\"126\" y1=\"111\" x2=\"194\" y2=\"111\"></line>'+\
+      '<line class=\"ayb-yol-alt\" x1=\"126\" y1=\"111\" x2=\"194\" y2=\"111\"></line>';
+    return svg;
+  }
+"""
+          new2="""  function svgHazirla(r){
+    var NS='http://www.w3.org/2000/svg', svg=d.createElementNS(NS,'svg'), p=parcalar(r.value_m);
+    /* Yol ölçü yazısı daire içinde kompakt dursun; büyük rakam sola yaslanıp
+       çembere taşmasın, küçük iki hane sağ üstte daha küçük kalsın. */
+    var anaBoy=p.ana.length>=3?58:(p.ana.length===2?72:84);
+    var ondBoy=p.ana.length>=3?24:(p.ana.length===2?28:30);
+    svg.setAttribute('viewBox','0 0 220 220'); svg.setAttribute('preserveAspectRatio','xMidYMid meet'); svg.setAttribute('class','ayb-yol-olcu-svg');
+    svg.setAttribute('role','button'); svg.setAttribute('aria-label','Yol genişliği '+metreMetni(r.value_m)+'. Düzenlemek için tıklayın.');
+    svg.innerHTML='<title>Yol genişliği: '+esc(metreMetni(r.value_m))+' — düzenlemek için tıkla</title>'+\
+      '<text class=\"ayb-yol-ana\" x=\"116\" y=\"144\" text-anchor=\"end\" font-size=\"'+anaBoy+'\">'+esc(p.ana)+'</text>'+\
+      '<text class=\"ayb-yol-ond\" x=\"124\" y=\"100\" text-anchor=\"start\" font-size=\"'+ondBoy+'\">'+esc(p.ond)+'</text>'+\
+      '<line class=\"ayb-yol-alt-koyu\" x1=\"123\" y1=\"109\" x2=\"168\" y2=\"109\"></line>'+\
+      '<line class=\"ayb-yol-alt\" x1=\"123\" y1=\"109\" x2=\"168\" y2=\"109\"></line>';
+    return svg;
+  }
+"""
+          if old2 in t:
+              t=t.replace(old2,new2,1)
+          elif new2 not in t:
+              raise SystemExit('Arayuz yol olcusu blogu bulunamadi')
+
+          old3="""  function disari(){
+    var r=uret(); if(!r) return;
+    if(!r.say.n && !r.say.l && !r.say.t){ try{ if(window.toast) toast('Dışa aktarılacak çizim yok.'); }catch(e){} return; }
+    var bayt=cp1254(r.metin);
+    var ad='DXF_'+String((window.project&&(window.project.name||window.project.id))||'Saha').replace(/[^\\wğüşıöçĞÜŞİÖÇ.-]/g,'_')+'_'+(new Date().toISOString().slice(0,10))+'.dxf';
+    var blob=new Blob([bayt],{type:'application/dxf'});
+    try{ if(window.aybShareFile){ window.aybShareFile(ad, blob, 'application/dxf'); } else { var a=d.createElement('a'); a.href=URL.createObjectURL(blob); a.download=ad; d.body.appendChild(a); a.click(); setTimeout(function(){a.remove();},800); } }catch(e){}
+    try{ if(window.toast) toast('DXF hazır (B_CAD sembollü): '+r.say.n+' nokta, '+r.say.l+' çizgi, '+r.say.t+' yazı/sembol'); }catch(e){}
+  }
+"""
+          new3="""  function aybDxfDosyaAdi(){
+    var prj=window.project||{}, gorulen={}, trafolar=[];
+    try{
+      (Array.isArray(prj.objects)?prj.objects:[]).forEach(function(o){
+        if(!o||String(o.type||'').toLowerCase()!=='trafo') return;
+        var p=o.props||{};
+        var n=String(p.trafo_no||p.trafo_adi||p.adi||p.no||p.numara||'').trim();
+        if(!n) return;
+        n=n.replace(/[<>:\"/\\\\|?*\\x00-\\x1F]/g,'_').replace(/\\s+/g,'_').replace(/_+/g,'_').replace(/^[_-]+|[_-]+$/g,'');
+        if(!n) return;
+        var k=n.toLocaleUpperCase('tr-TR');
+        if(!gorulen[k]){ gorulen[k]=1; trafolar.push(n); }
+      });
+    }catch(e){}
+    try{ trafolar.sort(function(a,b){ return a.localeCompare(b,'tr',{numeric:true,sensitivity:'base'}); }); }catch(e){}
+    var taban=trafolar.length?trafolar.join('-'):String(prj.name||prj.id||'Saha_Projesi');
+    taban=taban.replace(/[<>:\"/\\\\|?*\\x00-\\x1F]/g,'_').replace(/\\s+/g,'_').replace(/_+/g,'_').replace(/^[_-]+|[_-]+$/g,'')||'Saha_Projesi';
+    var n=new Date(), iki=function(v){return String(v).padStart(2,'0');};
+    var tarih=iki(n.getDate())+'.'+iki(n.getMonth()+1)+'.'+n.getFullYear();
+    return taban+'_'+tarih+'.dxf';
+  }
+  window.aybDxfDosyaAdi=aybDxfDosyaAdi;
+
+  function disari(){
+    var r=uret(); if(!r) return;
+    if(!r.say.n && !r.say.l && !r.say.t){ try{ if(window.toast) toast('Dışa aktarılacak çizim yok.'); }catch(e){} return; }
+    var bayt=cp1254(r.metin);
+    var ad=aybDxfDosyaAdi();
+    var blob=new Blob([bayt],{type:'application/dxf'});
+    try{ if(window.aybShareFile){ window.aybShareFile(ad, blob, 'application/dxf'); } else { var a=d.createElement('a'); a.href=URL.createObjectURL(blob); a.download=ad; d.body.appendChild(a); a.click(); setTimeout(function(){a.remove();},800); } }catch(e){}
+    try{ if(window.toast) toast('DXF hazır: '+ad+' — '+r.say.n+' nokta, '+r.say.l+' çizgi, '+r.say.t+' yazı/sembol'); }catch(e){}
+  }
+"""
+          if old3 in t:
+              t=t.replace(old3,new3,1)
+          elif 'function aybDxfDosyaAdi()' not in t:
+              raise SystemExit('DXF disari blogu bulunamadi')
+
+          p.write_text(t,encoding='utf-8')
+
+          g=Path('app/build.gradle')
+          s=g.read_text(encoding='utf-8')
+          s=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1643',s,count=1)
+          s=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.43"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          PY
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -n "function aybDxfDosyaAdi" app/src/main/assets/ayb-tablet.js
+          grep -nE 'versionCode|versionName' app/build.gradle
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: |
+          yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.43-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.43-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BY-EDS-SAHA-v16.43-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.43-TABLET.apk | tee /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha' versionCode='1643' versionName='16.43'" /tmp/badging.txt
+          sha256sum store/BY-EDS-SAHA-v16.43-TABLET.apk | tee store/BY-EDS-SAHA-v16.43-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.43\nDXF adi: trafo numaralari + GG.AA.YYYY\nOrnek: TAC977-TAC978_07.08.2026.dxf\n' > store/BY-EDS-SAHA-v16.43-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.43-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.43-TABLET.apk
+            store/BY-EDS-SAHA-v16.43-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.43-TABLET-BILGI.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/ayb-tablet.js store/BY-EDS-SAHA-v16.43-TABLET.apk store/BY-EDS-SAHA-v16.43-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.43-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.43: DXF trafo adlandirma ve kompakt yol olcusu [skip ci]"
+            git push origin HEAD:apk-v1643
+          fi
