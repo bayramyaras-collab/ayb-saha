@@ -7358,19 +7358,19 @@
       if(ondalik>=100){ ana++; ondalik=0; }
       if(ondalik<0) ondalik=0;
       var ond=String(ondalik).padStart(2,'0');
-      var hAna=Math.max(1.20,yaricap*(String(ana).length>=3?0.68:0.82));
-      var hOnd=Math.max(0.70,Math.min(hAna*0.42,yaricap*0.38));
+      var hAna=Math.max(1.00,yaricap*(String(ana).length>=3?0.50:(String(ana).length===2?0.60:0.66)));
+      var hOnd=Math.max(0.56,Math.min(hAna*0.32,yaricap*0.22));
       /* Büyük tam sayı sağa, küçük ondalık iki hane sola hizalanır. Ortak ayırma
          ekseninin iki tarafındaki fiziksel boşluk 33 / 50 TEXT'lerini ayırır. */
-      var ayirX=yc.y+yaricap*0.10;
-      var bosluk=Math.max(0.18,hOnd*0.24);
+      var ayirX=yc.y+yaricap*0.04;
+      var bosluk=Math.max(0.14,hOnd*0.16);
       var anaX=ayirX-bosluk, ondX=ayirX+bosluk;
-      var anaY=yc.x-hAna*0.08, ondY=yc.x+hAna*0.30;
-      var altY=yc.x+hAna*0.04;
+      var anaY=yc.x-hAna*0.05, ondY=yc.x+hAna*0.22;
+      var altY=yc.x+hAna*0.01;
       s+=daireEnt('YOL_OLCU',yc.y,yc.x,yaricap); say.n++;
       s+=txtEnt('YOL_OLCU',anaX,anaY,hAna,String(ana),'Standard',null,0,2,2); say.t++;
       s+=txtEnt('YOL_OLCU',ondX,ondY,hOnd,ond,'Standard',null,0,0,2); say.t++;
-      s+=cizgiEnt('YOL_OLCU',{y:ondX-hOnd*0.05,x:altY},{y:ondX+hOnd*1.18,x:altY},null,null); say.l++;
+      s+=cizgiEnt('YOL_OLCU',{y:ondX-hOnd*0.04,x:altY},{y:ondX+hOnd*0.90,x:altY},null,null); say.l++;
       sinirGuncelle({y:yc.y-yaricap,x:yc.x-yaricap});
       sinirGuncelle({y:yc.y+yaricap,x:yc.x+yaricap});
     });
@@ -7516,14 +7516,37 @@
     return {metin:s, say:say};
   }
 
+  function aybDxfDosyaAdi(){
+    var prj=window.project||{}, gorulen={}, trafolar=[];
+    try{
+      (Array.isArray(prj.objects)?prj.objects:[]).forEach(function(o){
+        if(!o||String(o.type||'').toLowerCase()!=='trafo') return;
+        var p=o.props||{};
+        var n=String(p.trafo_no||p.trafo_adi||p.adi||p.no||p.numara||'').trim();
+        if(!n) return;
+        n=n.replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').replace(/\s+/g,'_').replace(/_+/g,'_').replace(/^[_-]+|[_-]+$/g,'');
+        if(!n) return;
+        var k=n.toLocaleUpperCase('tr-TR');
+        if(!gorulen[k]){ gorulen[k]=1; trafolar.push(n); }
+      });
+    }catch(e){}
+    try{ trafolar.sort(function(a,b){ return a.localeCompare(b,'tr',{numeric:true,sensitivity:'base'}); }); }catch(e){}
+    var taban=trafolar.length?trafolar.join('-'):String(prj.name||prj.id||'Saha_Projesi');
+    taban=taban.replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').replace(/\s+/g,'_').replace(/_+/g,'_').replace(/^[_-]+|[_-]+$/g,'')||'Saha_Projesi';
+    var n=new Date(), iki=function(v){return String(v).padStart(2,'0');};
+    var tarih=iki(n.getDate())+'.'+iki(n.getMonth()+1)+'.'+n.getFullYear();
+    return taban+'_'+tarih+'.dxf';
+  }
+  window.aybDxfDosyaAdi=aybDxfDosyaAdi;
+
   function disari(){
     var r=uret(); if(!r) return;
     if(!r.say.n && !r.say.l && !r.say.t){ try{ if(window.toast) toast('Dışa aktarılacak çizim yok.'); }catch(e){} return; }
     var bayt=cp1254(r.metin);
-    var ad='DXF_'+String((window.project&&(window.project.name||window.project.id))||'Saha').replace(/[^\wğüşıöçĞÜŞİÖÇ.-]/g,'_')+'_'+(new Date().toISOString().slice(0,10))+'.dxf';
+    var ad=aybDxfDosyaAdi();
     var blob=new Blob([bayt],{type:'application/dxf'});
     try{ if(window.aybShareFile){ window.aybShareFile(ad, blob, 'application/dxf'); } else { var a=d.createElement('a'); a.href=URL.createObjectURL(blob); a.download=ad; d.body.appendChild(a); a.click(); setTimeout(function(){a.remove();},800); } }catch(e){}
-    try{ if(window.toast) toast('DXF hazır (B_CAD sembollü): '+r.say.n+' nokta, '+r.say.l+' çizgi, '+r.say.t+' yazı/sembol'); }catch(e){}
+    try{ if(window.toast) toast('DXF hazır: '+ad+' — '+r.say.n+' nokta, '+r.say.l+' çizgi, '+r.say.t+' yazı/sembol'); }catch(e){}
   }
   window.aybDxfDisari=disari;
   /* İSTEK (Bayram YARAŞ): BASKI'daki Pafta DXF de ana üreticiyi kullansın — sembol/katman BİREBİR */
@@ -8514,14 +8537,15 @@
   }
   function svgHazirla(r){
     var NS='http://www.w3.org/2000/svg', svg=d.createElementNS(NS,'svg'), p=parcalar(r.value_m);
-    var anaBoy=p.ana.length>=3?82:(p.ana.length===2?108:122);
+    var anaBoy=p.ana.length>=3?58:(p.ana.length===2?72:84);
+    var ondBoy=p.ana.length>=3?24:(p.ana.length===2?28:30);
     svg.setAttribute('viewBox','0 0 220 220'); svg.setAttribute('preserveAspectRatio','xMidYMid meet'); svg.setAttribute('class','ayb-yol-olcu-svg');
     svg.setAttribute('role','button'); svg.setAttribute('aria-label','Yol genişliği '+metreMetni(r.value_m)+'. Düzenlemek için tıklayın.');
     svg.innerHTML='<title>Yol genişliği: '+esc(metreMetni(r.value_m))+' — düzenlemek için tıkla</title>'+
-      '<text class="ayb-yol-ana" x="119" y="151" text-anchor="end" font-size="'+anaBoy+'">'+esc(p.ana)+'</text>'+
-      '<text class="ayb-yol-ond" x="128" y="96" text-anchor="start" font-size="49">'+esc(p.ond)+'</text>'+
-      '<line class="ayb-yol-alt-koyu" x1="126" y1="111" x2="194" y2="111"></line>'+
-      '<line class="ayb-yol-alt" x1="126" y1="111" x2="194" y2="111"></line>';
+      '<text class="ayb-yol-ana" x="116" y="144" text-anchor="end" font-size="'+anaBoy+'">'+esc(p.ana)+'</text>'+
+      '<text class="ayb-yol-ond" x="124" y="100" text-anchor="start" font-size="'+ondBoy+'">'+esc(p.ond)+'</text>'+
+      '<line class="ayb-yol-alt-koyu" x1="123" y1="109" x2="168" y2="109"></line>'+
+      '<line class="ayb-yol-alt" x1="123" y1="109" x2="168" y2="109"></line>';
     return svg;
   }
   function olayKes(e){
