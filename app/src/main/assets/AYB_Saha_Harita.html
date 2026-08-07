@@ -2217,6 +2217,9 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
           <button class="ayb-pro-btn toolbtn" data-tool="ok" title="Ok / Yön Oku">
             <div class="ayb-pro-ico ayb-ico-ok">➜</div><small>Ok</small>
           </button>
+          <button class="ayb-pro-btn toolbtn" data-tool="sahanot" title="Saha Notu / Fotoğraflı Not">
+            <div class="ayb-pro-ico" style="font-size:20px">📝</div><small>NOT</small>
+          </button>
           <button class="ayb-pro-btn toolbtn" id="kfMeasureToolBtn" type="button" title="Ölçüm / Metre (2 nokta arası mesafe)">
             <div class="ayb-pro-ico" style="font-size:18px">📏</div><small>Ölç</small>
           </button>
@@ -2365,7 +2368,7 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
   <div class="main">
     <div id="map" class="map"></div>
     <div class="left-tools"><button title="Seç">↖</button><button title="Yakınlaş">⌕</button><button title="Uzaklaş">⊖</button><button title="Ölç">尺</button><button title="Katman">▧</button><button title="Sil">⌫</button></div>
-    <div class="floating-palette"><button class="palette-btn" data-tool="direk">▌ Direk</button><button class="palette-btn" data-tool="hat">⌁ Hat</button><button class="palette-btn" data-tool="yeraltihat">↧ Yer Altı</button><button class="palette-btn" data-tool="kanal">▰ Kanal</button><button class="palette-btn" data-tool="trafo">⚡ Trafo</button><button class="palette-btn" data-tool="box">▣ Box</button><button class="palette-btn good" id="btnGpsPoint">📍 GPS Nokta</button><button class="palette-btn danger" id="btnCancelTool">× Bitir</button></div>
+    <div class="floating-palette"><button class="palette-btn" data-tool="direk">▌ Direk</button><button class="palette-btn" data-tool="hat">⌁ Hat</button><button class="palette-btn" data-tool="yeraltihat">↧ Yer Altı</button><button class="palette-btn" data-tool="kanal">▰ Kanal</button><button class="palette-btn" data-tool="trafo">⚡ Trafo</button><button class="palette-btn" data-tool="box">▣ Box</button><button class="palette-btn" data-tool="sahanot">📝 NOT</button><button class="palette-btn good" id="btnGpsPoint">📍 GPS Nokta</button><button class="palette-btn danger" id="btnCancelTool">× Bitir</button></div>
     <div class="coord-overlay" id="coords"><b>ITRF96 / TM3</b>: X (Kuzey) - | Y (Doğu) -<br><span class="muted">Türkiye 3° dilimi otomatik belirlenir</span></div>
     <div class="hint" id="hint">Hazır. Direk / Hat / Kanal aracını seç.</div>
     <div class="gps-card" id="gpsCard"><b>GPS kapalı</b><br><span>Konum için GPS düğmesini kullan.</span></div>
@@ -2903,7 +2906,7 @@ function aybProjeKayitSayisi(p){
     if(!p) return 0;
     if(p.__buyuk&&p.__sayi&&typeof p.__sayi.toplam==='number') return p.__sayi.toplam;
     return ((p.objects||[]).length+(p.lines||[]).length+(p.areas||[]).length+
-            (p.freeLines||[]).length+(p.channels||[]).length);
+            (p.freeLines||[]).length+(p.channels||[]).length+(p.sahaNotes||[]).length);
   }catch(e){ return 0; }
 }
 function aybProjeObjeSayisi(p){
@@ -2916,9 +2919,9 @@ function aybProjeAgir(p){ return aybProjeKayitSayisi(p)>9000; }
 /* İSKELET: gövdesi çıkarılmış proje. Liste ekranları bununla çalışır,
    gerçek veri IndexedDB'dedir. */
 function aybProjeIskelet(p){
-  var k, i={}, buyuk={objects:1,lines:1,areas:1,freeLines:1,channels:1,rasters:1,cadLayers:1,aybImportLayers:1};
+  var k, i={}, buyuk={objects:1,lines:1,areas:1,freeLines:1,channels:1,sahaNotes:1,rasters:1,cadLayers:1,aybImportLayers:1};
   for(k in p){ if(k==='__yuklendi') continue; if(buyuk[k]) continue; i[k]=p[k]; }
-  ['objects','lines','areas','freeLines','channels','rasters','cadLayers'].forEach(function(a){ i[a]=[]; });
+  ['objects','lines','areas','freeLines','channels','sahaNotes','rasters','cadLayers'].forEach(function(a){ i[a]=[]; });
   i.__buyuk=true;
   i.__sayi={obje:(p.objects||[]).length, hat:(p.lines||[]).length, toplam:aybProjeKayitSayisi(p)};
   return i;
@@ -3019,6 +3022,7 @@ function saveProject(){
   if(!Array.isArray(project.areas)) project.areas=[];
   if(!Array.isArray(project.freeLines)) project.freeLines=[];
   if(!Array.isArray(project.channels)) project.channels=[];
+  if(!Array.isArray(project.sahaNotes)) project.sahaNotes=[];
   projects[project.id]=project;
   return saveProjects();
 }
@@ -3492,7 +3496,7 @@ function initMap(){
   map.on('contextmenu',e=>{e.originalEvent.preventDefault(); finishCurrentOperation();});
   setTimeout(()=>{map.invalidateSize(); updateCoordInfo(map.getCenter())},300);
 }
-function toolNeedsCrosshair(t){return ['direk','trafo','box','abone','ekmuf','hat','yeraltihat','kanal'].includes(t)}
+function toolNeedsCrosshair(t){return ['direk','trafo','box','abone','ekmuf','hat','yeraltihat','kanal','sahanot'].includes(t)}
 function setMapCursor(){if(!map)return; const el=map.getContainer(); const on=toolNeedsCrosshair(activeTool); el.classList.toggle('tool-crosshair',on); el.style.cursor=on?'default':''; if(on){el.classList.remove('leaflet-grab'); el.classList.remove('leaflet-grabbing')} if(!on){el.style.cursor=''; hideToolCursor();}}
 function updateToolCursor(latlng){hideToolCursor()}
 function hideToolCursor(){if(toolCursorMarker&&map){map.removeLayer(toolCursorMarker); toolCursorMarker=null}}
@@ -3620,7 +3624,7 @@ function locate(addPoint){
   },opts);
 }
 
-function setTool(t,opts){if(t==='not') t=null; clearEnergyTrace(); activeTool=t; aybShortcutRepeatTool=(opts&&opts.repeat)?t:null; lineStart=null; tempPoints=[]; aybYerAltiBendPoints=[]; clearLinePreview(); hideToolCursor(); if(tempLayer){map.removeLayer(tempLayer);tempLayer=null} $$('.toolbtn,.palette-btn').forEach(b=>b.classList.toggle('active',b.dataset.tool===t)); $('#activeLayer').textContent=(t||'DIREK').toLocaleUpperCase('tr-TR'); setMapCursor(); const msg={direk:'Direk aracı aktif: haritada tıkladığın noktaya direk atılır.',trafo:'Trafo aracı: konuma dokun.',box:'Box aracı: konuma dokun.',hat:'Hat aracı: önce başlangıç direk/trafo/box/abone/muf objesine, sonra bitiş objesine dokun.',yeraltihat:'Yer altı hat: başlangıç objesine dokun, güzergah için her kırık noktasına tıkla, bitiş direk/trafo/box/mufa dokun.',abonehat:'Abone hat: başlangıç direk/box/kofre seç, havai ise doğrudan kofreye bağla; yeraltı ise kırık noktaları vererek kofreye bağla.',kanal:'Kanal serbest mod: güzergah boyunca kırık noktalara dokun, sağ tık/Bitir ile tamamla.',bina:'Bina çiz: köşe noktalarını gir, Bitir ile tamamla.',cizgi:'Çizgi serbest mod: noktalara dokun, Bitir.',ok:'Ok işareti: başlangıç ve yön noktasına dokun, Bitir.'}[t]||'Hazır'; hint(msg)}
+function setTool(t,opts){if(t==='not') t=null; clearEnergyTrace(); activeTool=t; aybShortcutRepeatTool=(opts&&opts.repeat)?t:null; lineStart=null; tempPoints=[]; aybYerAltiBendPoints=[]; clearLinePreview(); hideToolCursor(); if(tempLayer){map.removeLayer(tempLayer);tempLayer=null} $$('.toolbtn,.palette-btn').forEach(b=>b.classList.toggle('active',b.dataset.tool===t)); $('#activeLayer').textContent=(t||'DIREK').toLocaleUpperCase('tr-TR'); setMapCursor(); const msg={direk:'Direk aracı aktif: haritada tıkladığın noktaya direk atılır.',trafo:'Trafo aracı: konuma dokun.',box:'Box aracı: konuma dokun.',hat:'Hat aracı: önce başlangıç direk/trafo/box/abone/muf objesine, sonra bitiş objesine dokun.',yeraltihat:'Yer altı hat: başlangıç objesine dokun, güzergah için her kırık noktasına tıkla, bitiş direk/trafo/box/mufa dokun.',abonehat:'Abone hat: başlangıç direk/box/kofre seç, havai ise doğrudan kofreye bağla; yeraltı ise kırık noktaları vererek kofreye bağla.',kanal:'Kanal serbest mod: güzergah boyunca kırık noktalara dokun, sağ tık/Bitir ile tamamla.',bina:'Bina çiz: köşe noktalarını gir, Bitir ile tamamla.',cizgi:'Çizgi serbest mod: noktalara dokun, Bitir.',ok:'Ok işareti: başlangıç ve yön noktasına dokun, Bitir.',sahanot:'Saha Notu: haritada not bırakacağın noktaya dokun; açıklama ve fotoğraf ekle.'}[t]||'Hazır'; hint(msg)}
 function cancelTool(){clearEnergyTrace(); setTool(null); clearLinePreview(); hint('Hazır. Direk / Hat / Kanal aracını seç.'); if(snapMarker){map.removeLayer(snapMarker); snapMarker=null}}
 function finishCurrentOperation(){
   const hasEnergy=!!((energyTraceLayers&&energyTraceLayers.length)||energyTraceTimer);
@@ -3669,6 +3673,7 @@ function aybAddFreeDrawObjectPoint(obj){
   return true;
 }
 function handleMapClick(e){if(!project){showProjectScreen(); return} const t=activeTool; if(!t) return;
+  if(t==='sahanot'){ if(typeof aybOpenSahaNotForm==='function') aybOpenSahaNotForm(e.latlng,null); return; }
   if(pointTypes.includes(t)){const defaults=aybDefaultsForPoint(t); openPointForm(t,e.latlng,null,null,defaults); return}
   if(t==='hat'){const obj=findNearestObject(e.latlng,aybObjectSnapPx('hat')); if(!obj){finishCurrentOperation(); toast('Hat çizimi boş alana tıklandığı için bitirildi.');return} handleLineObject(obj); return}
   if(t==='abonehat'){const obj=findNearestObject(e.latlng,aybObjectSnapPx('abonehat')); if(obj){handleLineObject(obj); return} if(lineStart){const d=aybDefaultsForLine('abonehat'); const underground=!d||norm(d.hy||'').includes('YERALTI')||norm(d.hy||'').includes('YER ALTI'); if(underground){aybAddYerAltiBendPoint(e.latlng); return} finishCurrentOperation(); toast('Havai abone hat çizimi boş alana tıklandığı için bitirildi.'); return} finishCurrentOperation(); toast('Abone hat çizimi bitirildi.'); return}
@@ -5197,7 +5202,7 @@ function renderAll(){if(!map) return; clearEnergyTrace(); markers.forEach(m=>map
  try{ window.__aybEkranListe={AL:(__AL?aybALKutu(__AL):null), obj:objList, hat:lineList,
       oDizi:project.objects, hDizi:project.lines,
       oN:(project.objects||[]).length, hN:(project.lines||[]).length}; }catch(e){}
- window.__aybSeyrekTam=objList.length; window.__aybSeyrekN=0; if(window.__aybUzakGorunum && objList.length>AYB_SEYREK_ESIK){ var __ol=aybSeyrekOlcek(__AL); if(__ol){ objList=aybSeyrelt(objList,__ol); lineList=aybHatSeyrelt(lineList,__ol); window.__aybSeyrekN=objList.length; } } objList.forEach(renderObject); lineList.forEach(renderLine); channelList.forEach(renderChannel); freeLineList.forEach(renderFreeLine); areaList.forEach(renderArea); __aybCizilenAlan=__AL; __aybUzakCizim=!!window.__aybUzakGorunum; try{ __aybCizilenZ=map.getZoom(); }catch(e){} window.__aybEkranObjSayi=(window.__aybSeyrekTam||objList.length); try{ aybEtkiBoz(); }catch(e){} updateSummary(); try{map.__aybLabelsHidden=false;}catch(e){} repositionPointLabels(); if(typeof requestAnimationFrame==='function') requestAnimationFrame(()=>repositionPointLabels());}
+ window.__aybSeyrekTam=objList.length; window.__aybSeyrekN=0; if(window.__aybUzakGorunum && objList.length>AYB_SEYREK_ESIK){ var __ol=aybSeyrekOlcek(__AL); if(__ol){ objList=aybSeyrelt(objList,__ol); lineList=aybHatSeyrelt(lineList,__ol); window.__aybSeyrekN=objList.length; } } objList.forEach(renderObject); lineList.forEach(renderLine); channelList.forEach(renderChannel); freeLineList.forEach(renderFreeLine); areaList.forEach(renderArea); try{(project.sahaNotes||[]).forEach(renderSahaNot);}catch(e){} __aybCizilenAlan=__AL; __aybUzakCizim=!!window.__aybUzakGorunum; try{ __aybCizilenZ=map.getZoom(); }catch(e){} window.__aybEkranObjSayi=(window.__aybSeyrekTam||objList.length); try{ aybEtkiBoz(); }catch(e){} updateSummary(); try{map.__aybLabelsHidden=false;}catch(e){} repositionPointLabels(); if(typeof requestAnimationFrame==='function') requestAnimationFrame(()=>repositionPointLabels());}
 /* AYB: Nokta obje (direk/trafo/box/abone/ekmuf) etiketini bagli hatlarla cakismayacak sekilde 360 derece etrafinda en bos sektore yerlestir. Hat etiketi kilitli, dokunulmuyor. */
 function aybSegDistPx(p,a,b){
   const vx=b.x-a.x, vy=b.y-a.y, wx=p.x-a.x, wy=p.y-a.y;
@@ -8173,6 +8178,24 @@ function aybChannelDescription(c,pts){
     </div>
   ]]>`;
 }
+
+/* === V16.56: FOTOĞRAFLI SAHA NOTU === */
+const AYB_SAHA_NOT_ICON_B64='iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABSElEQVR42u2bMRKCMBBFI8NJ7K3xLvaO2NBZWlDa2ahj72FS23MVbRjHAZUlgGTD+3Uc9j932V8EYxBCU9as6cB5Zx5azaWHZn+xNvOb/VF07pJnonORtn9eakyqWGJ+s56Pb/xavGq55Jm4E1p3gI/ma2NQQhgEgO/m+4YQaV5hAghJ0AD6gKAeQNdxCAKAAEISPADXTggKgEtYitWZKwNRXwqyAzpHYV/ne4gOmXwHAAAAAGALOGu1Le7/Lvh2mi+86IAxzA/xXN4BvrTiWM+NfSqGLQAAAACAIEQQIggRhAhCbAEAAAAABCGCEEGIIEQQYgsAAABjAuj7NsbQcqm3BqB6xVwLhGqd6cEsJb/7ep9e+XcCn8zbViMg+dhAkXm3d4A2CD/M29Yj8KbE6JftsgZtqObb5AAbonnpCGgcCWsQQgg16wmm8nK9FSN+hQAAAABJRU5ErkJggg==';
+function aybSahaNotes(){ if(!project) return []; if(!Array.isArray(project.sahaNotes)) project.sahaNotes=[]; return project.sahaNotes; }
+function aybSahaNotById(id){ return aybSahaNotes().find(n=>n&&String(n.id)===String(id))||null; }
+function aybSahaNotTarih(ts){ try{return new Date(ts||Date.now()).toLocaleString('tr-TR');}catch(e){return '';} }
+function aybSahaNotEsc(v){ return String(v==null?'':v).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function aybSahaNotIconHtml(){return '<div class="ayb-saha-note-icon"><span></span><i></i><b></b></div>';}
+(function(){if(document.getElementById('aybSahaNotCss'))return;const st=document.createElement('style');st.id='aybSahaNotCss';st.textContent=`.ayb-saha-note-icon{width:34px;height:34px;background:#ffdc22;border:2px solid #8b6b00;border-radius:5px;position:relative;box-shadow:0 2px 5px rgba(0,0,0,.35)}.ayb-saha-note-icon:after{content:'';position:absolute;right:1px;top:1px;border-left:9px solid transparent;border-bottom:9px solid #fff59d}.ayb-saha-note-icon span,.ayb-saha-note-icon i,.ayb-saha-note-icon b{position:absolute;left:7px;right:7px;height:2px;background:#6b5200;border-radius:2px}.ayb-saha-note-icon span{top:13px}.ayb-saha-note-icon i{top:19px}.ayb-saha-note-icon b{top:25px}.ayb-note-modal{position:fixed;inset:0;background:rgba(15,23,42,.38);z-index:12000;display:flex;align-items:center;justify-content:center;padding:10px}.ayb-note-card{width:min(620px,96vw);max-height:94vh;overflow:auto;background:#fff;border:1px solid #94a3b8;border-radius:8px;box-shadow:0 18px 60px rgba(0,0,0,.35)}.ayb-note-head{display:flex;align-items:center;padding:10px 14px;background:#ffdc22;border-bottom:1px solid #c59b00;font-size:17px;font-weight:900}.ayb-note-head button{margin-left:auto;border:0;background:transparent;font-size:22px}.ayb-note-body{padding:12px 14px}.ayb-note-row{display:grid;grid-template-columns:135px 1fr;gap:8px;align-items:center;margin:8px 0}.ayb-note-row label{font-weight:800}.ayb-note-row input,.ayb-note-row select,.ayb-note-row textarea{width:100%;border:1px solid #aab4c3;border-radius:4px;padding:7px;background:#fff}.ayb-note-row textarea{min-height:92px;resize:vertical}.ayb-note-photo{max-width:100%;max-height:260px;border-radius:6px;border:1px solid #cbd5e1;display:none;margin-top:8px}.ayb-note-foot{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid #d8dee8;background:#f8fafc}.ayb-note-foot button{min-width:100px;padding:8px 12px;border:1px solid #aab4c3;border-radius:4px;background:#fff;font-weight:800}.ayb-note-foot .danger{color:#a10000}.ayb-note-foot .save{color:#14532d;background:#dcfce7}@media(max-width:700px){.ayb-note-row{grid-template-columns:1fr}.ayb-note-card{max-height:96vh}}`;document.head.appendChild(st);})();
+function aybSahaNotFotoKucult(file,cb){if(!file)return cb('');const fr=new FileReader();fr.onload=function(){const raw=String(fr.result||'');const img=new Image();img.onload=function(){try{const max=1280,r=Math.min(1,max/Math.max(img.width||1,img.height||1)),w=Math.max(1,Math.round(img.width*r)),h=Math.max(1,Math.round(img.height*r));const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);cb(c.toDataURL('image/jpeg',0.72));}catch(e){cb(raw);}};img.onerror=function(){cb(raw);};img.src=raw;};fr.onerror=function(){cb('');};fr.readAsDataURL(file);}
+function aybOpenSahaNotForm(latlng,existing){if(!project){toast('Önce proje aç.');return;}const old=document.getElementById('aybSahaNotModal');if(old)old.remove();const n=existing||{id:uid('SNOT'),lat:latlng.lat,lng:latlng.lng,tur:'Lambası Yanmıyor',aciklama:'',objeNo:'',foto:'',created:new Date().toISOString(),updated:new Date().toISOString()};let foto=String(n.foto||'');const modal=document.createElement('div');modal.id='aybSahaNotModal';modal.className='ayb-note-modal';modal.innerHTML=`<div class="ayb-note-card"><div class="ayb-note-head">📝 SAHA NOTU <button type="button" data-nclose>×</button></div><div class="ayb-note-body"><div class="ayb-note-row"><label>Not Türü</label><select id="aybNotTur"><option>Lambası Yanmıyor</option><option>Armatür Arızalı</option><option>Direk Sorunu</option><option>Hat / Kablo Sorunu</option><option>Saha Engeli</option><option>Diğer</option></select></div><div class="ayb-note-row"><label>Direk / Obje No</label><input id="aybNotObje" placeholder="Örn. D-020" value="${aybSahaNotEsc(n.objeNo||'')}"></div><div class="ayb-note-row"><label>Açıklama</label><textarea id="aybNotAcik" placeholder="Arızayı / saha durumunu ayrıntılı yaz...">${aybSahaNotEsc(n.aciklama||'')}</textarea></div><div class="ayb-note-row"><label>Fotoğraf</label><div><input id="aybNotFoto" type="file" accept="image/*" capture="environment"><div style="font-size:11px;color:#64748b;margin-top:4px">Tablette kamera doğrudan açılır. PC'de fotoğraf dosyası seçilir.</div><img id="aybNotFotoPrev" class="ayb-note-photo"></div></div><div class="ayb-note-row"><label>Konum</label><div>${Number(n.lat).toFixed(7)}, ${Number(n.lng).toFixed(7)}<br><small>${aybSahaNotTarih(n.created)}</small></div></div></div><div class="ayb-note-foot">${existing?'<button type="button" class="danger" id="aybNotSil">Sil</button>':''}<button type="button" data-nclose>İptal</button><button type="button" class="save" id="aybNotKaydet">Kaydet</button></div></div>`;document.body.appendChild(modal);const tur=modal.querySelector('#aybNotTur');tur.value=n.tur||'Lambası Yanmıyor';const prev=modal.querySelector('#aybNotFotoPrev');if(foto){prev.src=foto;prev.style.display='block';}modal.querySelectorAll('[data-nclose]').forEach(b=>b.onclick=()=>modal.remove());modal.querySelector('#aybNotFoto').onchange=function(){const f=this.files&&this.files[0];if(!f)return;aybSahaNotFotoKucult(f,function(x){foto=x||foto;if(foto){prev.src=foto;prev.style.display='block';}});};modal.querySelector('#aybNotKaydet').onclick=function(){n.tur=tur.value||'Diğer';n.objeNo=modal.querySelector('#aybNotObje').value.trim();n.aciklama=modal.querySelector('#aybNotAcik').value.trim();n.foto=foto;n.updated=new Date().toISOString();const arr=aybSahaNotes();if(!existing)arr.push(n);saveProject();renderAll();modal.remove();setTool(null);toast('Saha notu kaydedildi.');};const del=modal.querySelector('#aybNotSil');if(del)del.onclick=function(){if(!confirm('Bu saha notu silinsin mi?'))return;project.sahaNotes=aybSahaNotes().filter(x=>String(x.id)!==String(n.id));saveProject();renderAll();modal.remove();toast('Saha notu silindi.');};}
+window.aybOpenSahaNotForm=aybOpenSahaNotForm;
+function aybSahaNotPopupHtml(n){const img=n.foto?`<img src="${n.foto}" style="display:block;max-width:300px;max-height:220px;margin:7px auto;border-radius:5px">`:'';return `<div style="min-width:230px;font-family:Arial,sans-serif"><b style="font-size:15px">📝 ${aybSahaNotEsc(n.tur||'Saha Notu')}</b><br>${n.objeNo?'<b>Obje:</b> '+aybSahaNotEsc(n.objeNo)+'<br>':''}<div style="margin-top:5px">${aybSahaNotEsc(n.aciklama||'').replace(/\n/g,'<br>')}</div>${img}<small>${aybSahaNotTarih(n.updated||n.created)}</small><br><button onclick="aybSahaNotDuzenle('${n.id}')">Düzenle</button> <button onclick="aybSahaNotSil('${n.id}')">Sil</button></div>`;}
+function renderSahaNot(n){if(!n||!Number.isFinite(+n.lat)||!Number.isFinite(+n.lng)||!map)return;const icon=L.divIcon({className:'',html:aybSahaNotIconHtml(),iconSize:[34,34],iconAnchor:[17,17]});const m=L.marker([+n.lat,+n.lng],{icon,zIndexOffset:1100,riseOnHover:true}).addTo(map);otherLayers.push(m);m.bindPopup(aybSahaNotPopupHtml(n),{maxWidth:360});m.on('click',e=>{if(e&&e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent);m.openPopup();});m.on('dblclick',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent);L.DomEvent.stopPropagation(e.originalEvent);}aybOpenSahaNotForm(L.latLng(n.lat,n.lng),n);});m.on('contextmenu',e=>{if(e&&e.originalEvent){L.DomEvent.preventDefault(e.originalEvent);L.DomEvent.stopPropagation(e.originalEvent);}aybOpenSahaNotForm(L.latLng(n.lat,n.lng),n);});try{aybBindLongPress(m,function(){aybOpenSahaNotForm(L.latLng(n.lat,n.lng),n);});}catch(e){}}
+window.aybSahaNotDuzenle=function(id){const n=aybSahaNotById(id);if(n)aybOpenSahaNotForm(L.latLng(n.lat,n.lng),n);};window.aybSahaNotSil=function(id){const n=aybSahaNotById(id);if(!n)return;if(!confirm('Bu saha notu silinsin mi?'))return;project.sahaNotes=aybSahaNotes().filter(x=>String(x.id)!==String(id));saveProject();renderAll();toast('Saha notu silindi.');};
+function aybSahaNotPhotoExt(n){const m=String(n&&n.foto||'').match(/^data:image\/([^;]+);base64,/i);let e=m?m[1].toLowerCase():'jpg';if(e==='jpeg')e='jpg';if(!/^(jpg|png|webp)$/.test(e))e='jpg';return e;}function aybSahaNotPhotoPath(n){return 'files/not_'+String(n.id||'x').replace(/[^A-Za-z0-9_-]/g,'_')+'.'+aybSahaNotPhotoExt(n);}function aybDataUrlBytes(u){const m=String(u||'').match(/^data:[^;]+;base64,(.*)$/s);if(!m)return new Uint8Array(0);const b=atob(m[1]),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}function aybSahaNotKmzFiles(){const out=[{name:'icons/saha_not.png',bytes:aybDataUrlBytes('data:image/png;base64,'+AYB_SAHA_NOT_ICON_B64)}];aybSahaNotes().forEach(n=>{if(n&&n.foto){const b=aybDataUrlBytes(n.foto);if(b.length)out.push({name:aybSahaNotPhotoPath(n),bytes:b});}});return out;}
+function aybSahaNotKmlDescription(n,kmzMode){const foto=(n.foto?(kmzMode?aybSahaNotPhotoPath(n):n.foto):'');return `<![CDATA[<div style="font-family:Arial,sans-serif;font-size:13px;min-width:320px"><h2 style="margin:0 0 8px;color:#7a5d00">📝 ${aybSahaNotEsc(n.tur||'Saha Notu')}</h2>${n.objeNo?'<p><b>Direk / Obje:</b> '+aybSahaNotEsc(n.objeNo)+'</p>':''}<p><b>Açıklama:</b><br>${aybSahaNotEsc(n.aciklama||'').replace(/\n/g,'<br>')}</p>${foto?'<img src="'+foto+'" style="max-width:520px;max-height:380px;border:1px solid #999"><br>':''}<p><b>Tarih:</b> ${aybSahaNotEsc(aybSahaNotTarih(n.updated||n.created))}</p></div>]]>`;}function aybSahaNotKmlPlacemarks(kmzMode){return aybSahaNotes().map(n=>{if(!n||!Number.isFinite(+n.lat)||!Number.isFinite(+n.lng))return '';return `<Placemark><name>${aybXml('NOT - '+(n.tur||'Saha Notu'))}</name><styleUrl>#st_saha_not</styleUrl><description>${aybSahaNotKmlDescription(n,kmzMode)}</description><Point><coordinates>${Number(n.lng).toFixed(8)},${Number(n.lat).toFixed(8)},0</coordinates></Point></Placemark>`;}).join('\n');}
+/* === /V16.56 SAHA NOTU === */
 function aybObjectStyleId(o){
   if(o.type==='direk') return 'st_direk';
   if(o.type==='trafo') return 'st_trafo';
@@ -8191,8 +8214,9 @@ function aybLineStyleId(l){
   if(l.kind==='yeraltihat') return 'ln_yeralti';
   return 'ln_ag';
 }
-function exportKMLString(){
+function exportKMLString(kmzMode){
   if(!project) return '';
+  kmzMode=!!kmzMode;
   const styles = `
     <Style id="st_direk"><IconStyle><scale>0.72</scale><color>${aybKmlColor('#111827')}</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle><LabelStyle><scale>0.86</scale></LabelStyle></Style>
     <Style id="st_trafo"><IconStyle><scale>1.05</scale><color>${aybKmlColor('#e37a00')}</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/volcano.png</href></Icon></IconStyle><LabelStyle><scale>0.92</scale></LabelStyle></Style>
@@ -8201,6 +8225,7 @@ function exportKMLString(){
     <Style id="st_abone"><IconStyle><scale>0.75</scale><color>${aybKmlColor('#22c55e')}</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png</href></Icon></IconStyle><LabelStyle><scale>0.65</scale></LabelStyle></Style>
     <Style id="st_ekmuf"><IconStyle><scale>0.8</scale><color>${aybKmlColor('#06b6d4')}</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/target.png</href></Icon></IconStyle><LabelStyle><scale>0.65</scale></LabelStyle></Style>
     <Style id="st_other"><IconStyle><scale>0.75</scale><color>${aybKmlColor('#64748b')}</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/info-i.png</href></Icon></IconStyle><LabelStyle><scale>0.65</scale></LabelStyle></Style>
+    <Style id="st_saha_not"><IconStyle><scale>1.05</scale><Icon><href>${kmzMode?'icons/saha_not.png':'http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png'}</href></Icon></IconStyle><LabelStyle><scale>0.8</scale><color>ff00b7ff</color></LabelStyle></Style>
     <Style id="ln_ag"><LineStyle><color>${aybKmlColor('#1aa260')}</color><width>3</width></LineStyle></Style>
     <Style id="ln_abone"><LineStyle><color>${aybKmlColor('#f59e0b')}</color><width>3</width></LineStyle></Style>
     <Style id="ln_og"><LineStyle><color>${aybKmlColor('#dc2626')}</color><width>4</width></LineStyle></Style>
@@ -8211,6 +8236,7 @@ function exportKMLString(){
     <Style id="ln_free"><LineStyle><color>${aybKmlColor('#f97316')}</color><width>3</width></LineStyle></Style>
     <Style id="poly_area"><LineStyle><color>${aybKmlColor('#22c55e')}</color><width>2</width></LineStyle><PolyStyle><color>${aybKmlColor('#22c55e','35')}</color></PolyStyle></Style>
   `;
+  const notePlacemarks=aybSahaNotKmlPlacemarks(kmzMode);
   const objPlacemarks=(project.objects||[]).filter(o=>o&&String(o.type||'').toLocaleLowerCase('tr-TR')!=='not').map(o=>`
     <Placemark>
       <name>${aybXml(aybKmlObjectName(o))}</name>
@@ -8261,6 +8287,7 @@ function exportKMLString(){
   <name>${aybXml(project.name||'AYB Saha Projesi')}</name>
   <description>AYB Saha Harita Metraj dışa aktarımı. Objelere tıklayınca direk/travers/izolatör/hırdavat/poz listeleri görünür.</description>
   ${styles}
+  <Folder><name>Saha Notları</name>${notePlacemarks}</Folder>
   <Folder><name>Objeler</name>${objPlacemarks}</Folder>
   <Folder><name>Hatlar</name>${linePlacemarks}</Folder>
   <Folder><name>Kanallar</name>${channelPlacemarks}</Folder>
@@ -8284,31 +8311,15 @@ function aybZipDateTime(){
 }
 function aybU16(n){return [n&255,(n>>>8)&255]}
 function aybU32(n){return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]}
-function aybBuildKmz(kmlText){
-  const enc=new TextEncoder();
-  const nameBytes=enc.encode('doc.kml');
-  const data=enc.encode(kmlText);
-  const crc=aybCrc32(data);
-  const dt=aybZipDateTime();
-  const local=[
-    ...aybU32(0x04034b50), ...aybU16(20), ...aybU16(0), ...aybU16(0),
-    ...aybU16(dt.time), ...aybU16(dt.date), ...aybU32(crc), ...aybU32(data.length), ...aybU32(data.length),
-    ...aybU16(nameBytes.length), ...aybU16(0), ...nameBytes, ...data
-  ];
-  const centralOffset=local.length;
-  const central=[
-    ...aybU32(0x02014b50), ...aybU16(20), ...aybU16(20), ...aybU16(0), ...aybU16(0),
-    ...aybU16(dt.time), ...aybU16(dt.date), ...aybU32(crc), ...aybU32(data.length), ...aybU32(data.length),
-    ...aybU16(nameBytes.length), ...aybU16(0), ...aybU16(0), ...aybU16(0), ...aybU16(0), ...aybU32(0), ...aybU32(0), ...nameBytes
-  ];
-  const end=[
-    ...aybU32(0x06054b50), ...aybU16(0), ...aybU16(0), ...aybU16(1), ...aybU16(1),
-    ...aybU32(central.length), ...aybU32(centralOffset), ...aybU16(0)
-  ];
-  return new Blob([new Uint8Array(local), new Uint8Array(central), new Uint8Array(end)], {type:'application/vnd.google-earth.kmz'});
+function aybBuildKmz(kmlText,extraFiles){
+  const enc=new TextEncoder(),dt=aybZipDateTime();
+  const entries=[{name:'doc.kml',bytes:enc.encode(kmlText)}].concat(Array.isArray(extraFiles)?extraFiles:[]).filter(x=>x&&x.name&&x.bytes);
+  const localParts=[],centralParts=[]; let offset=0,centralSize=0;
+  entries.forEach(function(en){const nameBytes=enc.encode(en.name),data=(en.bytes instanceof Uint8Array)?en.bytes:new Uint8Array(en.bytes||[]),crc=aybCrc32(data);const lh=new Uint8Array([...aybU32(0x04034b50),...aybU16(20),...aybU16(0),...aybU16(0),...aybU16(dt.time),...aybU16(dt.date),...aybU32(crc),...aybU32(data.length),...aybU32(data.length),...aybU16(nameBytes.length),...aybU16(0)]);localParts.push(lh,nameBytes,data);const ch=new Uint8Array([...aybU32(0x02014b50),...aybU16(20),...aybU16(20),...aybU16(0),...aybU16(0),...aybU16(dt.time),...aybU16(dt.date),...aybU32(crc),...aybU32(data.length),...aybU32(data.length),...aybU16(nameBytes.length),...aybU16(0),...aybU16(0),...aybU16(0),...aybU16(0),...aybU32(0),...aybU32(offset)]);centralParts.push(ch,nameBytes);centralSize+=ch.length+nameBytes.length;offset+=lh.length+nameBytes.length+data.length;});
+  const end=new Uint8Array([...aybU32(0x06054b50),...aybU16(0),...aybU16(0),...aybU16(entries.length),...aybU16(entries.length),...aybU32(centralSize),...aybU32(offset),...aybU16(0)]);return new Blob([...localParts,...centralParts,end],{type:'application/vnd.google-earth.kmz'});
 }
-function exportKML(){if(!project){toast('Önce proje aç.');return;} const kml=exportKMLString(); aybDownloadFile(`${aybSafeFileName(project.name||'proje')}.kml`, kml, 'application/vnd.google-earth.kml+xml'); toast('KML dışa aktarıldı.');}
-function exportKMZ(){if(!project){toast('Önce proje aç.');return;} const kml=exportKMLString(); const kmz=aybBuildKmz(kml); aybDownloadFile(`${aybSafeFileName(project.name||'proje')}.kmz`, kmz, 'application/vnd.google-earth.kmz'); toast('KMZ dışa aktarıldı. Google Earth üzerinde açabilirsin.');}
+function exportKML(){if(!project){toast('Önce proje aç.');return;} const kml=exportKMLString(false); aybDownloadFile(`${aybSafeFileName(project.name||'proje')}.kml`, kml, 'application/vnd.google-earth.kml+xml'); toast('KML dışa aktarıldı.');}
+function exportKMZ(){if(!project){toast('Önce proje aç.');return;} const kml=exportKMLString(true); const kmz=aybBuildKmz(kml,aybSahaNotKmzFiles()); aybDownloadFile(`${aybSafeFileName(project.name||'proje')}.kmz`, kmz, 'application/vnd.google-earth.kmz'); toast('KMZ dışa aktarıldı. Google Earth üzerinde açabilirsin.');}
 
 
 function toQty(v, fallback=1){const n=parseFloat(String(v??'').replace(',','.')); return Number.isFinite(n)?n:fallback}
@@ -9249,6 +9260,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
       actionButton('Abone','⌁',()=>setToolSafe('abonehat')),
       actionButton('Yer Altı','⛏',()=>setToolSafe('yeraltihat')),
       actionButton('Kanal','▰',()=>setToolSafe('kanal')),
+      actionButton('NOT','📝',()=>setToolSafe('sahanot')),
       actionButton('Bölge','⬡',()=>{ if(window.autoDrawTrafoRegions) window.autoDrawTrafoRegions(); }),
       actionButton('GPS','📍',()=>clickId('btnMobileGps')||clickId('btnGpsTop'),'ayb-pro-btn good'),
       actionButton('Pafta','🖨',()=>{ if(window.openPrintPafta) window.openPrintPafta(); }),
@@ -9288,6 +9300,7 @@ window.addEventListener('load',bindAYBAutoNumberButtons);
         {label:'Bina / Alan',icon:'□',action:()=>setToolSafe('bina')},
         {label:'Trafo Bölgesi Çiz',icon:'⬡',action:()=>{ if(window.autoDrawTrafoRegions) window.autoDrawTrafoRegions(); }},
         {label:'Ok',icon:'➜',action:()=>setToolSafe('ok')},
+        {label:'Saha Notu / Fotoğraf',icon:'📝',action:()=>setToolSafe('sahanot')},
         'sep',
         {label:'İşlemi Bitir',icon:'✓',action:()=>clickId('btnFinish')}
       ])
