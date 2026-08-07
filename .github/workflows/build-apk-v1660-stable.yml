@@ -1,0 +1,77 @@
+name: APK Olustur (BY EDS Saha v16.60 Stable)
+
+on:
+  push:
+    branches: [ apk-v1660-stable ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Eski arayuz kalintilarini fiziksel temizle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1660_fullclean.py
+          node --check app/src/main/assets/ayb-tablet.js
+          ! grep -q 'aybV28MobileDock' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-v28-mobile' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-mode-field' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb_ui_mode_v1' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'AYB Saha Harita Metraj v16.40' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'BY_EDS_V1660_ONLY_CURRENT_UI' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="aybOfficeRibbon"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'data-tool="sahanot"' app/src/main/assets/AYB_Saha_Harita.html
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1660',s,count=1)
+          s=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.60"',s,count=1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1660' versionName='16.60'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          ! grep -q 'aybV28MobileDock' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-v28-mobile' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-mode-field' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'BY_EDS_V1660_ONLY_CURRENT_UI' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk | tee store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk.sha256
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.60-STABLE-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk
+            store/BY-EDS-SAHA-v16.60-STABLE-TABLET.apk.sha256
+          if-no-files-found: error
