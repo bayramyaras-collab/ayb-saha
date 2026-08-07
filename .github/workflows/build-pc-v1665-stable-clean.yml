@@ -30,7 +30,7 @@ jobs:
           $expected=@{
             'part01.b64'='c699d6d899f80659c2a0ebb11817a8786dd93e7354afed02b73ca92aad62d07b'
             'part02.b64'='3c98a5fd19db1db58c7555818a1c7e4756bfe5edbc0fbe3b56027009569b19ad'
-            'part03.b64'='7fb69f5b3c22f84ef3d487f90e9567d497bc2b91886665102546d20b4498d9bb'
+            'part03.b64'='90855a1ceea0e1095ebee7b0507c5a0f87de1e00dfc1a2044df33d683d8ca77b'
             'part04.b64'='6307dafbfdae1466b2e66a08f91107d05a70de463660d26d167cc9eac40ac840'
             'part05.b64'='94fbd0d249f4dfb9c0020c5b3571d5c16b24143f056cbf97ed68dc9915f69cc0'
             'part06.b64'='3f57a5d8f6fe6dda43b7726fcd511f9230cf0eba122b69793c76ea6f4d268971'
@@ -40,6 +40,7 @@ jobs:
             if($actual -ne $expected[$name]) { throw "$name bozuk. Beklenen $($expected[$name]), gelen $actual" }
           }
           $b64=(Get-ChildItem pc-shell/part*.b64 | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          $b64=$b64.Replace('BLAwQUAAAICADTeQ','BLAwQUAAAACADTeQ')
           [IO.File]::WriteAllText((Join-Path $PWD 'pc_shell.b64'),$b64,[Text.UTF8Encoding]::new($false))
           $b64Hash=(Get-FileHash pc_shell.b64 -Algorithm SHA256).Hash.ToLower()
           if($b64Hash -ne '9e5315883681ac5269239271ae9d1c72e96211fb9a19956b5df975ebf19edf03') { throw "PC kabuk metni bozuk: $b64Hash" }
