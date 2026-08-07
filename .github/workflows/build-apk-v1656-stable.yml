@@ -1,0 +1,44 @@
+name: APK Olustur (BY EDS Saha v16.56 Stable)
+
+on:
+  push:
+    branches: [ apk-v1656-stable ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: APK olustur
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/BY-EDS-SAHA-v16.56-STABLE-UNSIGNEDBASE.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging out/BY-EDS-SAHA-v16.56-STABLE-UNSIGNEDBASE.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.stable' versionCode='1656' versionName='16.56'" /tmp/badging.txt
+          unzip -t out/BY-EDS-SAHA-v16.56-STABLE-UNSIGNEDBASE.apk >/dev/null
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.56-STABLE-BASE
+          path: out/BY-EDS-SAHA-v16.56-STABLE-UNSIGNEDBASE.apk
+          if-no-files-found: error
