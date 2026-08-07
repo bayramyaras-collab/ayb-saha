@@ -1,0 +1,116 @@
+name: APK Olustur (BY EDS Saha v16.55)
+
+on:
+  push:
+    branches: [ apk-v1655 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bina ve cizgi kose duzenleme motorunu uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1655.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q 'function aybRenderFreeVertexHandles' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q "APP.editFreeGeometry" app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'Köşeleri Düzenle' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q "contextmenu',onCtx" app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'aybBindLongPress(poly,onCtx)' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'direkSymbol:150,trafoSymbol:260' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'otherSymbol:115' app/src/main/assets/AYB_Saha_Harita.html
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          p=Path('app/build.gradle')
+          s=p.read_text(encoding='utf-8')
+          s,n1=re.subn(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1655',s,count=1)
+          s,n2=re.subn(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.55"',s,count=1)
+          if n1!=1 or n2!=1: raise SystemExit('Surum satiri bulunamadi')
+          p.write_text(s,encoding='utf-8')
+          h=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          pos=h.index('function aybBindVertexHover')
+          a=h.rfind('<script',0,pos); a=h.index('>',a)+1
+          b=h.index('</script>',pos)
+          Path('/tmp/ayb_core.js').write_text(h[a:b],encoding='utf-8')
+          r=subprocess.run(['node','--check','/tmp/ayb_core.js'])
+          if r.returncode: raise SystemExit('Ana cizim motoru syntax hatasi')
+          print('Ana cizim motoru syntax OK')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.55-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.55-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.55-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.55-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1655' versionName='16.55'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.55-TABLET.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          grep -q 'function aybRenderFreeVertexHandles' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'Köşeleri Düzenle' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'direkSymbol:150,trafoSymbol:260' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          node --check /tmp/apkcheck/assets/ayb-tablet.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          h=Path('/tmp/apkcheck/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          pos=h.index('function aybBindVertexHover')
+          a=h.rfind('<script',0,pos); a=h.index('>',a)+1
+          b=h.index('</script>',pos)
+          Path('/tmp/apk_core.js').write_text(h[a:b],encoding='utf-8')
+          if subprocess.run(['node','--check','/tmp/apk_core.js']).returncode: raise SystemExit('APK ana motor syntax hatasi')
+          PY
+          sha256sum store/BY-EDS-SAHA-v16.55-TABLET.apk | tee store/BY-EDS-SAHA-v16.55-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.55\nBina/cokgen/cizgi kose surukleme + tablet uzun bas + PC sag tik sil\n' > store/BY-EDS-SAHA-v16.55-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.55-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.55-TABLET.apk
+            store/BY-EDS-SAHA-v16.55-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.55-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js store/BY-EDS-SAHA-v16.55-TABLET.apk store/BY-EDS-SAHA-v16.55-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.55-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.55 geometri duzenleme + APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
