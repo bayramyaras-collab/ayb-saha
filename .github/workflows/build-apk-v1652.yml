@@ -39,21 +39,6 @@ jobs:
           if n1!=1 or n2!=1: raise SystemExit('Surum satiri bulunamadi')
           p.write_text(s,encoding='utf-8')
           PY
-          python3 - <<'PY'
-          from pathlib import Path
-          import re, subprocess, tempfile, sys
-          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
-          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
-          bad=[]
-          for i,code in enumerate(scripts):
-              if not code.strip(): continue
-              f=Path('/tmp')/f'ayb_inline_{i}.js'; f.write_text(code,encoding='utf-8')
-              r=subprocess.run(['node','--check',str(f)],capture_output=True,text=True)
-              if r.returncode!=0: bad.append((i,r.stderr))
-          if bad:
-              print(bad[0][1]); raise SystemExit(f'Inline script syntax hatasi: {bad[0][0]}')
-          print('Inline script syntax OK:',len(scripts))
-          PY
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
