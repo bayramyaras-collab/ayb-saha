@@ -1,0 +1,27 @@
+name: Export Android signing tools
+
+on:
+  push:
+    branches: [ tool-apksigner ]
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install build tools
+        run: yes | sdkmanager "build-tools;34.0.0" >/dev/null || true
+      - name: Package signing tools
+        run: |
+          set -e
+          mkdir -p out/lib
+          cp "$ANDROID_HOME/build-tools/34.0.0/apksigner" out/
+          cp "$ANDROID_HOME/build-tools/34.0.0/zipalign" out/
+          cp "$ANDROID_HOME/build-tools/34.0.0/lib/apksigner.jar" out/lib/
+          chmod +x out/apksigner out/zipalign
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-signing-tools-34
+          path: out
+          if-no-files-found: error
