@@ -15,11 +15,13 @@ jobs:
       - name: Kodu al
         uses: actions/checkout@v4
 
-      - name: Kaynak dogrula
+      - name: Fiziksel yesil sekmeleri uygula ve kaynak dogrula
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'id="aybRibbonTabs"' app/src/main/assets/AYB_Saha_Harita.html
+          python3 tools/patch_v1661_static_tabs.py
+          grep -q '<div id="aybRibbonTabs"' app/src/main/assets/AYB_Saha_Harita.html
+          test "$(grep -o '<div id="aybRibbonTabs"' app/src/main/assets/AYB_Saha_Harita.html | wc -l)" -eq 1
           grep -q 'ayb_current_green_ui_v1661_js' app/src/main/assets/AYB_Saha_Harita.html
           grep -q 'data-tool="sahanot"' app/src/main/assets/AYB_Saha_Harita.html
           ! grep -q 'aybV28MobileDock' app/src/main/assets/AYB_Saha_Harita.html
@@ -48,7 +50,8 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk > /tmp/badging.txt
           grep -q "package: name='com.bayramyaras.aybsaha.current' versionCode='1661' versionName='16.61'" /tmp/badging.txt
           unzip -q store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk 'assets/AYB_Saha_Harita.html' -d /tmp/apkcheck
-          grep -q 'id="aybRibbonTabs"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q '<div id="aybRibbonTabs"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          test "$(grep -o '<div id="aybRibbonTabs"' /tmp/apkcheck/assets/AYB_Saha_Harita.html | wc -l)" -eq 1
           ! grep -q 'aybV28MobileDock' /tmp/apkcheck/assets/AYB_Saha_Harita.html
           sha256sum store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk | tee store/BY-EDS-SAHA-v16.61-GUNCEL-YENI.apk.sha256
 
