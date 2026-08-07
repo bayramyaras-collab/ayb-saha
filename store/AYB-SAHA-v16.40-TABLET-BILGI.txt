@@ -1,0 +1,8 @@
+AYB SAHA Tablet APK
+Surum: 16.40
+Paket: com.bayramyaras.aybsaha
+Min SDK: 23
+Target SDK: 34
+Olusturan commit: 4fc596d8a043f6c7032369985edef9fec0be51f8
+
+a4f99134af0bba3a1b0a50f0e76883558aad0fe3fdc09ceae900ac1846dc485f  store/AYB-SAHA-v16.40-TABLET.apk

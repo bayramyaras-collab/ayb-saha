@@ -1,6 +1,6 @@
 /* ============================================================
    BY EDŞ Saha Programı — Hafif Ekran Etiket Çakışma Önleyici
-   Sürüm: PERF-26.08-U4
+   Sürüm: PERF-25.07-AT-U4
 
    - Haritayı veya katmanları yeniden çizmez.
    - Sürekli tarama yapmaz; yalnız zoom/kaydırma bittikten veya çizilmiş
@@ -10,11 +10,80 @@
    ============================================================ */
 (function(){
   'use strict';
-  if(window.__aybScreenLabelV2)return;
-  window.__aybScreenLabelV2=true;
+  if(window.__aybScreenLabelV4)return;
+  window.__aybScreenLabelV4=true;
 
   var CELL=72, PAD=5, timer=0, idleId=0, busy=false, again=false, solveRuns=0;
   var observer=null, boundMap=null, adjusted=[];
+  var WATT_CLASSES=['ayb-watt-screen-up','ayb-watt-screen-right','ayb-watt-screen-left','ayb-watt-screen-down'];
+
+  /* Lamba gücü (51W/95W) etiketi, direk bilgisinin üstüne binmesin.
+     Lamba sembolü yerinden oynatılmaz; yalnız güç etiketi kendi sembolünün
+     çevresindeki dört güvenli konumdan en boş olana alınır. */
+  function injectWattStyle(){
+    if(document.getElementById('ayb-screen-watt-u4-style'))return;
+    var st=document.createElement('style');st.id='ayb-screen-watt-u4-style';
+    st.textContent=
+      '.ayb-lamp-watt.ayb-watt-screen-up{left:50%!important;right:auto!important;top:auto!important;bottom:100%!important;margin:0 0 2px 0!important;transform:translate(calc(-50% + var(--ayb-watt-sx,0px)),var(--ayb-watt-sy,0px))!important;}'+
+      '.ayb-lamp-watt.ayb-watt-screen-down{left:50%!important;right:auto!important;top:100%!important;bottom:auto!important;margin:2px 0 0 0!important;transform:translate(calc(-50% + var(--ayb-watt-sx,0px)),var(--ayb-watt-sy,0px))!important;}'+
+      '.ayb-lamp-watt.ayb-watt-screen-right{left:100%!important;right:auto!important;top:50%!important;bottom:auto!important;margin:0 0 0 2px!important;transform:translate(var(--ayb-watt-sx,0px),calc(-50% + var(--ayb-watt-sy,0px)))!important;}'+
+      '.ayb-lamp-watt.ayb-watt-screen-left{left:auto!important;right:100%!important;top:50%!important;bottom:auto!important;margin:0 2px 0 0!important;transform:translate(var(--ayb-watt-sx,0px),calc(-50% + var(--ayb-watt-sy,0px)))!important;}';
+    (document.head||document.documentElement).appendChild(st);
+  }
+  function wattSet(el,pos,sx,sy){
+    for(var i=0;i<WATT_CLASSES.length;i++)el.classList.remove(WATT_CLASSES[i]);
+    el.classList.add('ayb-watt-screen-'+pos);
+    el.style.setProperty('--ayb-watt-sx',(sx||0)+'px');
+    el.style.setProperty('--ayb-watt-sy',(sy||0)+'px');
+  }
+  function overlapList(r,list){var t=0;for(var i=0;i<list.length;i++)t+=overlap(r,list[i]);return t}
+  function uniquePush(a,v){if(a.indexOf(v)<0)a.push(v)}
+  function placeWattLabels(v){
+    injectWattStyle();
+    var m=M();if(!m||!m.getContainer)return 0;
+    var root=null;try{root=m.getPanes&&m.getPanes().markerPane}catch(e){}if(!root)root=m.getContainer();
+    var obstacles=[],placedWatts=[],changed=0;
+    try{
+      var obs=root.querySelectorAll('.symbol .sym-label,.line-label-wrap,.ayb-line-label,.line-region-wrap,.ayb-region-label-svg,.ayb-print-frame-label');
+      for(var oi=0;oi<obs.length;oi++){var or=rect(obs[oi]);if(or&&visible(or,v))obstacles.push(expanded(or,PAD));}
+    }catch(e){}
+    var watts=[];try{watts=root.querySelectorAll('.ayb-lamp-watt')}catch(e){}
+    for(var wi=0;wi<watts.length;wi++){
+      var w=watts[wi];
+      for(var ci=0;ci<WATT_CLASSES.length;ci++)w.classList.remove(WATT_CLASSES[ci]);
+      w.style.removeProperty('--ayb-watt-sx');w.style.removeProperty('--ayb-watt-sy');
+      var wr0=rect(w);if(!wr0||!visible(wr0,v))continue;
+      var lamp=w.closest?w.closest('.ayb-pole-lamp'):w.parentElement;
+      var marker=w.closest?w.closest('.leaflet-marker-icon'):null;
+      var ownLabel=marker&&marker.querySelector?marker.querySelector('.symbol .sym-label'):null;
+      var lr=rect(lamp),orr=rect(ownLabel),order=[];
+      if(lr&&orr){
+        var lx=(lr.left+lr.right)/2,ly=(lr.top+lr.bottom)/2,ox=(orr.left+orr.right)/2,oy=(orr.top+orr.bottom)/2;
+        /* Direk etiketi çoğunlukla aşağıdadır: alt yarıdaki lambalarda sağ/sol
+           önce denenir; üstteki lambada güç yazısı yukarı alınır. */
+        if(ly<oy-8)uniquePush(order,'up');
+        if(lx<ox-3)uniquePush(order,'left');else if(lx>ox+3)uniquePush(order,'right');
+        if(ly>=oy-8){uniquePush(order,lx<=ox?'left':'right');uniquePush(order,lx<=ox?'right':'left');}
+      }
+      if(w.classList.contains('up'))uniquePush(order,'up');
+      if(w.classList.contains('down'))uniquePush(order,'down');
+      uniquePush(order,'right');uniquePush(order,'left');uniquePush(order,'up');uniquePush(order,'down');
+      var shifts=[[0,0],[0,-10],[0,10],[-10,0],[10,0],[0,-18],[0,18],[-18,0],[18,0]],best=null;
+      for(var pi=0;pi<order.length;pi++){
+        for(var si=0;si<shifts.length;si++){
+          wattSet(w,order[pi],shifts[si][0],shifts[si][1]);
+          var rr=rect(w);if(!rr)continue;
+          var er=expanded(rr,PAD),ov=overlapList(er,obstacles)+overlapList(er,placedWatts),out=viewportPenalty(rr,v);
+          var score=ov*100000+out*20+pi*5+Math.hypot(shifts[si][0],shifts[si][1]);
+          if(!best||score<best.score)best={pos:order[pi],sx:shifts[si][0],sy:shifts[si][1],r:rr,er:er,ov:ov,out:out,score:score};
+          if(ov===0&&out===0)break;
+        }
+        if(best&&best.ov===0&&best.out===0)break;
+      }
+      if(best){wattSet(w,best.pos,best.sx,best.sy);placedWatts.push(best.er);if(best.pos!==(w.classList.contains('up')?'up':'down')||best.sx||best.sy)changed++;}
+    }
+    return changed;
+  }
   var objectOffsets=(function(){
     var out=[[0,0]], rings=[16,30,46,64,84,106], dirs=[[0,-1],[1,0],[0,1],[-1,0],[1,-1],[1,1],[-1,1],[-1,-1]];
     rings.forEach(function(r){dirs.forEach(function(d){out.push([d[0]*r,d[1]*r])})});
@@ -154,8 +223,9 @@
       apply(it,best.dx,best.dy,false);if(best.dx||best.dy)moved++;
       addGrid(grid,placed,best.rr);
     }
+    var wattAdjusted=placeWattLabels(v);
     var ended=performance.now?performance.now():Date.now();
-    window.aybScreenLabelStats={total:measured.length,moved:moved,hidden:hidden,ms:Math.round((ended-started)*10)/10,at:Date.now(),runs:++solveRuns};
+    window.aybScreenLabelStats={total:measured.length,moved:moved,hidden:hidden,wattAdjusted:wattAdjusted,ms:Math.round((ended-started)*10)/10,at:Date.now(),runs:++solveRuns};
   }
   function run(){
     timer=0;idleId=0;if(busy){again=true;return}busy=true;
@@ -186,7 +256,7 @@
     }catch(e){}
     schedule(80);return true;
   }
-  function boot(){if(bind())return;setTimeout(bind,400);setTimeout(bind,1200)}
+  function boot(){injectWattStyle();if(bind())return;setTimeout(bind,400);setTimeout(bind,1200)}
   window.addEventListener('afterprint',function(){schedule(100)});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();

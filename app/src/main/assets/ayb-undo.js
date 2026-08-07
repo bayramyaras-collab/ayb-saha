@@ -1,6 +1,6 @@
 /* ============================================================
    BY EDŞ Saha Programı — Kalıcı Silinenler / Geri Al
-   Sürüm: PERF-26.08-U4
+   Sürüm: PERF-25.07-AT-U2
    Hazırlayan: Bayram YARAŞ
 
    Performans kuralı:
@@ -91,9 +91,16 @@
       title:spec.title||'Silinen kayıt', payload:payload
     };
   }
+  function isNoteRecord(rec){
+    try{
+      var pl=(rec&&rec.payload)||{};
+      return !!(rec&&(rec.kind==='sticky'||rec.kind==='note'||Array.isArray(pl.aybNotes)||Array.isArray(pl.stickyNotes)));
+    }catch(e){ return false; }
+  }
   function trimHistory(list){
     var projectsSeen=0;
     return (list||[]).filter(function(r,i){
+      if(isNoteRecord(r)) return false;
       if(i>=MAX_RECORDS)return false;
       if(r&&r.kind==='project'&&++projectsSeen>MAX_PROJECTS)return false;
       return true;
@@ -115,7 +122,7 @@
 
   function payloadCount(pl){
     var n=0; pl=pl||{};
-    ['objects','lines','freeLines','areas','channels','aybNotes','rasters','cadLayers','aybImportLayers','importFeatures','stickyNotes','photos','kmzPhotos'].forEach(function(k){ if(Array.isArray(pl[k])) n+=pl[k].length; });
+    ['objects','lines','freeLines','areas','channels','rasters','cadLayers','aybImportLayers','importFeatures','photos','kmzPhotos'].forEach(function(k){ if(Array.isArray(pl[k])) n+=pl[k].length; });
     if(pl.project) n++;
     return n;
   }
@@ -136,7 +143,6 @@
   function redraw(){
     try{ if(typeof window.aybIdxBozul==='function') window.aybIdxBozul(); }catch(e){}
     try{ if(typeof window.saveProject==='function') window.saveProject(); else if(typeof window.saveProjects==='function') window.saveProjects(); }catch(e){}
-    try{ if(typeof window.aybNotesRebuild==='function') window.aybNotesRebuild(); }catch(e){}
     try{ if(typeof window.aybImportLayersRedraw==='function') window.aybImportLayersRedraw(); else if(typeof window.aybForceFullRender==='function') window.aybForceFullRender(); else if(typeof window.renderAll==='function') window.renderAll(); }catch(e){}
     try{ if(typeof window.aybArtikTemizle==='function') window.aybArtikTemizle(); }catch(e){}
     try{ if(typeof window.updateSummary==='function') window.updateSummary(); }catch(e){}
@@ -157,7 +163,6 @@
       n+=addMissing(p,'freeLines',pl.freeLines);
       n+=addMissing(p,'areas',pl.areas);
       n+=addMissing(p,'channels',pl.channels);
-      n+=addMissing(p,'aybNotes',pl.aybNotes);
       n+=addMissing(p,'rasters',pl.rasters);
       n+=addMissing(p,'cadLayers',pl.cadLayers);
       n+=addMissing(p,'aybImportLayers',pl.aybImportLayers);
@@ -175,14 +180,6 @@
     }finally{ window.__aybUndoRestoring=false; }
     if(!n&&payloadCount(pl)){ notify('Kayıt geri getirilemedi; silme geçmişi korundu.'); return Promise.resolve(false); }
     return forget(rec.id).then(function(){ notify((n||payloadCount(pl))+' kayıt geri alındı.'); return true; });
-  }
-  function restoreSticky(rec){
-    try{
-      var key='ayb_stickynotes_v1', arr=JSON.parse(localStorage.getItem(key)||'[]');
-      var n=addMissing({a:arr},'a',(rec.payload&&rec.payload.stickyNotes)||[]);
-      localStorage.setItem(key,JSON.stringify(arr));
-      return forget(rec.id).then(function(){ notify((n||1)+' sabit not geri alındı.'); setTimeout(function(){location.reload()},350); return true; });
-    }catch(e){ notify('Sabit not geri alınamadı.'); return Promise.resolve(false); }
   }
   function restorePhotoItem(item){
     return new Promise(function(resolve){
@@ -274,13 +271,12 @@
     else rec=history[0]||null;
     if(!rec){ notify('Geri alınacak silme kaydı yok.'); return Promise.resolve(false); }
     if(rec.kind==='project') return restoreProject(rec);
-    if(rec.kind==='sticky') return restoreSticky(rec);
     if(rec.kind==='photo') return restorePhotos(rec);
     return restoreItems(rec);
   }
   window.aybUndoLast=function(){return undo()};
   window.aybUndoById=undo;
-  window.aybUndoKaydet=function(spec){ var r=makeRecord(spec); if(!r) return null; remember(r,true); return r; };
+  window.aybUndoKaydet=function(spec){ if(isNoteRecord(spec)) return null; var r=makeRecord(spec); if(!r) return null; remember(r,true); return r; };
 
   /* Proje silme sayfayı yenilediği için kalıcı kayıt tamamlanmadan silmeye izin verilmez. */
   window.aybUndoProjectBeforeDelete=function(summary,id){
@@ -416,7 +412,7 @@
 
   function boot(){
     ensureUI(); wrapApp();
-    dbAll().then(function(all){ history=trimHistory((all||[]).sort(function(a,b){return (b.ts||0)-(a.ts||0)})); refreshUI();
+    dbAll().then(function(all){ (all||[]).filter(isNoteRecord).forEach(function(r){ if(r&&r.id) dbDelete(r.id); }); history=trimHistory((all||[]).sort(function(a,b){return (b.ts||0)-(a.ts||0)})); refreshUI();
       if(history[0]&&history[0].kind==='project'&&Date.now()-history[0].ts<180000) showUndoToast(history[0]);
     });
     var n=0, iv=setInterval(function(){wrapApp();ensureButton();if(++n>40)clearInterval(iv)},500);

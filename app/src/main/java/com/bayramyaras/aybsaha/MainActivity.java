@@ -65,6 +65,9 @@ public class MainActivity extends Activity {
 
         web = new WebView(this);
         setContentView(web);
+        web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
+        web.setVerticalScrollBarEnabled(false);
+        web.setHorizontalScrollBarEnabled(false);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -73,10 +76,12 @@ public class MainActivity extends Activity {
         s.setGeolocationEnabled(true);
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
-        s.setBuiltInZoomControls(true);
+        s.setBuiltInZoomControls(false);
+        s.setSupportZoom(false);
         s.setDisplayZoomControls(false);
         s.setUseWideViewPort(true);
-        s.setLoadWithOverviewMode(true);
+        s.setLoadWithOverviewMode(false);
+        s.setTextZoom(100);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setMediaPlaybackRequiresUserGesture(false);
         if (Build.VERSION.SDK_INT >= 21)
