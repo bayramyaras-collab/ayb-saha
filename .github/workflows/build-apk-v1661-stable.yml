@@ -1,0 +1,90 @@
+name: APK Olustur (BY EDS Saha v16.61 Stable)
+
+on:
+  push:
+    branches: [ apk-v1661-stable2 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guncel yesil arayuzu uygula ve eski kalintilari fiziksel temizle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1661_green_ui.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q 'id="aybRibbonTabs"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'ayb_current_green_ui_v1661_js' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'data-tool="sahanot"' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'aybV28MobileDock' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-v28-mobile' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'AYB Saha Harita Metraj v16.40' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q "applicationId \"com.bayramyaras.aybsaha.stable\"" app/build.gradle
+          grep -q 'versionCode 1661' app/build.gradle
+          grep -q 'versionName "16.61"' app/build.gradle
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.stable' versionCode='1661' versionName='16.61'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          grep -q 'id="aybRibbonTabs"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'ayb_current_green_ui_v1661_js' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'data-tool="sahanot"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'aybV28MobileDock' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'ayb-v28-mobile' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk | tee store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk.sha256
+          printf 'BY EDS SAHA STABLE Tablet APK\nSurum: 16.61\nYesil sekmeli guncel arayuz - v16.58 temiz taban\n' > store/BY-EDS-SAHA-v16.61-STABLE-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.61-STABLE-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk
+            store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.61-STABLE-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis kaynagi dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/res/values/strings.xml app/src/main/assets/AYB_Saha_Harita.html store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk store/BY-EDS-SAHA-v16.61-STABLE-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.61-STABLE-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.61 guncel yesil arayuz [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
