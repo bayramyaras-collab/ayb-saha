@@ -1,0 +1,165 @@
+name: PC Olustur (BY EDS Saha v16.65 Stabil Temiz)
+
+on:
+  push:
+    branches: [ pc-v1665-stable-clean ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: "true"
+    steps:
+      - name: Temiz kaynagi al
+        uses: actions/checkout@v4
+
+      - name: Node 20 kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: PC kabugunu ve temiz uygulama dosyalarini hazirla
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $expected=@{
+            'part01.b64'='c699d6d899f80659c2a0ebb11817a8786dd93e7354afed02b73ca92aad62d07b'
+            'part02.b64'='3c98a5fd19db1db58c7555818a1c7e4756bfe5edbc0fbe3b56027009569b19ad'
+            'part03.b64'='7fb69f5b3c22f84ef3d487f90e9567d497bc2b91886665102546d20b4498d9bb'
+            'part04.b64'='6307dafbfdae1466b2e66a08f91107d05a70de463660d26d167cc9eac40ac840'
+            'part05.b64'='94fbd0d249f4dfb9c0020c5b3571d5c16b24143f056cbf97ed68dc9915f69cc0'
+            'part06.b64'='3f57a5d8f6fe6dda43b7726fcd511f9230cf0eba122b69793c76ea6f4d268971'
+          }
+          foreach($name in ($expected.Keys | Sort-Object)) {
+            $actual=(Get-FileHash (Join-Path 'pc-shell' $name) -Algorithm SHA256).Hash.ToLower()
+            if($actual -ne $expected[$name]) { throw "$name bozuk. Beklenen $($expected[$name]), gelen $actual" }
+          }
+          $b64=(Get-ChildItem pc-shell/part*.b64 | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllText((Join-Path $PWD 'pc_shell.b64'),$b64,[Text.UTF8Encoding]::new($false))
+          $b64Hash=(Get-FileHash pc_shell.b64 -Algorithm SHA256).Hash.ToLower()
+          if($b64Hash -ne '9e5315883681ac5269239271ae9d1c72e96211fb9a19956b5df975ebf19edf03') { throw "PC kabuk metni bozuk: $b64Hash" }
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'pc_shell.zip'),[Convert]::FromBase64String($b64))
+          $zipHash=(Get-FileHash pc_shell.zip -Algorithm SHA256).Hash.ToLower()
+          if($zipHash -ne '9b60fff17d47f75977d1b9c0b11ebcccc8b2fb380811cad0ba65b602a903b361') { throw "PC kabuk ZIP bozuk: $zipHash" }
+
+          New-Item -ItemType Directory -Force pcbuild | Out-Null
+          Expand-Archive pc_shell.zip pcbuild -Force
+          New-Item -ItemType Directory -Force pcbuild/app | Out-Null
+          Copy-Item app/src/main/assets/* pcbuild/app -Recurse -Force
+
+          $main=Get-Content pcbuild/main.js -Raw
+          $main=$main.Replace("path.join(__dirname, 'BY_EDS.ico')", "path.join(__dirname, 'app', 'icons', 'icon.ico')")
+          Set-Content pcbuild/main.js $main -Encoding UTF8
+
+          $p=Get-Content pcbuild/package.json -Raw | ConvertFrom-Json
+          $p.name='by-eds-saha'
+          $p.version='16.65.0'
+          $p.productName='BY EDŞ SAHA'
+          $p.build.appId='com.byeds.saha.pc.cleanstable'
+          $p.build.productName='BY EDŞ SAHA'
+          $p.build.win.icon='app/icons/icon.ico'
+          $p.build.win.target='nsis'
+          $p.build.win.artifactName='BY_EDS_Saha_Setup_${version}.${ext}'
+          $p.build.nsis.oneClick=$false
+          $p.build.nsis.allowToChangeInstallationDirectory=$true
+          $p.build.nsis.createDesktopShortcut=$true
+          $p.build.nsis.shortcutName='BY EDŞ SAHA'
+          $p | ConvertTo-Json -Depth 20 | Set-Content pcbuild/package.json -Encoding UTF8
+
+          @'
+          BY EDŞ SAHA v16.65 — STABİL TEMİZ PC
+
+          TABAN
+          - v16.58 stabil proje/NOT/KMZ motoru
+          - v16.57 çalışan yeşil sekmeli arayüz
+
+          FİZİKSEL OLARAK KALDIRILANLAR
+          - AYB v28 mobil/tablet dock ve dışa aktar paneli
+          - Service Worker/PWA önbellek betiği
+          - Çift ayb-tablet.js yükleme
+          - Süresiz MutationObserver ve 700 ms tarama
+          - Eski görünen AYB Saha Harita Metraj başlığı
+
+          KORUNANLAR
+          - Proje oluştur/aç/kaydet
+          - DXF/KMZ/Excel/rapor motorları
+          - Fotoğraflı NOT, Not Bul ve nota git
+          - Yol Ölç, bina/çizgi köşe düzenleme ve silme
+          - ITRF96/TM3, semboller ve etiket ayarları
+
+          Hazırlayan: Bayram YARAŞ
+          '@ | ForEach-Object { $_ -replace '^          ','' } | Set-Content pcbuild/TEMIZLIK_RAPORU_v16.65.txt -Encoding UTF8
+
+          $html=Get-Content pcbuild/app/AYB_Saha_Harita.html -Raw
+          foreach($x in @('aybV28MobileDock','ayb_v28_same_program_mobile','serviceWorker.register','AYB Saha Harita Metraj')) {
+            if($html.Contains($x)) { throw "Eski kalinti bulundu: $x" }
+          }
+          if(-not $html.Contains('data-tool="sahanot"')) { throw 'NOT modulu yok' }
+          if(-not $html.Contains('aybSahaNotKmzFiles')) { throw 'KMZ foto not motoru yok' }
+          if(-not $html.Contains('BY EDŞ Saha Programı PERF-25.07-AT-U2')) { throw 'Guncel baslik yok' }
+          node --check pcbuild/main.js
+          node --check pcbuild/preload.js
+          node --check pcbuild/app/ayb-pc.js
+          node --check pcbuild/app/ayb-tablet.js
+
+      - name: Electron paketlerini kur
+        shell: pwsh
+        run: |
+          cd pcbuild
+          npm install --registry=https://registry.npmjs.org --no-audit --no-fund
+
+      - name: Setup EXE olustur
+        shell: pwsh
+        run: |
+          cd pcbuild
+          npx electron-builder --win nsis --x64 --publish never
+
+      - name: Portable EXE olustur
+        shell: pwsh
+        run: |
+          cd pcbuild
+          $p=Get-Content package.json -Raw | ConvertFrom-Json
+          $p.build.win.target='portable'
+          $p.build.win.artifactName='BY_EDS_Saha_Portable_${version}.${ext}'
+          $p | ConvertTo-Json -Depth 20 | Set-Content package.json -Encoding UTF8
+          npx electron-builder --win portable --x64 --publish never
+
+      - name: Dosyalari dogrula ve SHA256 olustur
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Get-Item pcbuild/dist/BY_EDS_Saha_Setup_16.65.0.exe
+          $portable=Get-Item pcbuild/dist/BY_EDS_Saha_Portable_16.65.0.exe
+          if($setup.Length -lt 50000000) { throw 'Setup EXE beklenenden kucuk' }
+          if($portable.Length -lt 50000000) { throw 'Portable EXE beklenenden kucuk' }
+          $lines=@()
+          foreach($f in @($setup,$portable)) {
+            $h=(Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
+            $lines += "$h  $($f.Name)"
+          }
+          $lines | Set-Content pcbuild/dist/BY_EDS_SAHA_PC_v16.65_SHA256.txt -Encoding ASCII
+          Copy-Item pcbuild/TEMIZLIK_RAPORU_v16.65.txt pcbuild/dist/
+          New-Item -ItemType Directory -Force pc-source | Out-Null
+          Copy-Item pcbuild/main.js,pcbuild/preload.js,pcbuild/package.json,pcbuild/TEMIZLIK_RAPORU_v16.65.txt pc-source/
+          Copy-Item pcbuild/app pc-source/app -Recurse
+          Compress-Archive pc-source/* pcbuild/dist/BY_EDS_SAHA_PC_v16.65_STABIL_TEMIZ_KAYNAK.zip -Force
+          $srcHash=(Get-FileHash pcbuild/dist/BY_EDS_SAHA_PC_v16.65_STABIL_TEMIZ_KAYNAK.zip -Algorithm SHA256).Hash.ToLower()
+          Add-Content pcbuild/dist/BY_EDS_SAHA_PC_v16.65_SHA256.txt "$srcHash  BY_EDS_SAHA_PC_v16.65_STABIL_TEMIZ_KAYNAK.zip" -Encoding ASCII
+
+      - name: PC programlarini yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-PC-v16.65-STABIL-TEMIZ
+          path: |
+            pcbuild/dist/BY_EDS_Saha_Setup_16.65.0.exe
+            pcbuild/dist/BY_EDS_Saha_Portable_16.65.0.exe
+            pcbuild/dist/BY_EDS_SAHA_PC_v16.65_STABIL_TEMIZ_KAYNAK.zip
+            pcbuild/dist/BY_EDS_SAHA_PC_v16.65_SHA256.txt
+            pcbuild/dist/TEMIZLIK_RAPORU_v16.65.txt
+          if-no-files-found: error
+          compression-level: 0
