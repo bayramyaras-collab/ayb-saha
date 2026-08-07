@@ -1,0 +1,105 @@
+name: APK Olustur (BY EDS Saha v16.58 Stable)
+
+on:
+  push:
+    branches: [ apk-v1658-stable ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Not kalicilik Bul ve cizim sirasi duzeltmesini uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1658.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q 'ayb_label_size_settings_v3' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'direkSymbol:150,trafoSymbol:260' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'data-saha-note-id' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'aybSahaNotGit' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'data-t="sahanot"' app/src/main/assets/ayb-tablet.js
+          grep -q 'v16.58: Çizim Araçları sırası sabit' app/src/main/assets/ayb-tablet.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          p=Path('app/src/main/assets/AYB_Saha_Harita.html')
+          s=p.read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          found=False
+          for i,code in enumerate(scripts):
+              if 'FOTOĞRAFLI SAHA NOTU' in code:
+                  f=Path('/tmp')/f'note_main_{i}.js'; f.write_text(code,encoding='utf-8')
+                  subprocess.run(['node','--check',str(f)],check=True)
+                  found=True
+          if not found: raise SystemExit('Saha notu ana scripti bulunamadı')
+          g=Path('app/build.gradle')
+          x=g.read_text(encoding='utf-8')
+          x=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1658',x,count=1)
+          x=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.58"',x,count=1)
+          g.write_text(x,encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.stable' versionCode='1658' versionName='16.58'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          grep -q 'data-saha-note-id' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'aybSahaNotGit' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'data-t="sahanot"' /tmp/apkcheck/assets/ayb-tablet.js
+          node --check /tmp/apkcheck/assets/ayb-tablet.js
+          sha256sum store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk | tee store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk.sha256
+          printf 'BY EDS SAHA STABLE Tablet APK\nSurum: 16.58\nNot kalici + Bul icinde Not + varsayilan ayarlar + cizim araclari sirasi\n' > store/BY-EDS-SAHA-v16.58-STABLE-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.58-STABLE-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk
+            store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.58-STABLE-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis kaynagi dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk store/BY-EDS-SAHA-v16.58-STABLE-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.58-STABLE-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.58 not kalici bul siralama [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
