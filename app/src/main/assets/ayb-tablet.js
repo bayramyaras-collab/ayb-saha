@@ -848,7 +848,7 @@
     <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
       <name>${aybXml(project.name||'AYB Saha Projesi')}</name>
-      <description>AYB Saha Harita Metraj dışa aktarımı. Objelere tıklayınca direk/travers/izolatör/hırdavat/poz listeleri görünür.</description>
+      <description>BY EDŞ Saha Programı dışa aktarımı. Objelere tıklayınca direk/travers/izolatör/hırdavat/poz listeleri görünür.</description>
       ${styles}
       <Folder><name>Objeler</name>${objPlacemarks}</Folder>
       <Folder><name>Hatlar</name>${linePlacemarks}</Folder>

@@ -940,7 +940,7 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
 <!-- ===== AYB SEMBOL KUTUPHANESI v2.0 (gomulu) ===== -->
 <script>
 /* ============================================================
-   AYB SAHA HARITA METRAJ - SEMBOL KÜTÜPHANESİ
+   BY EDS SAHA PROGRAMI - SEMBOL KÜTÜPHANESİ
    Dosya     : symbols.js
    Versiyon  : 2.0  (AG-OG Şebeke Planları Standart İşaretleri)
    Uyumluluk : index.html v16  (ITRF96 TM3)
@@ -2148,10 +2148,26 @@ body.kf-mobile .coord-overlay, body.kf-mobile #coords{
 #statusReady{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 </style>
 
+
+<!-- AYB_V1659_LEGACY_CLEAN -->
+<script>
+(function(){
+  try{ document.title='BY EDŞ Saha Programı'; }catch(e){}
+  function temiz(){
+    try{
+      var t=document.querySelector('.title');
+      if(t && /AYB Saha Harita Metraj|v16\.40/i.test(t.textContent||'')) t.textContent='BY EDŞ Saha Programı PERF-25.07-AT-U2';
+      document.querySelectorAll('[data-ayb-legacy-ui]').forEach(function(x){x.remove();});
+      try{localStorage.setItem('ayb_ui_mode_v1','office');}catch(e){}
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',temiz,{once:true}); else temiz();
+})();
+</script>
 </head>
 <body class="ayb-mode-office">
 <div class="app">
-  <div class="titlebar"><div class="logo"></div><div class="title">AYB Saha Harita Metraj v16.40</div><span class="small-muted" id="activeProjectName">Proje yok</span><div class="win-controls"><span id="aybWinMin" title="Küçült" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kucult')">—</span><span id="aybWinMax" title="Büyüt / Eski Boyut" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('buyut')">□</span><span id="aybWinClose" title="Kapat" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kapat')">×</span></div></div>
+  <div class="titlebar"><div class="logo"></div><div class="title">BY EDŞ Saha Programı PERF-25.07-AT-U2</div><span class="small-muted" id="activeProjectName">Proje yok</span><div class="win-controls"><span id="aybWinMin" title="Küçült" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kucult')">—</span><span id="aybWinMax" title="Büyüt / Eski Boyut" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('buyut')">□</span><span id="aybWinClose" title="Kapat" onclick="window.aybPC&&window.aybPC.pencere&&window.aybPC.pencere('kapat')">×</span></div></div>
 <style>/* İSTEK (Bayram YARAŞ): OS başlık çubuğu kalktı — BY EDŞ barı pencereyi taşır, sağdaki düğmeler çalışır */
 .titlebar{-webkit-app-region:drag;user-select:none}
 .titlebar .win-controls,.titlebar .win-controls span,.titlebar img,.titlebar button,.titlebar select{-webkit-app-region:no-drag}
@@ -2516,7 +2532,7 @@ t.opts["CalcIter"]=q;break;case 13:t.opts["CalcMode"]=q;break;case 14:t.opts["Ca
   function payload(){
     const p=window.project || {};
     return {
-      app:'AYB Saha Harita Metraj',
+      app:'BY EDŞ Saha Programı',
       format:'AYB_SAHA_PROJE_JSON',
       version:'v28-mobile-apk',
       savedAt:new Date().toISOString(),
@@ -8286,7 +8302,7 @@ function exportKMLString(kmzMode){
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
   <name>${aybXml(project.name||'AYB Saha Projesi')}</name>
-  <description>AYB Saha Harita Metraj dışa aktarımı. Objelere tıklayınca direk/travers/izolatör/hırdavat/poz listeleri görünür.</description>
+  <description>BY EDŞ Saha Programı dışa aktarımı. Objelere tıklayınca direk/travers/izolatör/hırdavat/poz listeleri görünür.</description>
   ${styles}
   <Folder><name>Saha Notları</name>${notePlacemarks}</Folder>
   <Folder><name>Objeler</name>${objPlacemarks}</Folder>
@@ -11728,7 +11744,7 @@ body.ayb-mode-office #btnSave.ayb-saved-flash{
   }
   async function writeProjectReadme(dir, name){
     const txt =
-`AYB SAHA HARİTA METRAJ PROJE KLASÖRÜ
+`BY EDŞ SAHA PROGRAMI PROJE KLASÖRÜ
 Hazırlayan Bayram YARAŞ
 0530 630 05 40
 
@@ -11817,7 +11833,7 @@ Chrome/Edge güvenlik izni isterse bu proje klasörüne yazma izni ver.
   function projectPayload(){
     const p=window.project || {};
     return {
-      app:"AYB Saha Harita Metraj",
+      app:"BY EDŞ Saha Programı",
       preparedBy:"Bayram YARAŞ",
       phone:"0530 630 05 40",
       savedAt:new Date().toISOString(),
@@ -12799,7 +12815,7 @@ body.ayb-field-panel-open .ayb-fielddata-btn,.ayb-fielddata-btn.active{backgroun
   async function ensurePerm(h){if(!h)return false;const opt={mode:"readwrite"};if((await h.queryPermission(opt))==="granted")return true;return (await h.requestPermission(opt))==="granted";}
   async function getSub(dir,name){return await dir.getDirectoryHandle(name,{create:true});}
   async function writeText(dir,name,content){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(content);await w.close();}
-  async function pickFolder(){if(!(window.showDirectoryPicker&&window.FileSystemDirectoryHandle)){alert("Raporların doğrudan proje klasörüne yazılması için Windows Chrome / Edge klasör izni gerekir.");return null;}const root=await window.showDirectoryPicker({id:"ayb-proje-klasoru",mode:"readwrite",startIn:"documents"});if(!(await ensurePerm(root))){alert("Klasör yazma izni verilmedi.");return null;}const dir=await root.getDirectoryHandle(sanitizeName(projectName()),{create:true});for(const n of ["yedek","raporlar","kmz","geojson","proje_yedegi","fotograflar","saha_veri"]){await getSub(dir,n);}await writeText(dir,"README_PROJE.txt",`AYB SAHA HARİTA METRAJ PROJE KLASÖRÜ\nHazırlayan Bayram YARAŞ\n0530 630 05 40\n\nProje: ${projectName()}\nGüncelleme: ${new Date().toLocaleString("tr-TR")}\n\nPlanlanan veri PC projesinden alınır. Sahadan gelen veri tablet/APK çıktısından saha_veri klasörüne ve programa alınır.\nRaporlar İndirilenler klasörüne değil bu klasördeki alt klasörlere yazılır.\n`);currentDir=dir;await idbSet(projectKey(),dir);updateFolderStatus();return dir;}
+  async function pickFolder(){if(!(window.showDirectoryPicker&&window.FileSystemDirectoryHandle)){alert("Raporların doğrudan proje klasörüne yazılması için Windows Chrome / Edge klasör izni gerekir.");return null;}const root=await window.showDirectoryPicker({id:"ayb-proje-klasoru",mode:"readwrite",startIn:"documents"});if(!(await ensurePerm(root))){alert("Klasör yazma izni verilmedi.");return null;}const dir=await root.getDirectoryHandle(sanitizeName(projectName()),{create:true});for(const n of ["yedek","raporlar","kmz","geojson","proje_yedegi","fotograflar","saha_veri"]){await getSub(dir,n);}await writeText(dir,"README_PROJE.txt",`BY EDŞ SAHA PROGRAMI PROJE KLASÖRÜ\nHazırlayan Bayram YARAŞ\n0530 630 05 40\n\nProje: ${projectName()}\nGüncelleme: ${new Date().toLocaleString("tr-TR")}\n\nPlanlanan veri PC projesinden alınır. Sahadan gelen veri tablet/APK çıktısından saha_veri klasörüne ve programa alınır.\nRaporlar İndirilenler klasörüne değil bu klasördeki alt klasörlere yazılır.\n`);currentDir=dir;await idbSet(projectKey(),dir);updateFolderStatus();return dir;}
   async function getDir(){if(currentDir&&await ensurePerm(currentDir))return currentDir;const saved=await idbGet(projectKey());if(saved&&await ensurePerm(saved)){currentDir=saved;updateFolderStatus();return saved;}return await pickFolder();}
   function updateFolderStatus(){const btn=$("#btnProjectFolder");if(btn){btn.classList.toggle("ayb-folder-ok",!!currentDir);const s=btn.querySelector("small");if(s)s.textContent=currentDir?"Bağlı":"Klasör";}let st=$("#aybFolderStatus");const workbar=$(".workbar");if(workbar&&!st){st=d.createElement("span");st.id="aybFolderStatus";workbar.appendChild(st);}if(st){st.className=currentDir?"ok":"warn";st.textContent=currentDir?("📁 "+(currentDir.name||"Proje klasörü")):"📁 Klasör seçilmedi";}}
   function getTrack(){try{return JSON.parse(localStorage.getItem(trackKey())||"{}");}catch(_){return {};}}
@@ -12827,7 +12843,7 @@ body.ayb-field-panel-open .ayb-fielddata-btn,.ayb-fielddata-btn.active{backgroun
       if(_t==="direk")_s.direk++;else if(_t==="trafo")_s.trafo++;else if(_t==="box")_s.box++;
       else if(_t==="kofre")_s.kofre++;else if(_t==="hat")_s.hat++;else if(_t==="kanal")_s.kanal++;}
     return {projectName:p.name||"Proje Yok",planned:plan.length,received:rec.length,completed,matched,remaining:Math.max(plan.length-completed,0),progress:plan.length?Math.min(100,Math.round(completed/plan.length*100)):0,poles:_s.direk,trafo:_s.trafo,box:_s.box,kofre:_s.kofre,lines:_s.hat,channels:_s.kanal,sync:new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"}),planUpdated:getTrack().planUpdatedAt||"-",sahaUpdated:getTrack().sahaUpdatedAt||"-"};}
-  function projectPayload(){return {app:"AYB Saha Harita Metraj",preparedBy:"Bayram YARAŞ",phone:"0530 630 05 40",savedAt:new Date().toISOString(),tracking:getTrack(),project:window.project||{}};}
+  function projectPayload(){return {app:"BY EDŞ Saha Programı",preparedBy:"Bayram YARAŞ",phone:"0530 630 05 40",savedAt:new Date().toISOString(),tracking:getTrack(),project:window.project||{}};}
   async function saveProjectCore(){const dir=await getDir();if(!dir)return false;const json=JSON.stringify(projectPayload(),null,2);await writeText(dir,"proje.json",json);await writeText(await getSub(dir,"yedek"),"proje_"+stamp()+".json",json);return true;}
   function csvEscape(v){return '"'+String(v??"").replace(/"/g,'""')+'"';}
   function buildMetrajCsv(){const plan=planSnapshot(),rec=sahaRecords(),rows=[["Kaynak","Tip","No","Durum","Adet","ITRF96 X (Kuzey)","ITRF96 Y (Doğu)","TM3 Dilimi"]];plan.forEach(p=>{const c=itrf96CoordProps(p.lat,p.lng);rows.push(["PLAN",p.type,p.no,"plan",1,c.ITRF96_X||"",c.ITRF96_Y||"",c.ITRF96_Dilim||""])});rec.forEach(r=>{const c=itrf96CoordProps(r.lat,r.lng);rows.push(["SAHA",r.type||"",r.no,r.status||"tamam",r.adet||1,c.ITRF96_X||"",c.ITRF96_Y||"",c.ITRF96_Dilim||""])});return "\ufeff"+rows.map(r=>r.map(csvEscape).join(";")).join("\n");}
@@ -13519,7 +13535,7 @@ body .ayb-ico-frame{
   }
   function payload(){
     return {
-      app:"AYB Saha Harita Metraj",
+      app:"BY EDŞ Saha Programı",
       preparedBy:"Bayram YARAŞ",
       phone:"0530 630 05 40",
       savedAt:new Date().toISOString(),

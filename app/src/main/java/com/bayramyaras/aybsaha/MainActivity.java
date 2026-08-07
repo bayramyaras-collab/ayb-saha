@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
         }
 
         web = new WebView(this);
+        try { web.clearCache(true); } catch (Exception ignored) {}  // v16.59: eski statik arayüz cache temizliği; proje verisini silmez
         setContentView(web);
         web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
         web.setVerticalScrollBarEnabled(false);
@@ -82,7 +83,7 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(false);
         s.setTextZoom(100);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         s.setMediaPlaybackRequiresUserGesture(false);
         if (Build.VERSION.SDK_INT >= 21)
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
@@ -100,7 +101,7 @@ public class MainActivity extends Activity {
                 v.evaluateJavascript(
                   "(function(){if(document.getElementById('ayb-tablet-loader'))return;" +
                   "var s=document.createElement('script');s.id='ayb-tablet-loader';" +
-                  "s.src='file:///android_asset/ayb-tablet.js';document.body.appendChild(s);})();", null);
+                  "s.src='file:///android_asset/ayb-tablet.js?rev=1659';document.body.appendChild(s);})();", null);
                 // WhatsApp vb. uygulamadan gelen DXF varsa programa aktar
                 maybeInjectIncoming();
             }
