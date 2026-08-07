@@ -1,33 +1,141 @@
-name: APK Olustur (AYB Saha)
+name: APK Olustur (AYB Saha v16.40 Tablet)
+
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, ana ]
+    branches: [ main, master, ana, apk-tablet-v1640 ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
-
-      - name: Mevcut web varliklarini arsivle
-        run: |
-          tar -C app/src/main/assets -czf AYB-current-assets.tar.gz \
-            AYB_Saha_Harita.html ayb-tablet.js ayb-label-screen.js ayb-undo.js
-          sha256sum AYB-current-assets.tar.gz > AYB-current-assets.sha256
-
-      - name: Mevcut web varliklarini yukle
-        uses: actions/upload-artifact@v4
         with:
-          name: AYB-current-assets
-          path: |
-            AYB-current-assets.tar.gz
-            AYB-current-assets.sha256
-          if-no-files-found: error
+          fetch-depth: 0
+
+      - name: Yama araclarini kur
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v zstd >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y zstd xz-utils
+          fi
+
+      - name: En guncel arayuzu birebir yerlestir ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+
+          expected = {
+              "AYB_Saha_Harita.html": "aec96adbbc8076453438d5f47b0567d97c569e2036c9cafff8361fa130a8637e",
+              "ayb-tablet.js": "748affc36cc6d69b36318f26257d22d2c3cb802323a4eb9ea88c06ef7fa9a946",
+              "ayb-label-screen.js": "654763216f531e6d78fd6b6ea00047cccb541a3b6efda6b319b559bd61cc010a",
+              "ayb-undo.js": "ad3ef71cf7ceec8e9c92781209bd25449bde10f9e18ddf0b6dcf3bd6a8a37cfe",
+          }
+          root = Path("app/src/main/assets")
+          ok = all((root / name).is_file() and sha256((root / name).read_bytes()).hexdigest() == digest
+                   for name, digest in expected.items())
+          Path("/tmp/ayb-assets-current").write_text("1" if ok else "0", encoding="ascii")
+          print("Arayuz zaten guncel." if ok else "Arayuz yamasi uygulanacak.")
+          PY
+
+          if [ "$(cat /tmp/ayb-assets-current)" != "1" ]; then
+            cat app/latest-web-zstdpatch/part-*.b64 | tr -d '\r\n' | base64 --decode > /tmp/AYB-v1640-zstdpatch.tar.xz
+            echo "0d8cfdcfd3ccc52392a4df2c3a4a5e96cd9d568ff4281bcca7a77be2697551ff  /tmp/AYB-v1640-zstdpatch.tar.xz" | sha256sum -c -
+
+            cat > /tmp/ayb-baseline.sha256 <<'EOF'
+          e1b4d888ba859234d6788d147481c4526229382cb0a08f689c62bce79fb56915  app/src/main/assets/AYB_Saha_Harita.html
+          12a431d4a3a8f275808c77407974df5d134c6f5d65b73ce4f92ceb179027be60  app/src/main/assets/ayb-tablet.js
+          9a90f027cc4a60ed702cad7ee720bbfb7f4a89facbeca842fe462fbb49d5cf84  app/src/main/assets/ayb-label-screen.js
+          ca5cc71f67a29261ec5602ee5d6aada14c821c38facbef4bf08d39f38ac4a7b0  app/src/main/assets/ayb-undo.js
+          EOF
+            sha256sum -c /tmp/ayb-baseline.sha256
+
+            rm -rf /tmp/ayb-v1640-patches
+            mkdir -p /tmp/ayb-v1640-patches
+            tar -xJf /tmp/AYB-v1640-zstdpatch.tar.xz -C /tmp/ayb-v1640-patches
+
+            for file in AYB_Saha_Harita.html ayb-tablet.js ayb-label-screen.js ayb-undo.js; do
+              zstd --quiet --decompress \
+                --patch-from="app/src/main/assets/${file}" \
+                "/tmp/ayb-v1640-patches/${file}.zstpatch" \
+                -o "/tmp/${file}"
+              mv "/tmp/${file}" "app/src/main/assets/${file}"
+            done
+          fi
+
+          cat > /tmp/ayb-target.sha256 <<'EOF'
+          aec96adbbc8076453438d5f47b0567d97c569e2036c9cafff8361fa130a8637e  app/src/main/assets/AYB_Saha_Harita.html
+          748affc36cc6d69b36318f26257d22d2c3cb802323a4eb9ea88c06ef7fa9a946  app/src/main/assets/ayb-tablet.js
+          654763216f531e6d78fd6b6ea00047cccb541a3b6efda6b319b559bd61cc010a  app/src/main/assets/ayb-label-screen.js
+          ad3ef71cf7ceec8e9c92781209bd25449bde10f9e18ddf0b6dcf3bd6a8a37cfe  app/src/main/assets/ayb-undo.js
+          EOF
+          sha256sum -c /tmp/ayb-target.sha256
+
+      - name: Android v16.40 ve tablet ekran ayarlari
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          gradle = Path("app/build.gradle")
+          text = gradle.read_text(encoding="utf-8")
+          text, n1 = re.subn(r"(?m)^(\s*)versionCode\s+\d+\s*$", r"\1versionCode 1640", text, count=1)
+          text, n2 = re.subn(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$', r'\1versionName "16.40"', text, count=1)
+          if n1 != 1 or n2 != 1:
+              raise SystemExit("build.gradle surum satirlari bulunamadi")
+          gradle.write_text(text, encoding="utf-8")
+
+          java = Path("app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java")
+          text = java.read_text(encoding="utf-8")
+          text = text.replace("s.setBuiltInZoomControls(true);", "s.setBuiltInZoomControls(false);")
+          if "s.setSupportZoom(false);" not in text:
+              text = text.replace("s.setBuiltInZoomControls(false);", "s.setBuiltInZoomControls(false);\n        s.setSupportZoom(false);")
+          text = text.replace("s.setLoadWithOverviewMode(true);", "s.setLoadWithOverviewMode(false);")
+          if "s.setTextZoom(100);" not in text:
+              text = text.replace("s.setLoadWithOverviewMode(false);", "s.setLoadWithOverviewMode(false);\n        s.setTextZoom(100);")
+          if "web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);" not in text:
+              text = text.replace("setContentView(web);", "setContentView(web);\n        web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);\n        web.setVerticalScrollBarEnabled(false);\n        web.setHorizontalScrollBarEnabled(false);")
+          required = [
+              "s.setBuiltInZoomControls(false);",
+              "s.setSupportZoom(false);",
+              "s.setLoadWithOverviewMode(false);",
+              "s.setTextZoom(100);",
+              "web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);",
+          ]
+          if not all(item in text for item in required):
+              raise SystemExit("Tablet WebView ayarlari uygulanamadi")
+          java.write_text(text, encoding="utf-8")
+
+          manifest = Path("app/src/main/AndroidManifest.xml")
+          text = manifest.read_text(encoding="utf-8")
+          if 'android:largeHeap="true"' not in text:
+              text = text.replace('android:hardwareAccelerated="true"', 'android:hardwareAccelerated="true"\n        android:largeHeap="true"')
+          if 'android:windowSoftInputMode="adjustResize"' not in text:
+              text = text.replace('android:screenOrientation="fullUser">', 'android:screenOrientation="fullUser"\n            android:windowSoftInputMode="adjustResize">')
+          if 'android:largeHeap="true"' not in text or 'android:windowSoftInputMode="adjustResize"' not in text:
+              raise SystemExit("Android tablet manifest ayarlari uygulanamadi")
+          manifest.write_text(text, encoding="utf-8")
+          PY
+
+          grep -nE 'versionCode|versionName' app/build.gradle
+          grep -nE 'setBuiltInZoomControls|setSupportZoom|setLoadWithOverviewMode|setTextZoom|setOverScrollMode' \
+            app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
+          grep -nE 'largeHeap|windowSoftInputMode' app/src/main/AndroidManifest.xml
 
       - name: Java 17 kur
         uses: actions/setup-java@v4
@@ -38,17 +146,102 @@ jobs:
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
-      - name: SDK bilesenleri
-        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
+      - name: SDK bilesenlerini kur
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
 
       - name: APK olustur
+        shell: bash
         run: |
+          set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: APK yukle
+      - name: APK paketini ve imzasini dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          TEST_APK="store/AYB-SAHA-v16.40-TABLET.apk"
+          mkdir -p store
+          cp "$APK" "$TEST_APK"
+
+          unzip -t "$TEST_APK" >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$TEST_APK"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$TEST_APK" | tee /tmp/ayb-badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha' versionCode='1640' versionName='16.40'" /tmp/ayb-badging.txt
+          grep -q "sdkVersion:'23'" /tmp/ayb-badging.txt
+          grep -q "targetSdkVersion:'34'" /tmp/ayb-badging.txt
+
+          python3 - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          apk = Path("store/AYB-SAHA-v16.40-TABLET.apk")
+          expected = {
+              "AYB_Saha_Harita.html": "aec96adbbc8076453438d5f47b0567d97c569e2036c9cafff8361fa130a8637e",
+              "ayb-tablet.js": "748affc36cc6d69b36318f26257d22d2c3cb802323a4eb9ea88c06ef7fa9a946",
+              "ayb-label-screen.js": "654763216f531e6d78fd6b6ea00047cccb541a3b6efda6b319b559bd61cc010a",
+              "ayb-undo.js": "ad3ef71cf7ceec8e9c92781209bd25449bde10f9e18ddf0b6dcf3bd6a8a37cfe",
+          }
+          with ZipFile(apk) as zf:
+              for name, digest in expected.items():
+                  actual = sha256(zf.read("assets/" + name)).hexdigest()
+                  if actual != digest:
+                      raise SystemExit(f"APK icindeki {name} hash uyusmazligi: {actual}")
+                  print(f"APK asset OK: {name} {actual}")
+          PY
+
+          sha256sum "$TEST_APK" | tee store/AYB-SAHA-v16.40-TABLET.apk.sha256
+          {
+            echo "AYB SAHA Tablet APK"
+            echo "Surum: 16.40"
+            echo "Paket: com.bayramyaras.aybsaha"
+            echo "Min SDK: 23"
+            echo "Target SDK: 34"
+            echo "Olusturan commit: ${GITHUB_SHA}"
+            echo
+            cat store/AYB-SAHA-v16.40-TABLET.apk.sha256
+          } > store/AYB-SAHA-v16.40-TABLET-BILGI.txt
+
+      - name: APK'yi indirilebilir paket olarak yukle
         uses: actions/upload-artifact@v4
         with:
-          name: AYB-Saha-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: AYB-SAHA-v16.40-TABLET
+          path: |
+            store/AYB-SAHA-v16.40-TABLET.apk
+            store/AYB-SAHA-v16.40-TABLET.apk.sha256
+            store/AYB-SAHA-v16.40-TABLET-BILGI.txt
           if-no-files-found: error
+          retention-days: 90
+
+      - name: Dogrulanmis kaynak ve APK'yi dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            app/build.gradle \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java \
+            app/src/main/assets/AYB_Saha_Harita.html \
+            app/src/main/assets/ayb-tablet.js \
+            app/src/main/assets/ayb-label-screen.js \
+            app/src/main/assets/ayb-undo.js \
+            store/AYB-SAHA-v16.40-TABLET.apk \
+            store/AYB-SAHA-v16.40-TABLET.apk.sha256 \
+            store/AYB-SAHA-v16.40-TABLET-BILGI.txt
+
+          if [ -d app/latest-web-zstdpatch ]; then
+            git rm -r app/latest-web-zstdpatch
+          fi
+
+          if ! git diff --cached --quiet; then
+            git commit -m "APK v16.40 tablet: guncel arayuz ve dogrulanmis APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
