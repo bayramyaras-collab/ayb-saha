@@ -1,0 +1,96 @@
+name: APK Olustur (BY EDS Saha v16.53)
+
+on:
+  push:
+    branches: [ apk-v1653 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Direk sembol snap ve etiket standardini uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1653.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q 'v16.53 - Direk etiketi zeminsiz' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'direkSymbol:150,trafoSymbol:200' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q "ayb_snap_m','2.25'" app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'var mev=2.25;' app/src/main/assets/ayb-tablet.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle')
+          s=p.read_text(encoding='utf-8')
+          s,n1=re.subn(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1653',s,count=1)
+          s,n2=re.subn(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.53"',s,count=1)
+          if n1!=1 or n2!=1: raise SystemExit('Surum satiri bulunamadi')
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.53-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.53-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.53-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.53-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1653' versionName='16.53'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.53-TABLET.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          grep -q 'v16.53 - Direk etiketi zeminsiz' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'direkSymbol:150,trafoSymbol:200' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q "ayb_snap_m','2.25'" /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'var mev=2.25;' /tmp/apkcheck/assets/ayb-tablet.js
+          node --check /tmp/apkcheck/assets/ayb-tablet.js
+          sha256sum store/BY-EDS-SAHA-v16.53-TABLET.apk | tee store/BY-EDS-SAHA-v16.53-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.53\nDirek sembol %%150 + Snap 2.25 m + direk etiketi zeminsiz\n' > store/BY-EDS-SAHA-v16.53-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.53-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.53-TABLET.apk
+            store/BY-EDS-SAHA-v16.53-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.53-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js store/BY-EDS-SAHA-v16.53-TABLET.apk store/BY-EDS-SAHA-v16.53-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.53-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.53 direk ve snap standardi + APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
