@@ -1,0 +1,78 @@
+name: APK Olustur (BY EDS Saha v16.47)
+
+on:
+  push:
+    branches: [ apk-v1647 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Hat kesit durum formatini uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1647.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q "return '\['+base+'\]'" app/src/main/assets/AYB_Saha_Harita.html
+          grep -q "return '('+base+')'" app/src/main/assets/AYB_Saha_Harita.html
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.47-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.47-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.47-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.47-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1647' versionName='16.47'" /tmp/badging.txt
+          sha256sum store/BY-EDS-SAHA-v16.47-TABLET.apk | tee store/BY-EDS-SAHA-v16.47-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.47\nHat etiketi: MEVCUT=(kesit), YENI=kesit, BYSK=[kesit]\n' > store/BY-EDS-SAHA-v16.47-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.47-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.47-TABLET.apk
+            store/BY-EDS-SAHA-v16.47-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.47-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js store/BY-EDS-SAHA-v16.47-TABLET.apk store/BY-EDS-SAHA-v16.47-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.47-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.47 hat kesit durum formati [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
