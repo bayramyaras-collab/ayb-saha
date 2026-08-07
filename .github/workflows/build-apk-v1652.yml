@@ -1,0 +1,110 @@
+name: APK Olustur (BY EDS Saha v16.52)
+
+on:
+  push:
+    branches: [ apk-v1652 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Trafo etiketi zemin ve cakisma duzeltmesini uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1652.py
+          node --check app/src/main/assets/ayb-label-screen.js
+          grep -q 'sym-label-trafo span{background:transparent!important' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q "var trafoOffsets=" app/src/main/assets/ayb-label-screen.js
+          grep -q "o.type==='trafo'?5:1" app/src/main/assets/ayb-label-screen.js
+          grep -q "it.obj&&it.obj.type==='trafo'?trafoOffsets:objectOffsets" app/src/main/assets/ayb-label-screen.js
+          grep -q "it.obj.type==='trafo'" app/src/main/assets/ayb-label-screen.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle')
+          s=p.read_text(encoding='utf-8')
+          s,n1=re.subn(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1652',s,count=1)
+          s,n2=re.subn(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.52"',s,count=1)
+          if n1!=1 or n2!=1: raise SystemExit('Surum satiri bulunamadi')
+          p.write_text(s,encoding='utf-8')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile, sys
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          bad=[]
+          for i,code in enumerate(scripts):
+              if not code.strip(): continue
+              f=Path('/tmp')/f'ayb_inline_{i}.js'; f.write_text(code,encoding='utf-8')
+              r=subprocess.run(['node','--check',str(f)],capture_output=True,text=True)
+              if r.returncode!=0: bad.append((i,r.stderr))
+          if bad:
+              print(bad[0][1]); raise SystemExit(f'Inline script syntax hatasi: {bad[0][0]}')
+          print('Inline script syntax OK:',len(scripts))
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.52-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.52-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.52-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.52-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1652' versionName='16.52'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.52-TABLET.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-label-screen.js' -d /tmp/apkcheck
+          grep -q 'sym-label-trafo span{background:transparent!important' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'var trafoOffsets=' /tmp/apkcheck/assets/ayb-label-screen.js
+          node --check /tmp/apkcheck/assets/ayb-label-screen.js
+          sha256sum store/BY-EDS-SAHA-v16.52-TABLET.apk | tee store/BY-EDS-SAHA-v16.52-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.52\nTrafo etiketi zeminsiz + cakisma onleyici\n' > store/BY-EDS-SAHA-v16.52-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.52-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.52-TABLET.apk
+            store/BY-EDS-SAHA-v16.52-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.52-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-label-screen.js store/BY-EDS-SAHA-v16.52-TABLET.apk store/BY-EDS-SAHA-v16.52-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.52-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.52 trafo etiketi + APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
