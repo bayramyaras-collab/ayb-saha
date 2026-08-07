@@ -1,0 +1,68 @@
+name: APK Olustur (BY EDS Saha v16.63 Fixed)
+
+on:
+  push:
+    branches: [ apk-v1663-fixed ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Tek satir sekme duzeltmesini uygula ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1663_tabs.py
+          grep -q 'id="ayb_v1663_tablet_tabs_fix"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="ayb_section_tabs_toolbar_v21_css"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="ayb_section_tabs_toolbar_v21_js"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'applicationId "com.bayramyaras.aybsaha.current3"' app/build.gradle
+          grep -q 'versionCode 1663' app/build.gradle
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          assert 'Çok dar ekranlarda sekmeler daha kompakt olur ama kaydırma yok' not in s
+          assert '<style id="ayb_current_green_ui_v1661">' not in s
+          for k in ['project','draw','edit','analysis','report','print','symbols','fielddata']:
+              assert f'data-section="{k}"' in s
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk
+          unzip -t store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.current3' versionCode='1663' versionName='16.63'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk 'assets/AYB_Saha_Harita.html' -d /tmp/apkcheck
+          grep -q 'id="ayb_v1663_tablet_tabs_fix"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk | tee store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk.sha256
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER
+          path: |
+            store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk
+            store/BY-EDS-SAHA-v16.63-TEK-SATIR-SEKMELER.apk.sha256
+          if-no-files-found: error
