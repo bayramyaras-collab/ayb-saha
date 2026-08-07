@@ -8,11 +8,11 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.bayramyaras.aybsaha"
+        applicationId "com.bayramyaras.aybsaha.stable"
         minSdk 23
         targetSdk 34
-        versionCode 1655
-        versionName "16.55"
+        versionCode 1656
+        versionName "16.56"
     }
 
     buildTypes {
