@@ -1,0 +1,94 @@
+name: APK Olustur (BY EDS Saha v16.50)
+
+on:
+  push:
+    branches: [ apk-v1650 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Proje motoru kurtarma duzeltmesini uygula ve kontrol et
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1650.py
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q 'window.newProject=newProject' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'window.openProject=openProject' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'if(!window.showDirectoryPicker)' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'window.aybTabletYeniProje=aybTabletYeniProje' app/src/main/assets/ayb-tablet.js
+          grep -q '#aybCreateProject,#newProjectBtn,#btnNew' app/src/main/assets/ayb-tablet.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle')
+          s=p.read_text(encoding='utf-8')
+          s,n1=re.subn(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1650',s,count=1)
+          s,n2=re.subn(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.50"',s,count=1)
+          if n1!=1 or n2!=1: raise SystemExit('surum satiri bulunamadi')
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -nE 'versionCode|versionName' app/build.gradle
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.50-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.50-TABLET.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.50-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.50-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1650' versionName='16.50'" /tmp/badging.txt
+          unzip -p store/BY-EDS-SAHA-v16.50-TABLET.apk assets/AYB_Saha_Harita.html | grep -q 'window.newProject=newProject'
+          unzip -p store/BY-EDS-SAHA-v16.50-TABLET.apk assets/ayb-tablet.js | grep -q 'window.aybTabletYeniProje=aybTabletYeniProje'
+          sha256sum store/BY-EDS-SAHA-v16.50-TABLET.apk | tee store/BY-EDS-SAHA-v16.50-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.50\nKurtarma: proje motoru window baglantisi + tablette klasorsuz Yeni Proje\n' > store/BY-EDS-SAHA-v16.50-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.50-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.50-TABLET.apk
+            store/BY-EDS-SAHA-v16.50-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.50-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js store/BY-EDS-SAHA-v16.50-TABLET.apk store/BY-EDS-SAHA-v16.50-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.50-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.50 proje motoru kurtarma + APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
