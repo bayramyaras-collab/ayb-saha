@@ -5888,7 +5888,7 @@ function aybRenderPoleLamps(obj){
   __mk._icon.appendChild(__kutu);
   try{ (window.__aybLampDrawn=window.__aybLampDrawn||{})[obj.id]=1; }catch(e){}
 }
-function getLineDisplayText(line){const main=(line.props?.main_hat_tipi||line.props?.og_hat_tipi||line.props?.hat_tipi||'').trim(); const ag=(line.props?.ag_hat_aktif?(line.props?.ag_hat_tipi||'').trim():''); if(main&&ag) return `(${main})+(${ag})`; return main||ag||(line.props?.hat_tipi||line.props?.tip||'Hat')}
+function getLineDisplayText(line){const p=line?.props||{}; const main=(p.main_hat_tipi||p.og_hat_tipi||p.hat_tipi||'').trim(); const ag=(p.ag_hat_aktif?(p.ag_hat_tipi||'').trim():''); let base=''; if(main&&ag) base=main+'+'+ag; else base=main||ag||(p.hat_tipi||p.tip||'Hat'); const d=String(p.durum||p.Durumu||'').toLocaleUpperCase('tr').replace(/\s+/g,' '); if(d.includes('BYSK')||d.includes('BSYK')) return '['+base+']'; if(d.includes('YENİ')||d.includes('YENI')) return base; if(d.includes('MEVCUT')) return '('+base+')'; return base})+(${ag})`; return main||ag||(line.props?.hat_tipi||line.props?.tip||'Hat')}
 function getLineLabelScale(){const z=map?map.getZoom():18; const s=Math.max(0.65, Math.min(1.30, Math.pow(1.10, z-18))); return Math.round(s*20)/20; /* İSTEK (Bayram YARAŞ): 0.05 adım — küçük zoomda etiket ikonu yeniden üretilmez, yapışık kalır */}
 function getLineLabelIconSpec(scale){return {iconSize:[140,46], iconAnchor:[70,23]};}
 function getLineLabelPlacement(a,b){const lat=(parseFloat(a.lat)+parseFloat(b.lat))/2; const lng=(parseFloat(a.lng)+parseFloat(b.lng))/2; return {latlng:L.latLng(lat,lng), angle:0};}

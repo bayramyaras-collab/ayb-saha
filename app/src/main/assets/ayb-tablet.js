@@ -7518,8 +7518,13 @@
       var kesit='';
       try{ if(typeof window.getLineDisplayText==='function') kesit=String(window.getLineDisplayText(l)||'').trim(); }catch(e){}
       if(!kesit){ var lp=l.props||{};
-        kesit=String(lp.main_hat_tipi||lp.og_hat_tipi||lp.hat_tipi||lp.kesit||lp.cins||'').trim();
-        if(lp.ag_hat_aktif&&lp.ag_hat_tipi){ kesit=kesit?(kesit+'+('+lp.ag_hat_tipi+')'):String(lp.ag_hat_tipi); }
+        var anaKesit=String(lp.main_hat_tipi||lp.og_hat_tipi||lp.hat_tipi||lp.kesit||lp.cins||'').trim();
+        var agKesit=(lp.ag_hat_aktif&&lp.ag_hat_tipi)?String(lp.ag_hat_tipi).trim():'';
+        kesit=anaKesit&&agKesit?(anaKesit+'+'+agKesit):(anaKesit||agKesit);
+        var kd=String(lp.durum||lp.Durumu||'').toLocaleUpperCase('tr').replace(/\s+/g,' ');
+        if(kesit&&(kd.indexOf('BYSK')>=0||kd.indexOf('BSYK')>=0)) kesit='['+kesit+']';
+        else if(kesit&&(kd.indexOf('YENİ')>=0||kd.indexOf('YENI')>=0)) kesit=kesit;
+        else if(kesit&&kd.indexOf('MEVCUT')>=0) kesit='('+kesit+')';
       }
       var uz=(l.length_m!=null)?(Number(l.length_m).toFixed(1)+' m'):'';
       var uzSayi=(l.length_m!=null)?Number(l.length_m):0;
