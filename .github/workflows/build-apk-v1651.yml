@@ -1,0 +1,97 @@
+name: APK Olustur (BY EDS Saha v16.51)
+
+on:
+  push:
+    branches: [ apk-v1651 ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ana proje motoru syntax hatasini duzelt ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1651.py
+          node --check /tmp/ayb_core_v1651.js
+          node --check app/src/main/assets/ayb-tablet.js
+          grep -q "function newProject" /tmp/ayb_core_v1651.js
+          grep -q "function openProject" /tmp/ayb_core_v1651.js
+          grep -q "function saveProject" /tmp/ayb_core_v1651.js
+          grep -q "return '('+base+')'" /tmp/ayb_core_v1651.js
+          grep -q "return '\['+base+'\]'" /tmp/ayb_core_v1651.js
+          ! grep -q '})+(${ag})`' app/src/main/assets/AYB_Saha_Harita.html
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve APK icindeki ana motoru tekrar dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.51-TABLET.apk
+          unzip -t store/BY-EDS-SAHA-v16.51-TABLET.apk >/dev/null
+          unzip -p store/BY-EDS-SAHA-v16.51-TABLET.apk assets/AYB_Saha_Harita.html > /tmp/apkcheck/AYB_Saha_Harita.html
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/apkcheck/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          pos=s.find('function getLineDisplayText(line)')
+          a=s.rfind('<script',0,pos); gt=s.find('>',a); b=s.find('</script>',pos)
+          if min(pos,a,gt,b)<0: raise SystemExit('APK ana script bulunamadi')
+          core=s[gt+1:b]
+          if '})+(${ag})`' in core: raise SystemExit('APK icinde eski bozuk kod var')
+          Path('/tmp/apkcheck/core.js').write_text(core,encoding='utf-8')
+          PY
+          node --check /tmp/apkcheck/core.js
+          grep -q "function newProject" /tmp/apkcheck/core.js
+          grep -q "function openProject" /tmp/apkcheck/core.js
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose store/BY-EDS-SAHA-v16.51-TABLET.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.51-TABLET.apk > /tmp/badging.txt
+          grep -q "versionCode='1651' versionName='16.51'" /tmp/badging.txt
+          sha256sum store/BY-EDS-SAHA-v16.51-TABLET.apk | tee store/BY-EDS-SAHA-v16.51-TABLET.apk.sha256
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.51\nAna proje motorunu durduran getLineDisplayText syntax hatasi duzeltildi.\n' > store/BY-EDS-SAHA-v16.51-TABLET-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.51-TABLET
+          path: |
+            store/BY-EDS-SAHA-v16.51-TABLET.apk
+            store/BY-EDS-SAHA-v16.51-TABLET.apk.sha256
+            store/BY-EDS-SAHA-v16.51-TABLET-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis surumu dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html store/BY-EDS-SAHA-v16.51-TABLET.apk store/BY-EDS-SAHA-v16.51-TABLET.apk.sha256 store/BY-EDS-SAHA-v16.51-TABLET-BILGI.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDS Saha v16.51 ana proje motoru syntax duzeltmesi + APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
