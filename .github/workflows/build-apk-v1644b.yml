@@ -22,12 +22,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import base64,zlib
-          exec(zlib.decompress(base64.b64decode('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')).decode('utf-8'),{'__name__':'__main__'})
-          PY
+          python3 tools/patch_v1644.py
           node --check app/src/main/assets/ayb-tablet.js
           grep -q "AYB_KESIK" app/src/main/assets/ayb-tablet.js
+          grep -q "AYB_SEYREK" app/src/main/assets/ayb-tablet.js
           grep -q "aybDxfLineweight" app/src/main/assets/ayb-tablet.js
           grep -q "g(2,'Arial')" app/src/main/assets/ayb-tablet.js
           python3 - <<'PY'
@@ -46,11 +44,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
+
       - name: SDK bilesenleri
         shell: bash
         run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
       - name: APK olustur ve dogrula
         shell: bash
         run: |
@@ -64,7 +65,8 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.44-TABLET.apk > /tmp/badging.txt
           grep -q "versionCode='1644' versionName='16.44'" /tmp/badging.txt
           sha256sum store/BY-EDS-SAHA-v16.44-TABLET.apk | tee store/BY-EDS-SAHA-v16.44-TABLET.apk.sha256
-          printf 'BY EDS SAHA Tablet APK\nSurum: 16.44\nDXF program gorunumu birebir\n' > store/BY-EDS-SAHA-v16.44-TABLET-BILGI.txt
+          printf 'BY EDS SAHA Tablet APK\nSurum: 16.44\nDXF: program renk/kesik/kalinlik + Arial etiket + yol merkez + trafo etiket ustte\n' > store/BY-EDS-SAHA-v16.44-TABLET-BILGI.txt
+
       - name: Artifact yukle
         uses: actions/upload-artifact@v4
         with:
@@ -74,6 +76,7 @@ jobs:
             store/BY-EDS-SAHA-v16.44-TABLET.apk.sha256
             store/BY-EDS-SAHA-v16.44-TABLET-BILGI.txt
           if-no-files-found: error
+
       - name: Dogrulanmis surumu dala kaydet
         shell: bash
         run: |
