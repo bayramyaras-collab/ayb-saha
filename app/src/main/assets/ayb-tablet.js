@@ -3335,23 +3335,20 @@
 
   function objNo(o){ try{ return String((window.getObjectNo?window.getObjectNo(o):null) || (o.props&&(o.props.direk_no||o.props.trafo_no||o.props.kofre_no||o.props.box_no||o.props.ad)) || o.id); }catch(e){ return String(o.id||""); } }
   function objTip(o){ try{ return String((window.getObjectTip?window.getObjectTip(o):null) || o.type || ""); }catch(e){ return String(o.type||""); } }
-  function tLabel(t){ var m={direk:'Direk',trafo:'Trafo',box:'Box',kofre:'Kofre',abone:'Abone',ekmuf:'Ek Muf'}; return m[t]||t; }
-  function tIcon(t){ var m={direk:'📍',trafo:'⚡',box:'🔲',kofre:'🗄️',abone:'🏠',ekmuf:'🔗'}; return m[t]||'•'; }
+  function tLabel(t){ var m={direk:'Direk',trafo:'Trafo',box:'Box',kofre:'Kofre',abone:'Abone',ekmuf:'Ek Muf',sahanot:'Not'}; return m[t]||t; }
+  function tIcon(t){ var m={direk:'📍',trafo:'⚡',box:'🔲',kofre:'🗄️',abone:'🏠',ekmuf:'🔗',sahanot:'📝'}; return m[t]||'•'; }
   function low(s){ return String(s==null?"":s).toLocaleLowerCase("tr"); }
 
   function results(){
-    var p=window.project; if(!p||!Array.isArray(p.objects)) return [];
+    var p=window.project; if(!p) return [];
     var q=low(curQuery).trim(), out=[];
-    p.objects.forEach(function(o){
-      if(!o||o.lat==null) return;
-      if(curTrafo){ if(o.type!=="direk") return; var tn=low(o.props&&(o.props.trafo_no||o.props.baslangic_trafo_no||o.props.enerji_direk_no)); if(tn!==low(curTrafo)) return; }
-      else if(curType!=="all" && o.type!==curType) return;
-      var no=objNo(o), tip=objTip(o);
-      if(!curTrafo && q){ var hay=low(no+" "+tip+" "+tLabel(o.type)+" "+(o.props&&o.props.trafo_no||"")); if(hay.indexOf(q)<0) return; }
-      out.push({o:o,no:no,tip:tip,type:o.type});
-    });
-    out.sort(function(a,b){ if(a.type!==b.type) return a.type<b.type?-1:1; return String(a.no).localeCompare(String(b.no),'tr',{numeric:true}); });
-    return out.slice(0,400);
+    if(Array.isArray(p.objects) && curType!=='sahanot'){
+      p.objects.forEach(function(o){if(!o||o.lat==null)return;if(curTrafo){if(o.type!=="direk")return;var tn=low(o.props&&(o.props.trafo_no||o.props.baslangic_trafo_no||o.props.enerji_direk_no));if(tn!==low(curTrafo))return;}else if(curType!=="all"&&o.type!==curType)return;var no=objNo(o),tip=objTip(o);if(!curTrafo&&q){var hay=low(no+" "+tip+" "+tLabel(o.type)+" "+(o.props&&o.props.trafo_no||""));if(hay.indexOf(q)<0)return;}out.push({o:o,no:no,tip:tip,type:o.type});});
+    }
+    if(!curTrafo&&(curType==='all'||curType==='sahanot')&&Array.isArray(p.sahaNotes)){
+      p.sahaNotes.forEach(function(n){if(!n||!isFinite(+n.lat)||!isFinite(+n.lng))return;var no=String(n.objeNo||n.id||''),tip=String(n.tur||'Saha Notu');var hay=low('not '+no+' '+tip+' '+String(n.aciklama||''));if(q&&hay.indexOf(q)<0)return;out.push({o:{lat:+n.lat,lng:+n.lng},no:no||'—',tip:tip,type:'sahanot',id:n.id,n:n});});
+    }
+    out.sort(function(a,b){if(a.type!==b.type)return a.type<b.type?-1:1;return String(a.no).localeCompare(String(b.no),'tr',{numeric:true});});return out.slice(0,400);
   }
 
   function highlight(o){
@@ -3382,7 +3379,7 @@
     box.innerHTML=h;
     box._rs=rs;
     Array.prototype.forEach.call(box.querySelectorAll(".aybBulRow"), function(row){
-      row.addEventListener("click", function(e){ if(e.target && e.target.classList.contains("aybBulBagli")) return; var i=+row.getAttribute("data-i"); var r=box._rs[i]; if(r) flyTo(r.o); });
+      row.addEventListener("click", function(e){ if(e.target && e.target.classList.contains("aybBulBagli")) return; var i=+row.getAttribute("data-i"); var r=box._rs[i]; if(!r)return; if(r.type==='sahanot'&&window.aybSahaNotGit) window.aybSahaNotGit(r.id); else flyTo(r.o); });
     });
     Array.prototype.forEach.call(box.querySelectorAll(".aybBulBagli"), function(btn){
       btn.addEventListener("click", function(e){ e.stopPropagation(); var i=+btn.getAttribute("data-i"); var r=box._rs[i]; if(r){ curTrafo=r.no; curType="direk"; curQuery=""; var inp=d.getElementById("aybBulInput"); if(inp) inp.value=""; syncChips(); render(); } });
@@ -3407,12 +3404,13 @@
         +'<button id="aybBulClose" style="border:none;background:#ef4444;color:#fff;border-radius:6px;width:24px;height:24px;font-size:15px;cursor:pointer;">×</button>'
       +'</div>'
       +'<div style="padding:8px 10px;">'
-        +'<input id="aybBulInput" type="text" placeholder="No veya tip yaz (örn: 12, TR01, box)" style="width:100%;height:34px;padding:4px 10px;border:1px solid #c7d0de;border-radius:8px;box-sizing:border-box;">'
+        +'<input id="aybBulInput" type="text" placeholder="No, tip veya not yaz (örn: D-20, TR01, lambası yanmıyor)" style="width:100%;height:34px;padding:4px 10px;border:1px solid #c7d0de;border-radius:8px;box-sizing:border-box;">'
         +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">'
           +'<button class="aybBulChip" data-t="all" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Tümü</button>'
           +'<button class="aybBulChip" data-t="direk" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Direk</button>'
           +'<button class="aybBulChip" data-t="trafo" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Trafo</button>'
           +'<button class="aybBulChip" data-t="box" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Box</button>'
+          +'<button class="aybBulChip" data-t="sahanot" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">📝 Not</button>'
           +'<button class="aybBulChip" data-t="kofre" style="border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">Kofre</button>'
           +'<button id="aybBulClrTrafo" style="display:none;border:none;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;background:#f59e0b;color:#fff;">↩ Trafo filtresini kaldır</button>'
         +'</div>'
@@ -8761,7 +8759,7 @@
     b.title='Yol Ölç — iki nokta arası yol genişliğini daire içinde kalıcı olarak yerleştirir';
     b.innerHTML='<div class="ayb-pro-ico ayb-svg-ico"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="#0284c7" stroke-width="2.4"/><text x="20" y="31" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#0369a1">9</text><text x="31" y="20" text-anchor="middle" font-family="Arial" font-size="9" font-weight="700" fill="#0369a1">50</text><path d="M27 23h10" stroke="#0369a1" stroke-width="1.5"/></svg></div><small>Yol Ölç</small>';
     b.addEventListener('click',function(e){try{e.preventDefault();e.stopPropagation();}catch(_){}toggle();});
-    ref.parentNode.insertBefore(b,ref.nextSibling); return true;
+    ref.parentNode.insertBefore(b,ref); return true;
   }
   function mapBagla(){
     var m=M(); if(!m||m===bagliMap)return !!m;
@@ -8792,3 +8790,6 @@
   };
 })();
 
+
+/* === v16.58: Çizim Araçları sırası sabit === */
+(function(){function fix(){var row=document.querySelector('.ayb-pro-group.draw .ayb-pro-row');if(!row)return false;var find=function(sel){return row.querySelector(sel)||document.querySelector(sel)};var order=['[data-tool="direk"]','[data-tool="trafo"]','[data-tool="yeraltihat"]','[data-tool="hat"]','[data-tool="abonehat"]','[data-tool="kanal"]','[data-tool="kofre"]','[data-tool="bina"]','[data-tool="box"]','[data-tool="sahanot"]','#aybYolOlcBtn','#kfMeasureToolBtn','[data-tool="cizgi"]','[data-tool="ok"]','#aybTopluSilBtn'];order.forEach(function(sel){var el=find(sel);if(el&&el.parentNode===row)row.appendChild(el);});var h=row.querySelector('[data-tool="hat"] small');if(h)h.textContent='Havai Hat';var y=row.querySelector('[data-tool="yeraltihat"] small');if(y)y.textContent='Yeraltı Hat';return true;}var tries=0,iv=setInterval(function(){fix();if(++tries>80)clearInterval(iv);},250);document.addEventListener('DOMContentLoaded',fix);try{new MutationObserver(function(){fix();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}})();
