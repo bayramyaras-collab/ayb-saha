@@ -1,0 +1,177 @@
+name: APK Olustur (BY EDS Saha v16.65 Stabil Temiz)
+
+on:
+  push:
+    branches: [ apk-v1665-stable-clean-final ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Eski V28 kalintilarini fiziksel temizle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          html=Path('app/src/main/assets/AYB_Saha_Harita.html')
+          tab=Path('app/src/main/assets/ayb-tablet.js')
+          s=html.read_text(encoding='utf-8')
+          original=s
+
+          def remove_id_block(text,tag,idv):
+              pat=re.compile(rf'<{tag}\b(?=[^>]*\bid\s*=\s*["\']{re.escape(idv)}["\'])[^>]*>.*?</{tag}\s*>',re.I|re.S)
+              return pat.sub('',text)
+
+          for x in ['ayb_v28_same_program_mobile_css']:
+              s=remove_id_block(s,'style',x)
+          for x in ['ayb_v28_same_program_mobile_js']:
+              s=remove_id_block(s,'script',x)
+
+          pat=re.compile(r'<(script|style)\b([^>]*)>(.*?)</\1\s*>',re.I|re.S)
+          def clean_block(m):
+              whole=m.group(0); low=whole.lower(); tag=m.group(1).lower()
+              legacy=(('aybv28mobiledock' in low and ('ayb-v28-mobile' in low or 'v28' in low)) or
+                      ('aybv28exportsheet' in low and 'v28' in low) or
+                      (tag=='style' and '.ayb-v28-mobile' in low) or
+                      ('ayb_v28_same_program_mobile' in low))
+              return '' if legacy else whole
+          s=pat.sub(clean_block,s)
+
+          def remove_element(text,idv):
+              op=re.compile(rf'<([a-zA-Z][\w:-]*)\b(?=[^>]*\bid\s*=\s*["\']{re.escape(idv)}["\'])[^>]*>',re.I|re.S)
+              while True:
+                  m=op.search(text)
+                  if not m: return text
+                  tag=m.group(1); tok=re.compile(rf'<{re.escape(tag)}\b[^>]*>|</{re.escape(tag)}\s*>',re.I|re.S)
+                  depth=0; end=None
+                  for t in tok.finditer(text,m.start()):
+                      if t.group(0).lstrip().startswith('</'):
+                          depth-=1
+                          if depth==0: end=t.end(); break
+                      else: depth+=1
+                  if end is None: raise SystemExit('Kapanmayan legacy element: '+idv)
+                  text=text[:m.start()]+text[end:]
+          for x in ['aybV28MobileDock','aybV28ExportSheet']:
+              s=remove_element(s,x)
+
+          s=s.replace('AYB Saha Harita Metraj v16.40','BY EDŞ Saha Programı PERF-25.07-AT-U2')
+          s=s.replace('AYB Saha Harita Metraj','BY EDŞ Saha Programı PERF-25.07-AT-U2')
+          s=re.sub(r'<!--[^>]*(?:V28|v28|aybV28MobileDock|ayb-v28-mobile)[\s\S]*?-->','',s,flags=re.I)
+          s=re.sub(r'\n[ \t]*\n[ \t]*\n+','\n\n',s)
+
+          required=['aybOfficeRibbon','ayb_section_tabs_toolbar_v21_css','ayb_section_tabs_toolbar_v21_js',
+                    'data-tool="sahanot"','capture="environment"','aybSahaNotKmzFiles','aybSahaNotGit',
+                    '<name>Saha Notları</name>','icons/saha_not.png','newProject','openProject','saveProject',
+                    'data-tool="direk"','data-tool="trafo"','data-tool="hat"','data-tool="yeraltihat"',
+                    'data-tool="kofre"','data-tool="bina"','data-tool="box"']
+          missing=[x for x in required if x not in s]
+          if missing: raise SystemExit('Korunan işlev kayboldu: '+repr(missing))
+          legacy=['aybV28MobileDock','aybV28ExportSheet','ayb-v28-mobile','ayb_v28_same_program_mobile_css','ayb_v28_same_program_mobile_js','AYB Saha Harita Metraj v16.40']
+          remain=[x for x in legacy if x in s]
+          if remain: raise SystemExit('Legacy kaldı: '+repr(remain))
+          ratio=len(s.encode())/len(original.encode())
+          if not 0.80 <= ratio < 1.0: raise SystemExit('Temizlik oranı güvenli değil: '+str(ratio))
+          html.write_text(s,encoding='utf-8')
+
+          t=tab.read_text(encoding='utf-8')
+          for x in legacy[:-1]:
+              if x in t: raise SystemExit('ayb-tablet.js içinde legacy işaret var: '+x)
+          t=t.replace('AYB Saha Harita Metraj v16.40','BY EDŞ Saha Programı PERF-25.07-AT-U2')
+          tab.write_text(t,encoding='utf-8')
+
+          g=Path('app/build.gradle'); x=g.read_text(encoding='utf-8')
+          x=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 1665',x,count=1)
+          x=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.65"',x,count=1)
+          if 'applicationId "com.bayramyaras.aybsaha.stable"' not in x: raise SystemExit('Stable paket kimliği yok')
+          g.write_text(x,encoding='utf-8')
+
+          strings=Path('app/src/main/res/values/strings.xml'); x=strings.read_text(encoding='utf-8')
+          x=re.sub(r'<string\s+name="app_name">.*?</string>','<string name="app_name">BY EDŞ SAHA</string>',x,count=1,flags=re.S)
+          strings.write_text(x,encoding='utf-8')
+
+          main=Path('app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java'); x=main.read_text(encoding='utf-8')
+          anchor='''        web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);\n        web.setVerticalScrollBarEnabled(false);\n        web.setHorizontalScrollBarEnabled(false);\n'''
+          inject='''        web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);\n        web.setVerticalScrollBarEnabled(false);\n        web.setHorizontalScrollBarEnabled(false);\n\n        // v16.65: Yalnız eski WebView arayüz önbelleğini bir kez temizle.\n        // Proje verilerinin bulunduğu localStorage / DOM storage silinmez.\n        try {\n            android.content.SharedPreferences aybPrefs = getSharedPreferences("BY_EDS_SAHA_RUNTIME", MODE_PRIVATE);\n            if (!aybPrefs.getBoolean("UI_CACHE_CLEAN_1665", false)) {\n                web.clearCache(true);\n                web.clearHistory();\n                aybPrefs.edit().putBoolean("UI_CACHE_CLEAN_1665", true).apply();\n            }\n        } catch (Exception ignored) {}\n'''
+          if 'UI_CACHE_CLEAN_1665' not in x:
+              if anchor not in x: raise SystemExit('MainActivity cache anchor yok')
+              x=x.replace(anchor,inject,1)
+          main.write_text(x,encoding='utf-8')
+          print('V16.65 TEMIZLIK OK')
+          PY
+          node --check app/src/main/assets/ayb-tablet.js
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve icini dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk
+          unzip -t store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.stable' versionCode='1665' versionName='16.65'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'id="aybOfficeRibbon"' "$F"
+          grep -q 'data-tool="sahanot"' "$F"
+          grep -q 'aybSahaNotKmzFiles' "$F"
+          grep -q 'aybSahaNotGit' "$F"
+          grep -q 'newProject' "$F"
+          grep -q 'openProject' "$F"
+          grep -q 'saveProject' "$F"
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'aybV28ExportSheet' "$F"
+          ! grep -q 'ayb-v28-mobile' "$F"
+          ! grep -q 'AYB Saha Harita Metraj v16.40' "$F"
+          node --check /tmp/apkcheck/assets/ayb-tablet.js
+          sha256sum store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk | tee store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk.sha256
+          printf 'BY EDŞ SAHA STABİL TEMİZ\nSürüm: 16.65\nTaban: sağlam v16.58\nEski V28 mobil arayüz/dock/export kodları fiziksel kaldırıldı.\n' > store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.65-STABIL-TEMIZ
+          path: |
+            store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk
+            store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ.apk.sha256
+            store/BY-EDS-SAHA-v16.65-STABIL-TEMIZ-BILGI.txt
+          if-no-files-found: error
+
+      - name: Dogrulanmis temiz kaynagi dala kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/assets/AYB_Saha_Harita.html app/src/main/assets/ayb-tablet.js app/src/main/res/values/strings.xml app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
+          if ! git diff --cached --quiet; then
+            git commit -m "BY EDŞ Saha v16.65 stabil temiz kaynak [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
