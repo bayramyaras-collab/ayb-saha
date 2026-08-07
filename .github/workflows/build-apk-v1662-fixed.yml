@@ -1,0 +1,63 @@
+name: APK Olustur (BY EDS Saha v16.62 Fixed)
+
+on:
+  push:
+    branches: [ apk-v1662-fixed ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Sekme duzeltmesini uygula ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1662_tabs.py
+          ! grep -q 'ayb_current_green_ui_v1661' app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'aybV28MobileDock' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="ayb_section_tabs_toolbar_v21_css"' app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="ayb_section_tabs_toolbar_v21_js"' app/src/main/assets/AYB_Saha_Harita.html
+          test "$(grep -o 'data-section="[^"]*"' app/src/main/assets/AYB_Saha_Harita.html | sort -u | wc -l)" -ge 8
+          grep -q 'applicationId "com.bayramyaras.aybsaha.current2"' app/build.gradle
+          grep -q 'versionCode 1662' app/build.gradle
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk
+          unzip -t store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.current2' versionCode='1662' versionName='16.62'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk 'assets/AYB_Saha_Harita.html' -d /tmp/apkcheck
+          ! grep -q 'ayb_current_green_ui_v1661' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'id="ayb_section_tabs_toolbar_v21_css"' /tmp/apkcheck/assets/AYB_Saha_Harita.html
+          sha256sum store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk | tee store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk.sha256
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI
+          path: |
+            store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk
+            store/BY-EDS-SAHA-v16.62-SEKME-DUZELTILDI.apk.sha256
+          if-no-files-found: error
