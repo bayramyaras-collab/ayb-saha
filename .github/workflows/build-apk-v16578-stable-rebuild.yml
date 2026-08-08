@@ -1,0 +1,118 @@
+name: APK Olustur (BY EDS Saha v16.57.8 Stabil Rebuild)
+
+on:
+  push:
+    branches: [ apk-v16578-stable-rebuild ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Orijinal v16.57 tabanina guvenli duzeltmeleri uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16578_stable_rebuild.py . | tee /tmp/patch.txt
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          T=app/src/main/assets/ayb-tablet.js
+          grep -q 'function initMap()' "$F"
+          grep -q "baseLayers.sat=L.tileLayer('https://mt{s}.google.com/vt/lyrs=s" "$F"
+          grep -q "map.on('click',handleMapClick)" "$F"
+          grep -q 'function setup()' "$F"
+          grep -q 'function newProject' "$F"
+          grep -q 'function openProject' "$F"
+          grep -q 'function saveProject' "$F"
+          grep -q 'Otomat Kapağı Yok Kablolar Dışarda' "$F"
+          grep -q 'Kırık Nokta Düzenlemeyi Aktif Et' "$F"
+          grep -q 'Yalnız boş numara alanları değiştirilir.' "$F"
+          grep -q '<title>BY EDŞ SAHA V57</title>' "$F"
+          if grep -q 'id="aybSahaImza"' "$F"; then echo 'Alt eski imza kaldi'; exit 1; fi
+          node --check "$T"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          core=next((x for x in scripts if 'function initMap()' in x and 'function handleMapClick(e)' in x and 'function autoNumberProjectObjects(options={})' in x),None)
+          if not core: raise SystemExit('ana motor scripti bulunamadi')
+          Path('/tmp/core.js').write_text(core,encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/core.js'],check=True)
+          PY
+          grep -q '^init 9c26f74f3b709dde6283c324457f44a03162740c54cfd5b71f36e9664e92da13$' /tmp/patch.txt
+          grep -q '^setup 1c869f5721c110c33414d125bdcc178b5ab445158dcac8b881fbaa74a07b890f$' /tmp/patch.txt
+          grep -q '^click 95354baab131f9d57adacc61d765d233bf2d25cfecb3f1d5b89dbe84340f0801$' /tmp/patch.txt
+          grep -q '^base 364c5083500cac4042ab87b4ffe1924bceadc993b24ec666d167ca363c5463a3$' /tmp/patch.txt
+
+      - name: Surum ve paket adi
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('app/build.gradle');s=g.read_text(encoding='utf-8')
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.byedssaha.v578"',s,count=1)
+          s=re.sub(r'versionCode\s+\d+','versionCode 16578',s,count=1)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "16.57.8"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          Path('app/src/main/res/values/strings.xml').write_text('<resources>\n    <string name="app_name">BY EDŞ SAHA V57</string>\n</resources>\n',encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve icini tekrar dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BYEDS57-8.apk
+          unzip -t store/BYEDS57-8.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BYEDS57-8.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v578' versionCode='16578' versionName='16.57.8'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA V57'" /tmp/badging.txt
+          unzip -q store/BYEDS57-8.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          T=/tmp/apkcheck/assets/ayb-tablet.js
+          grep -q "baseLayers.sat=L.tileLayer('https://mt{s}.google.com/vt/lyrs=s" "$F"
+          grep -q "map.on('click',handleMapClick)" "$F"
+          grep -q 'data-tool="direk"' "$F"
+          grep -q 'data-tool="hat"' "$F"
+          grep -q 'data-tool="yeraltihat"' "$F"
+          grep -q 'Otomat Kapağı Yok Kablolar Dışarda' "$F"
+          grep -q 'Kırık Nokta Düzenlemeyi Aktif Et' "$F"
+          grep -q 'Yalnız boş numara alanları değiştirilir.' "$F"
+          if grep -q 'id="aybSahaImza"' "$F"; then echo 'APK icinde alt imza kaldi'; exit 1; fi
+          node --check "$T"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS57-8.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BYEDS57-8.apk | tee store/BYEDS57-8.apk.sha256
+          printf 'BY EDŞ SAHA V57\nSürüm: 16.57.8\nOrijinal çalışan v16.57 tabanı. initMap, switchBase, setup ve handleMapClick kritik motorları birebir korundu.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYEDS57-8-STABIL
+          path: |
+            store/BYEDS57-8.apk
+            store/BYEDS57-8.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
