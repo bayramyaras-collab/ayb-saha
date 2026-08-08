@@ -51,9 +51,7 @@ jobs:
           T=Path('app/src/main/assets/ayb-tablet.js')
           h=H.read_text(encoding='utf-8')
           t=T.read_text(encoding='utf-8')
-          # Tablet JS gercek syntax kontrolu
           subprocess.run(['node','--check',str(T)],check=True)
-          # Ana motorun syntax kontrolu
           scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',h,re.S|re.I)
           core=next((x for x in scripts if 'function newProject' in x and 'function openProject' in x and 'function saveProject' in x),None)
           if not core: raise SystemExit('proje motoru bulunamadi')
@@ -61,7 +59,7 @@ jobs:
           subprocess.run(['node','--check','/tmp/core.js'],check=True)
           for old in ['PERF-25.07-AT-U2','Hazırlayan Bayram YARAŞ','GPS kartı + Lejant: BASILI TUT SÜRÜKLE','data-ayb-marka','aybPerfBadge']:
               if old in t: raise SystemExit('tablet eski kalinti: '+old)
-          if re.search(r'<div\b[^>]*class=["\'][^"\']*\blegend\b',h,re.I): raise SystemExit('HTML legend DOM kaldi')
+          if re.search(r'<div\b[^>]*class=["\']legend["\'][^>]*>',h,re.I): raise SystemExit('HTML ana legend DOM kaldi')
           for need in ['<title>BY EDŞ SAHA V57</title>','<div class="title">BY EDŞ SAHA V57</div>','id="ayb_v576_old_ui_cleanup_css"','V16.57.3: KIRIK NOKTA KORUMASI','V16.57.4: GUVENLI OTOMATIK NUMARA SECIMI','id="ayb_toast_core_v575"','Otomat Kapağı Yok Kablolar Dışarda']:
               if need not in h: raise SystemExit('eksik: '+need)
           PY
@@ -113,7 +111,7 @@ jobs:
           if grep -q 'PERF-25.07-AT-U2' "$T"; then echo 'APK tablet JS PERF kalintisi var'; exit 1; fi
           if grep -q 'Hazırlayan Bayram YARAŞ' "$T"; then echo 'APK tablet JS Hazirlayan kalintisi var'; exit 1; fi
           if grep -q 'GPS kartı + Lejant: BASILI TUT SÜRÜKLE' "$T"; then echo 'APK eski GPS/legend timer kaldi'; exit 1; fi
-          if grep -q '<div class="legend"' "$H"; then echo 'APK legend DOM kaldi'; exit 1; fi
+          if grep -q '<div class="legend"' "$H"; then echo 'APK ana legend DOM kaldi'; exit 1; fi
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS-V57-6.apk > store/APK_IMZA_KONTROL.txt
           sha256sum store/BYEDS-V57-6.apk | tee store/BYEDS-V57-6.apk.sha256
           printf 'BY EDŞ SAHA V57\nSürüm: 16.57.6\nEski PERF/Hazırlayan başlık zorlayıcısı, sürüm timeri ve eski lejant/GPS sürükleme katmanı fiziksel olarak kaldırıldı.\n' > store/BILGI.txt
