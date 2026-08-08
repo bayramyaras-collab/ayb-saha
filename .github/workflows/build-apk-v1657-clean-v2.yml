@@ -1,0 +1,72 @@
+name: APK Olustur (BY EDS Saha v16.57 Clean V2)
+
+on:
+  push:
+    branches: [ apk-v1657-clean-stable ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: v16.57 temiz patch ve dogrulama
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1657_clean.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          p=Path('app/src/main/assets/AYB_Saha_Harita.html'); s=p.read_text(encoding='utf-8')
+          bad=['ayb_v28_same_program_mobile_css','ayb_v28_same_program_mobile_js','aybV28MobileDock','class="floating-palette"','class="left-tools"']
+          for x in bad:
+              if x in s: raise SystemExit('eski kalinti: '+x)
+          good=['function newProject','function openProject','function saveProject','data-tool="sahanot"','aybSahaNotSilKalici','iconSize:[24,24]','ayb_v16_68_professional_ui_js']
+          for x in good:
+              if x not in s: raise SystemExit('eksik: '+x)
+          for i,c in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)):
+              if 'function saveProject' in c or 'V16.56: FOTOĞRAFLI SAHA NOTU' in c or 'ayb_v16_68_professional_ui_js' in c:
+                  f=Path('/tmp')/f'chk_{i}.js'; f.write_text(c,encoding='utf-8'); subprocess.run(['node','--check',str(f)],check=True)
+          g=Path('app/build.gradle'); x=g.read_text(encoding='utf-8')
+          x=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.aybsaha.clean57"',x,count=1)
+          x=re.sub(r'(?m)^(\s*)versionCode\s+\d+\s*$',r'\1versionCode 16571',x,count=1)
+          x=re.sub(r'(?m)^(\s*)versionName\s+"[^"]+"\s*$',r'\1versionName "16.57.1"',x,count=1)
+          g.write_text(x,encoding='utf-8')
+          st=Path('app/src/main/res/values/strings.xml'); y=st.read_text(encoding='utf-8'); y=re.sub(r'<string name="app_name">.*?</string>','<string name="app_name">BY EDŞ SAHA V57 TEMİZ</string>',y); st.write_text(y,encoding='utf-8')
+          PY
+          node --check app/src/main/assets/ayb-tablet.js
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: APK derle ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-V57-TEMIZ.apk
+          unzip -t store/BY-EDS-SAHA-V57-TEMIZ.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-V57-TEMIZ.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.clean57' versionCode='16571' versionName='16.57.1'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-V57-TEMIZ.apk 'assets/AYB_Saha_Harita.html' -d /tmp/apkcheck
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/apkcheck/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          assert 'function openProject' in s and 'function saveProject' in s and 'aybSahaNotSilKalici' in s and 'iconSize:[24,24]' in s
+          assert 'aybV28MobileDock' not in s and 'class="floating-palette"' not in s
+          PY
+          sha256sum store/BY-EDS-SAHA-V57-TEMIZ.apk | tee store/BY-EDS-SAHA-V57-TEMIZ.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-V57-TEMIZ-V2
+          path: |
+            store/BY-EDS-SAHA-V57-TEMIZ.apk
+            store/BY-EDS-SAHA-V57-TEMIZ.apk.sha256
+          if-no-files-found: error
