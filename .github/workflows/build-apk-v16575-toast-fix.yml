@@ -1,0 +1,123 @@
+name: APK Olustur (BY EDS Saha v16.57.5 Proje Acilis Fix)
+
+on:
+  push:
+    branches: [ apk-v16575-toast-fix ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: v16.57.2 NOT ve arayuz duzeltmeleri
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16572_note_stable.py
+
+      - name: v16.57.3 kirik nokta korumasi
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16573_vertex_lock.py
+
+      - name: v16.57.4 guvenli otomatik numara
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16574_auto_number_safe.py
+
+      - name: v16.57.5 toast ve proje olusturma hatasini duzelt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16575_toast_fix.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          g=Path('app/build.gradle')
+          x=g.read_text(encoding='utf-8')
+          x=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.byedssaha.v575"',x,count=1)
+          x=re.sub(r'versionCode\s+\d+','versionCode 16575',x,count=1)
+          x=re.sub(r'versionName\s+"[^"]+"','versionName "16.57.5"',x,count=1)
+          g.write_text(x,encoding='utf-8')
+          Path('app/src/main/res/values/strings.xml').write_text('<resources>\n    <string name="app_name">BY EDŞ SAHA V57</string>\n</resources>\n',encoding='utf-8')
+
+          p=Path('app/src/main/assets/AYB_Saha_Harita.html')
+          s=p.read_text(encoding='utf-8')
+          if 'id="toast"' in s: raise SystemExit('eski id=toast halen var')
+          for req in ['id="aybToast"','id="ayb_toast_core_v575"','window.toast=aybToastShow','function aybNotify(msg)','Yeni proje oluşturulamadı','function newProject','function openProject','function saveProject','V16.57.4: GUVENLI OTOMATIK NUMARA SECIMI','V16.57.3: KIRIK NOKTA KORUMASI','Otomat Kapağı Yok Kablolar Dışarda','BY EDŞ SAHA V57']:
+              if req not in s: raise SystemExit('eksik: '+req)
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          tests={
+              'toast': lambda c:'window.toast=aybToastShow' in c,
+              'project_center': lambda c:'Yeni proje oluşturulamadı' in c,
+              'project_engine': lambda c:'function newProject' in c and 'function openProject' in c and 'function saveProject' in c,
+              'auto_no': lambda c:'function autoNumberProjectObjects(options={})' in c,
+              'vertex': lambda c:'V16.57.3: KIRIK NOKTA KORUMASI' in c,
+          }
+          for name,pred in tests.items():
+              code=next((c for c in scripts if pred(c)),None)
+              if not code: raise SystemExit(name+' scripti bulunamadi')
+              f=Path('/tmp')/(name+'.js'); f.write_text(code,encoding='utf-8')
+              subprocess.run(['node','--check',str(f)],check=True)
+          pc=next(c for c in scripts if 'Yeni proje oluşturulamadı' in c)
+          if 'try{aybNotify("Yeni proje açıldı: "+name);}' not in pc: raise SystemExit('proje bildirim korumasi yok')
+          PY
+          node --check app/src/main/assets/ayb-tablet.js
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BYEDS-V57-5.apk
+          unzip -t store/BYEDS-V57-5.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BYEDS-V57-5.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v575' versionCode='16575' versionName='16.57.5'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA V57'" /tmp/badging.txt
+          unzip -q store/BYEDS-V57-5.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'id="aybToast"' "$F"
+          grep -q 'id="ayb_toast_core_v575"' "$F"
+          grep -q 'window.toast=aybToastShow' "$F"
+          grep -q 'function aybNotify(msg)' "$F"
+          grep -q 'V16.57.4: GUVENLI OTOMATIK NUMARA SECIMI' "$F"
+          grep -q 'V16.57.3: KIRIK NOKTA KORUMASI' "$F"
+          if grep -q 'id="toast"' "$F"; then echo 'Eski toast id APK icinde bulundu'; exit 1; fi
+          if grep -q 'aybV28MobileDock' "$F"; then echo 'Eski v28 dock APK icinde bulundu'; exit 1; fi
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS-V57-5.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BYEDS-V57-5.apk | tee store/BYEDS-V57-5.apk.sha256
+          printf 'BY EDŞ SAHA V57\nSürüm: 16.57.5\nProje oluşturma: toast id/fonksiyon çakışması giderildi. NOT, kırık nokta koruması ve güvenli otomatik numara korunur.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYEDS-V57-5
+          path: |
+            store/BYEDS-V57-5.apk
+            store/BYEDS-V57-5.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
