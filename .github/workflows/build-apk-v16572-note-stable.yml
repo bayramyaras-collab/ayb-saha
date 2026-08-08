@@ -1,0 +1,102 @@
+name: APK Olustur (BY EDS Saha v16.57.2 Stabil)
+
+on:
+  push:
+    branches: [ apk-v16572-note-stable ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: v16.57 tabanini temizle ve NOT motorunu duzelt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16572_note_stable.py
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="aybRibbonTabs"' "$F"
+          grep -q 'id="aybRibbonTools"' "$F"
+          grep -q 'id="ayb_v572_enhance"' "$F"
+          grep -q 'Lamba Arızalı' "$F"
+          grep -q 'Direk Hasarlı' "$F"
+          grep -q 'Otomat Kapağı Yok - Kablolar Dışarıda' "$F"
+          grep -q 'function newProject' "$F"
+          grep -q 'function openProject' "$F"
+          grep -q 'function saveProject' "$F"
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'ayb_v28_same_program_mobile_js' "$F"
+          ! grep -q 'ayb_v16_68_professional_ui_js' "$F"
+          ! grep -q 'class="floating-palette"' "$F"
+          node --check app/src/main/assets/ayb-tablet.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          m=re.search(r'<script id="ayb_v572_enhance">(.*?)</script>',s,re.S)
+          if not m: raise SystemExit('v572 enhancement script yok')
+          Path('/tmp/v572.js').write_text(m.group(1),encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/v572.js'],check=True)
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          main=next((x for x in scripts if 'function newProject' in x and 'function openProject' in x and 'function saveProject' in x),None)
+          if not main: raise SystemExit('proje motoru scripti yok')
+          Path('/tmp/project_engine.js').write_text(main,encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/project_engine.js'],check=True)
+          expected=['direk','trafo','yeraltihat','hat','abonehat','kanal','kofre','bina','box','sahanot']
+          for x in expected:
+              if f'[data-tool="{x}"]' not in m.group(1): raise SystemExit('sirada eksik: '+x)
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-V57-2-STABIL.apk
+          unzip -t store/BY-EDS-SAHA-V57-2-STABIL.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-V57-2-STABIL.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v572' versionCode='16572' versionName='16.57.2'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-V57-2-STABIL.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          grep -q 'id="ayb_v572_enhance"' "$F"
+          grep -q 'Lamba Arızalı' "$F"
+          grep -q 'Otomat Kapağı Yok - Kablolar Dışarıda' "$F"
+          grep -q 'function newProject' "$F"
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'class="floating-palette"' "$F"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BY-EDS-SAHA-V57-2-STABIL.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BY-EDS-SAHA-V57-2-STABIL.apk | tee store/BY-EDS-SAHA-V57-2-STABIL.apk.sha256
+          printf 'BY EDŞ SAHA\nSürüm: 16.57.2\nPaket: com.bayramyaras.byedssaha.v572\nTemiz v16.57 tabanı; sabit 24 px NOT, kalıcı silme, hazır arıza listesi ve sabit araç sırası.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-V57-2-STABIL
+          path: |
+            store/BY-EDS-SAHA-V57-2-STABIL.apk
+            store/BY-EDS-SAHA-V57-2-STABIL.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
