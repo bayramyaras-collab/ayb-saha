@@ -1,0 +1,129 @@
+name: APK Olustur (BY EDS Saha v16.57.7 Stabil No Flash)
+
+on:
+  push:
+    branches: [ apk-v16577-stable-no-flash ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: v16.57.2-v16.57.5 calisan duzeltmeleri uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16572_note_stable.py
+          python3 tools/patch_v16573_vertex_lock.py
+          python3 tools/patch_v16574_auto_number_safe.py
+          python3 tools/patch_v16575_toast_fix.py
+
+      - name: Harita motoru hash al
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,hashlib
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          core=next((x for x in scripts if 'function initMap()' in x and 'function renderAll()' in x and 'function newProject' in x),None)
+          if not core: raise SystemExit('harita/proje ana motoru bulunamadi')
+          Path('/tmp/core_before.sha').write_text(hashlib.sha256(core.encode()).hexdigest())
+          PY
+
+      - name: v16.57.7 yalniz acilis kalintilarini temizle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16577_no_flash.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,hashlib,subprocess
+          H=Path('app/src/main/assets/AYB_Saha_Harita.html')
+          T=Path('app/src/main/assets/ayb-tablet.js')
+          h=H.read_text(encoding='utf-8')
+          t=T.read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',h,re.S|re.I)
+          core=next((x for x in scripts if 'function initMap()' in x and 'function renderAll()' in x and 'function newProject' in x),None)
+          if not core: raise SystemExit('harita ana motoru kayip')
+          before=Path('/tmp/core_before.sha').read_text().strip()
+          after=hashlib.sha256(core.encode()).hexdigest()
+          if before!=after: raise SystemExit('HATA: harita/direk ana motoru degismis')
+          Path('/tmp/core.js').write_text(core,encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/core.js'],check=True)
+          subprocess.run(['node','--check',str(T)],check=True)
+          for bad in ['aybSplash','PERF-25.07-AT-U2','setTimeout(showScreen,450)','setTimeout(showScreen,900)']:
+              if bad in h or bad in t: raise SystemExit('eski acilis kalintisi: '+bad)
+          for need in ['<div id="map" class="map"></div>','data-tool="direk"','data-tool="trafo"','data-tool="hat"','function initMap()','function renderAll()','function newProject','function openProject','function saveProject','V16.57.3: KIRIK NOKTA KORUMASI','V16.57.4: GUVENLI OTOMATIK NUMARA SECIMI','id="ayb_toast_core_v575"','id="ayb_v577_start_clean"']:
+              if need not in h: raise SystemExit('eksik: '+need)
+          print('HARITA MOTORU HASH AYNI:',after)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('app/build.gradle')
+          s=g.read_text(encoding='utf-8')
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.byedssaha.v577"',s,count=1)
+          s=re.sub(r'versionCode\s+\d+','versionCode 16577',s,count=1)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "16.57.7"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          Path('app/src/main/res/values/strings.xml').write_text('<resources>\n    <string name="app_name">BY EDŞ SAHA V57</string>\n</resources>\n',encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BYEDS57-7.apk
+          unzip -t store/BYEDS57-7.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BYEDS57-7.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v577' versionCode='16577' versionName='16.57.7'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA V57'" /tmp/badging.txt
+          unzip -q store/BYEDS57-7.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          H=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          T=/tmp/apkcheck/assets/ayb-tablet.js
+          grep -q '<div id="map" class="map"></div>' "$H"
+          grep -q 'data-tool="direk"' "$H"
+          grep -q 'data-tool="hat"' "$H"
+          grep -q 'function initMap()' "$H"
+          grep -q 'function renderAll()' "$H"
+          grep -q 'id="ayb_v577_start_clean"' "$H"
+          if grep -q 'aybSplash' "$T"; then echo 'Splash kaldi'; exit 1; fi
+          if grep -q 'PERF-25.07-AT-U2' "$T"; then echo 'PERF kaldi'; exit 1; fi
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS57-7.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BYEDS57-7.apk | tee store/BYEDS57-7.apk.sha256
+          printf 'BY EDŞ SAHA V57\nSürüm: 16.57.7\nSağlam v16.57.5 harita/direk motoru hash olarak birebir korunmuştur. Splash ve otomatik proje merkezi flash kaldırılmıştır.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYEDS57-7
+          path: |
+            store/BYEDS57-7.apk
+            store/BYEDS57-7.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
