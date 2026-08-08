@@ -1,0 +1,132 @@
+name: APK Olustur (BY EDS Saha v16.57.9 Enerji Giris)
+
+on:
+  push:
+    branches: [ apk-v16579-energy-login ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Calisan v16.57.8 tabanini olustur
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16578_stable_rebuild.py . > /tmp/v578.txt
+          grep -q '^init 9c26f74f3b709dde6283c324457f44a03162740c54cfd5b71f36e9664e92da13$' /tmp/v578.txt
+          grep -q '^setup 1c869f5721c110c33414d125bdcc178b5ab445158dcac8b881fbaa74a07b890f$' /tmp/v578.txt
+          grep -q '^click 95354baab131f9d57adacc61d765d233bf2d25cfecb3f1d5b89dbe84340f0801$' /tmp/v578.txt
+          grep -q '^base 364c5083500cac4042ab87b4ffe1924bceadc993b24ec666d167ca363c5463a3$' /tmp/v578.txt
+
+      - name: Yalniz acilis akisini degistir
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16579_energy_login.py | tee /tmp/v579.txt
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          T=app/src/main/assets/ayb-tablet.js
+          J=app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
+          TH=app/src/main/res/values/themes.xml
+          grep -q '^init 9c26f74f3b709dde6283c324457f44a03162740c54cfd5b71f36e9664e92da13$' /tmp/v579.txt
+          grep -q '^setup 1c869f5721c110c33414d125bdcc178b5ab445158dcac8b881fbaa74a07b890f$' /tmp/v579.txt
+          grep -q '^click 95354baab131f9d57adacc61d765d233bf2d25cfecb3f1d5b89dbe84340f0801$' /tmp/v579.txt
+          grep -q '^base 364c5083500cac4042ab87b4ffe1924bceadc993b24ec666d167ca363c5463a3$' /tmp/v579.txt
+          grep -q 'id="ayb_v579_boot_css"' "$F"
+          grep -q 'id="ayb_v579_boot_js"' "$F"
+          grep -q 'Enerji sistemi hazırlanıyor…' "$F"
+          grep -q 'id="aybBootClose"' "$F"
+          grep -q 'Programı Kapat' "$F"
+          if grep -q 'Programı Aç' "$T"; then echo 'Eski Programi Ac kaldi'; exit 1; fi
+          if grep -q 'aybSplash' "$T"; then echo 'Eski splash kaldi'; exit 1; fi
+          if grep -q 'aybGirisSifre' "$T"; then echo 'Eski sifre HTML kaldi'; exit 1; fi
+          grep -q 'web.setBackgroundColor(Color.BLACK);' "$J"
+          grep -q 'android:windowDisablePreview' "$TH"
+          grep -q "baseLayers.sat=L.tileLayer('https://mt{s}.google.com/vt/lyrs=s" "$F"
+          grep -q "map.on('click',handleMapClick)" "$F"
+          grep -q 'data-tool="direk"' "$F"
+          grep -q 'data-tool="hat"' "$F"
+          node --check "$T"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          m=re.search(r'<script id="ayb_v579_boot_js">(.*?)</script>',s,re.S)
+          if not m: raise SystemExit('boot JS bulunamadi')
+          Path('/tmp/boot579.js').write_text(m.group(1),encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/boot579.js'],check=True)
+          core=next((x for x in re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I) if 'function initMap()' in x and 'function handleMapClick(e)' in x),None)
+          if not core: raise SystemExit('ana harita motoru yok')
+          Path('/tmp/core579.js').write_text(core,encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/core579.js'],check=True)
+          PY
+
+      - name: Surum ve paket adi
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('app/build.gradle');s=g.read_text(encoding='utf-8')
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.byedssaha.v579"',s,count=1)
+          s=re.sub(r'versionCode\s+\d+','versionCode 16579',s,count=1)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "16.57.9"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          Path('app/src/main/res/values/strings.xml').write_text('<resources>\n    <string name="app_name">BY EDŞ SAHA V57</string>\n</resources>\n',encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BYEDS57-9.apk
+          unzip -t store/BYEDS57-9.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BYEDS57-9.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v579' versionCode='16579' versionName='16.57.9'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA V57'" /tmp/badging.txt
+          unzip -q store/BYEDS57-9.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          T=/tmp/apkcheck/assets/ayb-tablet.js
+          grep -q 'id="ayb_v579_boot_js"' "$F"
+          grep -q 'Enerji sistemi hazırlanıyor…' "$F"
+          grep -q 'Programı Kapat' "$F"
+          grep -q "baseLayers.sat=L.tileLayer('https://mt{s}.google.com/vt/lyrs=s" "$F"
+          grep -q "map.on('click',handleMapClick)" "$F"
+          if grep -q 'Programı Aç' "$T"; then echo 'APK eski Programi Ac kaldi'; exit 1; fi
+          if grep -q 'aybSplash' "$T"; then echo 'APK eski splash kaldi'; exit 1; fi
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS57-9.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BYEDS57-9.apk | tee store/BYEDS57-9.apk.sha256
+          printf 'BY EDŞ SAHA V57\nSürüm: 16.57.9\nAçılış: siyah native zemin -> kısa enerji animasyonu -> doğrudan şifre. Programı Kapat şifre ekranında. Harita/uydu/direk/hat motoru v16.57.8 ile birebir korunmuştur.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYEDS57-9-ENERJI-GIRIS
+          path: |
+            store/BYEDS57-9.apk
+            store/BYEDS57-9.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
