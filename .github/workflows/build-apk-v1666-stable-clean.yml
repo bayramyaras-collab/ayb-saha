@@ -1,0 +1,79 @@
+name: APK Olustur (BY EDS Saha v16.66 Stabil Temiz)
+
+on:
+  push:
+    branches: [ apk-v1665-stable-clean-final ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Eski v28 katmanini temizle ve calisan motoru dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v1666_stable_clean.py
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'aybV28ExportSheet' "$F"
+          ! grep -q 'ayb-v28-mobile' "$F"
+          grep -q 'id="btnOpen"' "$F"
+          grep -q 'id="newProjectBtn"' "$F"
+          grep -q 'function newProject(' "$F"
+          grep -q 'function openProject(' "$F"
+          grep -q 'function saveProject(' "$F"
+          grep -q 'data-tool="sahanot"' "$F"
+          node --check app/src/main/assets/ayb-tablet.js
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk
+          unzip -t store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.aybsaha.clean' versionCode='1666' versionName='16.66'" /tmp/badging.txt
+          unzip -q store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          ! grep -q 'aybV28MobileDock' "$F"
+          ! grep -q 'aybV28ExportSheet' "$F"
+          ! grep -q 'ayb-v28-mobile' "$F"
+          grep -q 'id="btnOpen"' "$F"
+          grep -q 'id="newProjectBtn"' "$F"
+          grep -q 'function newProject(' "$F"
+          grep -q 'function openProject(' "$F"
+          grep -q 'function saveProject(' "$F"
+          grep -q 'data-tool="sahanot"' "$F"
+          sha256sum store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk | tee store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk.sha256
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BY-EDS-SAHA-v16.66-STABIL-TEMIZ
+          path: |
+            store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk
+            store/BY-EDS-SAHA-v16.66-STABIL-TEMIZ.apk.sha256
+          if-no-files-found: error
