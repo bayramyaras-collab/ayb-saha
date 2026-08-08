@@ -56,12 +56,18 @@ perf=r'''<script id="ayb_v5710_map_fast">
 
 s=s[:core.start()]+perf+s[core.start():]
 
-# Android WebView zaten manifestte hardwareAccelerated=true. Katmanı da açıkça GPU'ya sabitle.
+# Android WebView manifestte hardwareAccelerated=true; v16.57.9 siyah zemin satirinin
+# hemen ardindan WebView katmanini da GPU'ya sabitle. Eski kaynakta bu satir yoksa
+# WebView olusturma satirindan sonra ekle.
 if 'web.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);' not in j:
-    needle='        web = new WebView(this);\n        setContentView(web);\n'
-    if needle not in j:
+    if '        web.setBackgroundColor(Color.BLACK);\n' in j:
+        j=j.replace('        web.setBackgroundColor(Color.BLACK);\n',
+                    '        web.setBackgroundColor(Color.BLACK);\n        web.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);\n',1)
+    elif '        web = new WebView(this);\n' in j:
+        j=j.replace('        web = new WebView(this);\n',
+                    '        web = new WebView(this);\n        web.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);\n',1)
+    else:
         raise SystemExit('WebView olusturma satiri bulunamadi')
-    j=j.replace(needle, needle+'        web.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);\n',1)
 
 H.write_text(s,encoding='utf-8')
 J.write_text(j,encoding='utf-8')
