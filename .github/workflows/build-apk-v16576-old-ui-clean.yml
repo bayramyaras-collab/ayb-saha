@@ -1,0 +1,130 @@
+name: APK Olustur (BY EDS Saha v16.57.6 Eski Arayuz Temiz)
+
+on:
+  push:
+    branches: [ apk-v16576-old-ui-clean ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: v16.57.2 NOT ve arayuz duzeltmeleri
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16572_note_stable.py
+
+      - name: v16.57.3 kirik nokta korumasi
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16573_vertex_lock.py
+
+      - name: v16.57.4 guvenli otomatik numara
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16574_auto_number_safe.py
+
+      - name: v16.57.5 proje olusturma toast fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16575_toast_fix.py
+
+      - name: v16.57.6 eski tablet arayuz kalintilarini fiziksel temizle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16576_old_ui_clean.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          H=Path('app/src/main/assets/AYB_Saha_Harita.html')
+          T=Path('app/src/main/assets/ayb-tablet.js')
+          h=H.read_text(encoding='utf-8')
+          t=T.read_text(encoding='utf-8')
+          # Tablet JS gercek syntax kontrolu
+          subprocess.run(['node','--check',str(T)],check=True)
+          # Ana motorun syntax kontrolu
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',h,re.S|re.I)
+          core=next((x for x in scripts if 'function newProject' in x and 'function openProject' in x and 'function saveProject' in x),None)
+          if not core: raise SystemExit('proje motoru bulunamadi')
+          Path('/tmp/core.js').write_text(core,encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/core.js'],check=True)
+          for old in ['PERF-25.07-AT-U2','Hazırlayan Bayram YARAŞ','GPS kartı + Lejant: BASILI TUT SÜRÜKLE','data-ayb-marka','aybPerfBadge']:
+              if old in t: raise SystemExit('tablet eski kalinti: '+old)
+          if re.search(r'<div\b[^>]*class=["\'][^"\']*\blegend\b',h,re.I): raise SystemExit('HTML legend DOM kaldi')
+          for need in ['<title>BY EDŞ SAHA V57</title>','<div class="title">BY EDŞ SAHA V57</div>','id="ayb_v576_old_ui_cleanup_css"','V16.57.3: KIRIK NOKTA KORUMASI','V16.57.4: GUVENLI OTOMATIK NUMARA SECIMI','id="ayb_toast_core_v575"','Otomat Kapağı Yok Kablolar Dışarda']:
+              if need not in h: raise SystemExit('eksik: '+need)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('app/build.gradle')
+          s=g.read_text(encoding='utf-8')
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.byedssaha.v576"',s,count=1)
+          s=re.sub(r'versionCode\s+\d+','versionCode 16576',s,count=1)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "16.57.6"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          Path('app/src/main/res/values/strings.xml').write_text('<resources>\n    <string name="app_name">BY EDŞ SAHA V57</string>\n</resources>\n',encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BYEDS-V57-6.apk
+          unzip -t store/BYEDS-V57-6.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BYEDS-V57-6.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v576' versionCode='16576' versionName='16.57.6'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA V57'" /tmp/badging.txt
+          unzip -q store/BYEDS-V57-6.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          H=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          T=/tmp/apkcheck/assets/ayb-tablet.js
+          grep -q '<title>BY EDŞ SAHA V57</title>' "$H"
+          grep -q 'id="ayb_v576_old_ui_cleanup_css"' "$H"
+          grep -q 'V16.57.4: GUVENLI OTOMATIK NUMARA SECIMI' "$H"
+          grep -q 'V16.57.3: KIRIK NOKTA KORUMASI' "$H"
+          grep -q 'id="ayb_toast_core_v575"' "$H"
+          if grep -q 'PERF-25.07-AT-U2' "$T"; then echo 'APK tablet JS PERF kalintisi var'; exit 1; fi
+          if grep -q 'Hazırlayan Bayram YARAŞ' "$T"; then echo 'APK tablet JS Hazirlayan kalintisi var'; exit 1; fi
+          if grep -q 'GPS kartı + Lejant: BASILI TUT SÜRÜKLE' "$T"; then echo 'APK eski GPS/legend timer kaldi'; exit 1; fi
+          if grep -q '<div class="legend"' "$H"; then echo 'APK legend DOM kaldi'; exit 1; fi
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS-V57-6.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BYEDS-V57-6.apk | tee store/BYEDS-V57-6.apk.sha256
+          printf 'BY EDŞ SAHA V57\nSürüm: 16.57.6\nEski PERF/Hazırlayan başlık zorlayıcısı, sürüm timeri ve eski lejant/GPS sürükleme katmanı fiziksel olarak kaldırıldı.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYEDS-V57-6
+          path: |
+            store/BYEDS-V57-6.apk
+            store/BYEDS-V57-6.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
