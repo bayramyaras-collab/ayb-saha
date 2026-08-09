@@ -1,0 +1,9 @@
+package com.bayram.promarksaha;
+public class GeoMath { private static final double A=6378137.0,F=1.0/298.257222101,E2=F*(2-F);
+ public static class TM{public final double xNorthing,yEasting;public final int cm;public TM(double x,double y,int c){xNorthing=x;yEasting=y;cm=c;}}
+ public static int autoCentralMeridian(double lon){int c=(int)Math.round(lon/3.0)*3;return c<0?c+360:c;}
+ public static TM toTM3(double lat,double lon){return toTM3(lat,lon,autoCentralMeridian(lon));}
+ public static TM toTM3(double lat,double lon,int cm){double ph=Math.toRadians(lat),la=Math.toRadians(lon),l0=Math.toRadians(cm),ep2=E2/(1-E2),s=Math.sin(ph),co=Math.cos(ph),t=Math.tan(ph),N=A/Math.sqrt(1-E2*s*s),T=t*t,C=ep2*co*co,d=(la-l0)*co,e4=E2*E2,e6=e4*E2,M=A*((1-E2/4-3*e4/64-5*e6/256)*ph-(3*E2/8+3*e4/32+45*e6/1024)*Math.sin(2*ph)+(15*e4/256+45*e6/1024)*Math.sin(4*ph)-(35*e6/3072)*Math.sin(6*ph));double y=500000+N*(d+(1-T+C)*Math.pow(d,3)/6+(5-18*T+T*T+72*C-58*ep2)*Math.pow(d,5)/120);double x=M+N*t*(d*d/2+(5-T+9*C+4*C*C)*Math.pow(d,4)/24+(61-58*T+T*T+600*C-330*ep2)*Math.pow(d,6)/720);return new TM(x,y,cm);}
+ public static double distance(double x1,double y1,double x2,double y2){return Math.hypot(x2-x1,y2-y1);} public static double bearing(double x1,double y1,double x2,double y2){return (Math.toDegrees(Math.atan2(y2-y1,x2-x1))+360)%360;} public static double angleDiff(double t,double h){return (t-h+540)%360-180;}
+ public static class LineNav{public double crossTrack,remaining,lineLength,bearing;public boolean rightOfLine;}
+ public static LineNav lineNav(double ax,double ay,double bx,double by,double px,double py){LineNav n=new LineNav();double vx=bx-ax,vy=by-ay,wx=px-ax,wy=py-ay,l2=vx*vx+vy*vy;n.lineLength=Math.sqrt(l2);n.bearing=bearing(ax,ay,bx,by);if(l2<1e-9){n.crossTrack=distance(ax,ay,px,py);return n;}double t=(wx*vx+wy*vy)/l2,c=(vx*wy-vy*wx)/n.lineLength;n.crossTrack=Math.abs(c);n.rightOfLine=c<0;n.remaining=Math.max(0,(1-t)*n.lineLength);return n;}}
