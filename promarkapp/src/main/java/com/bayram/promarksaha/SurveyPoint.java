@@ -1,0 +1,1 @@
+package com.bayram.promarksaha; public class SurveyPoint { public String name="",description="",type="NOKTA",solution=""; public long timeMs; public double lat,lon,x,y,z,hSigma=Double.NaN,vSigma=Double.NaN; public int cm; }
