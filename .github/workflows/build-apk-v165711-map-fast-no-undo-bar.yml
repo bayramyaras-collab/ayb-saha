@@ -1,0 +1,128 @@
+name: APK Olustur (BY EDS Saha v16.57.11 Hizli Harita Barsiz)
+
+on:
+  push:
+    branches: [ apk-v165711-map-fast-no-undo-bar ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Calisan v16.57.9 tabanini olustur
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16578_stable_rebuild.py . >/tmp/v578.txt
+          python3 tools/patch_v16579_energy_login.py >/tmp/v579.txt
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'id="ayb_v579_boot_js"' "$F"
+          grep -q "baseLayers.sat=L.tileLayer('https://mt{s}.google.com/vt/lyrs=s" "$F"
+          grep -q "map.on('click',handleMapClick)" "$F"
+          grep -q 'data-tool="direk"' "$F"
+          grep -q 'data-tool="hat"' "$F"
+
+      - name: Hizli harita uygula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v165710_map_fast.py | tee /tmp/v5710.txt
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          J=app/src/main/java/com/bayramyaras/aybsaha/MainActivity.java
+          grep -q 'id="ayb_v5710_map_fast"' "$F"
+          grep -q 'opt.wheelPxPerZoomLevel=60' "$F"
+          grep -q 'opt.markerZoomAnimation=false' "$F"
+          grep -q 'opt.fadeAnimation=false' "$F"
+          grep -q 'opt.keepBuffer=2' "$F"
+          grep -q 'web.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);' "$J"
+          grep -q 'Kırık Nokta Düzenlemeyi Aktif Et' "$F"
+          grep -q 'Yalnız boş numara alanları değiştirilir.' "$F"
+          grep -q 'Otomat Kapağı Yok Kablolar Dışarda' "$F"
+
+      - name: Gecici geri al barini fiziksel kaldir
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v165711_no_undo_bar.py
+          U=app/src/main/assets/ayb-undo.js
+          ! grep -q 'showUndoToast' "$U"
+          ! grep -q 'aybUndoToast' "$U"
+          ! grep -q 'toastTimer' "$U"
+          grep -q 'aybUndoModal' "$U"
+          grep -q 'Silinenler / Geri Al' "$U"
+          grep -q 'window.aybUndoLast' "$U"
+          grep -q 'window.aybUndoKaydet' "$U"
+          node --check "$U"
+
+      - name: Surum ve paket adi
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('app/build.gradle');s=g.read_text(encoding='utf-8')
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.byedssaha.v5711"',s,count=1)
+          s=re.sub(r'versionCode\s+\d+','versionCode 165711',s,count=1)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "16.57.11"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          Path('app/src/main/res/values/strings.xml').write_text('<resources>\n    <string name="app_name">BY EDŞ SAHA V57</string>\n</resources>\n',encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BYEDS57-11.apk
+          unzip -t store/BYEDS57-11.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BYEDS57-11.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v5711' versionCode='165711' versionName='16.57.11'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA V57'" /tmp/badging.txt
+          unzip -q store/BYEDS57-11.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' 'assets/ayb-undo.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          U=/tmp/apkcheck/assets/ayb-undo.js
+          grep -q 'id="ayb_v5710_map_fast"' "$F"
+          grep -q 'opt.wheelPxPerZoomLevel=60' "$F"
+          grep -q 'opt.keepBuffer=2' "$F"
+          grep -q "map.on('click',handleMapClick)" "$F"
+          grep -q 'data-tool="direk"' "$F"
+          grep -q 'data-tool="hat"' "$F"
+          ! grep -q 'showUndoToast' "$U"
+          ! grep -q 'aybUndoToast' "$U"
+          grep -q 'aybUndoModal' "$U"
+          grep -q 'window.aybUndoLast' "$U"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS57-11.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BYEDS57-11.apk | tee store/BYEDS57-11.apk.sha256
+          printf 'BY EDŞ SAHA V57\nSürüm: 16.57.11\nHızlı harita/zoom korunur. Silme sonrası ekranda çıkan geçici GERİ AL barı fiziksel olarak kaldırılmıştır; geri alma yalnız Proje > Silinenler / Geri Al bölümünde kalır.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYEDS57-11-HIZLI-HARITA-BARSIZ
+          path: |
+            store/BYEDS57-11.apk
+            store/BYEDS57-11.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
