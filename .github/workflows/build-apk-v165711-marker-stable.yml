@@ -1,0 +1,138 @@
+name: APK Olustur (BY EDS Saha v16.57.11 Sabit Zoom)
+
+on:
+  push:
+    branches: [ apk-v165711-marker-stable ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Calisan v16.57.10 tabanini olustur
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v16578_stable_rebuild.py . >/tmp/v578.txt
+          python3 tools/patch_v16579_energy_login.py >/tmp/v579.txt
+          python3 tools/patch_v165710_map_fast.py >/tmp/v5710.txt
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          T=app/src/main/assets/ayb-tablet.js
+          grep -q 'id="ayb_v579_boot_js"' "$F"
+          grep -q 'id="ayb_v5710_map_fast"' "$F"
+          grep -q 'opt.markerZoomAnimation=false' "$F"
+          grep -q 'Kırık Nokta Düzenlemeyi Aktif Et' "$F"
+          grep -q 'Yalnız boş numara alanları değiştirilir.' "$F"
+          grep -q 'Otomat Kapağı Yok Kablolar Dışarda' "$F"
+          node --check "$T"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,hashlib
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          m=next((m for m in re.finditer(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I) if 'function initMap()' in m.group(1) and 'function handleMapClick(e)' in m.group(1) and 'function switchBase(v)' in m.group(1)),None)
+          if not m: raise SystemExit('ana motor yok')
+          Path('/tmp/core_before_5711.txt').write_text(hashlib.sha256(m.group(1).encode()).hexdigest())
+          PY
+
+      - name: Direk ve etiket zoom ziplama duzeltmesi
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/patch_v165711_marker_stable.py | tee /tmp/v5711.txt
+          F=app/src/main/assets/AYB_Saha_Harita.html
+          grep -q 'opt.markerZoomAnimation=true' "$F"
+          ! grep -q 'opt.markerZoomAnimation=false' "$F"
+          grep -q 'opt.zoomSnap=0.25' "$F"
+          grep -q 'opt.zoomDelta=0.5' "$F"
+          grep -q 'id="ayb_v5711_marker_stable_css"' "$F"
+          grep -q 'id="ayb_v5711_marker_stable_js"' "$F"
+          grep -q 'onlyIfOverlap' "$F"
+          grep -q 'kf-measure-label' "$F"
+          grep -q 'data-tool="direk"' "$F"
+          grep -q 'data-tool="hat"' "$F"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,hashlib,subprocess
+          s=Path('app/src/main/assets/AYB_Saha_Harita.html').read_text(encoding='utf-8')
+          m=next((m for m in re.finditer(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I) if 'function initMap()' in m.group(1) and 'function handleMapClick(e)' in m.group(1) and 'function switchBase(v)' in m.group(1)),None)
+          if not m: raise SystemExit('patch sonrasi ana motor yok')
+          before=Path('/tmp/core_before_5711.txt').read_text().strip()
+          after=hashlib.sha256(m.group(1).encode()).hexdigest()
+          if before!=after: raise SystemExit('ana saha motoru degisti')
+          mm=re.search(r'<script id="ayb_v5711_marker_stable_js">(.*?)</script>',s,re.S)
+          if not mm: raise SystemExit('v5711 js yok')
+          Path('/tmp/v5711.js').write_text(mm.group(1),encoding='utf-8')
+          subprocess.run(['node','--check','/tmp/v5711.js'],check=True)
+          print('core korunuyor:',after)
+          PY
+
+      - name: Surum ve paket adi
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('app/build.gradle');s=g.read_text(encoding='utf-8')
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.bayramyaras.byedssaha.v5711"',s,count=1)
+          s=re.sub(r'versionCode\s+\d+','versionCode 165711',s,count=1)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "16.57.11"',s,count=1)
+          g.write_text(s,encoding='utf-8')
+          Path('app/src/main/res/values/strings.xml').write_text('<resources>\n    <string name="app_name">BY EDŞ SAHA V57</string>\n</resources>\n',encoding='utf-8')
+          PY
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: SDK bilesenleri
+        shell: bash
+        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null || true
+
+      - name: APK olustur ve dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          mkdir -p store /tmp/apkcheck
+          cp app/build/outputs/apk/debug/app-debug.apk store/BYEDS57-11.apk
+          unzip -t store/BYEDS57-11.apk >/dev/null
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging store/BYEDS57-11.apk > /tmp/badging.txt
+          grep -q "package: name='com.bayramyaras.byedssaha.v5711' versionCode='165711' versionName='16.57.11'" /tmp/badging.txt
+          grep -q "application-label:'BY EDŞ SAHA V57'" /tmp/badging.txt
+          unzip -q store/BYEDS57-11.apk 'assets/AYB_Saha_Harita.html' 'assets/ayb-tablet.js' -d /tmp/apkcheck
+          F=/tmp/apkcheck/assets/AYB_Saha_Harita.html
+          T=/tmp/apkcheck/assets/ayb-tablet.js
+          grep -q 'opt.markerZoomAnimation=true' "$F"
+          ! grep -q 'opt.markerZoomAnimation=false' "$F"
+          grep -q 'opt.zoomSnap=0.25' "$F"
+          grep -q 'id="ayb_v5711_marker_stable_js"' "$F"
+          grep -q 'id="ayb_v579_boot_js"' "$F"
+          grep -q 'data-tool="direk"' "$F"
+          grep -q 'data-tool="hat"' "$F"
+          node --check "$T"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs store/BYEDS57-11.apk > store/APK_IMZA_KONTROL.txt
+          sha256sum store/BYEDS57-11.apk | tee store/BYEDS57-11.apk.sha256
+          printf 'BY EDŞ SAHA V57\nSürüm: 16.57.11\nDirek/trafo/etiket zoom sırasında haritayla birlikte akıcı taşınır, boyutu sabit kalır. Etiket yerleşimi yalnız gerçek çakışmada yeniden hesaplanır. Hızlı uydu ayarları ve çalışan saha motoru korunmuştur.\n' > store/BILGI.txt
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYEDS57-11-SABIT-ZOOM
+          path: |
+            store/BYEDS57-11.apk
+            store/BYEDS57-11.apk.sha256
+            store/APK_IMZA_KONTROL.txt
+            store/BILGI.txt
+          if-no-files-found: error
